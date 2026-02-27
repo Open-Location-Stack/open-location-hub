@@ -1,0 +1,42 @@
+-- +goose Up
+CREATE TABLE IF NOT EXISTS zones (
+  id UUID PRIMARY KEY,
+  type TEXT NOT NULL,
+  foreign_id TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS trackables (
+  id UUID PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fences (
+  id UUID PRIMARY KEY,
+  name TEXT,
+  foreign_id TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- +goose Down
+DROP TABLE IF EXISTS fences;
+DROP TABLE IF EXISTS trackables;
+DROP TABLE IF EXISTS providers;
+DROP TABLE IF EXISTS zones;

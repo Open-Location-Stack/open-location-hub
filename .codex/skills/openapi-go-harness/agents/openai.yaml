@@ -1,0 +1,4 @@
+version: 1
+display_name: OpenAPI Go Harness
+short_description: Scaffold and maintain the OpenAPI-first Go service harness.
+default_prompt: Update the Open RTLS Hub scaffold while keeping OpenAPI, generation, and just workflows consistent.

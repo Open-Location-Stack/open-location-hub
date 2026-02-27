@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: Open RTLS Hub API
+  version: 0.1.0
+  description: Normative REST contract for Open RTLS Hub v2-compatible endpoints.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /v2/zones:
+    get:
+      operationId: listZones
+      responses:
+        '200':
+          description: Zones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Zone'
+    post:
+      operationId: createZone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Zone'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+  /v2/zones/{zoneId}:
+    get:
+      operationId: getZone
+      parameters:
+        - in: path
+          name: zoneId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Zone
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/trackables:
+    get:
+      operationId: listTrackables
+      responses:
+        '200':
+          description: Trackables
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Trackable' } }
+    post:
+      operationId: createTrackable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Trackable' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trackable' }
+  /v2/trackables/{trackableId}:
+    get:
+      operationId: getTrackable
+      parameters:
+        - in: path
+          name: trackableId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trackable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Trackable' }
+  /v2/providers:
+    get:
+      operationId: listProviders
+      responses:
+        '200':
+          description: Providers
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/LocationProvider' } }
+    post:
+      operationId: createProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationProvider' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocationProvider' }
+  /v2/providers/{providerId}:
+    get:
+      operationId: getProvider
+      parameters:
+        - in: path
+          name: providerId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Provider
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocationProvider' }
+  /v2/providers/locations:
+    post:
+      operationId: postProviderLocations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, items: { $ref: '#/components/schemas/Location' } }
+      responses:
+        '202':
+          description: Accepted
+  /v2/providers/proximities:
+    post:
+      operationId: postProviderProximities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, items: { $ref: '#/components/schemas/Proximity' } }
+      responses:
+        '202':
+          description: Accepted
+  /v2/fences:
+    get:
+      operationId: listFences
+      responses:
+        '200':
+          description: Fences
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Fence' } }
+    post:
+      operationId: createFence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Fence' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fence' }
+  /v2/fences/{fenceId}:
+    get:
+      operationId: getFence
+      parameters:
+        - in: path
+          name: fenceId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Fence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fence' }
+  /v2/rpc/available:
+    get:
+      operationId: getRPCAvailable
+      responses:
+        '200':
+          description: Available methods
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  methods:
+                    type: array
+                    items: { type: string }
+  /v2/rpc:
+    put:
+      operationId: putRPC
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: RPC result
+        '204':
+          description: Notification accepted
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Zone:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        foreign_id: { type: string }
+        incomplete_configuration: { type: boolean }
+        properties: { type: object, additionalProperties: true }
+    Trackable:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [omlox, virtual] }
+        name: { type: string }
+        properties: { type: object, additionalProperties: true }
+    LocationProvider:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        name: { type: string }
+        properties: { type: object, additionalProperties: true }
+    Location:
+      type: object
+      required: [source, provider_type, provider_id]
+      properties:
+        source: { type: string }
+        provider_type: { type: string }
+        provider_id: { type: string }
+        position: { type: object, additionalProperties: true }
+        properties: { type: object, additionalProperties: true }
+    Proximity:
+      type: object
+      required: [source, provider_type, provider_id]
+      properties:
+        source: { type: string }
+        provider_type: { type: string }
+        provider_id: { type: string }
+        properties: { type: object, additionalProperties: true }
+    Fence:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        foreign_id: { type: string }
+        properties: { type: object, additionalProperties: true }

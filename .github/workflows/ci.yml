@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Bootstrap tools
+        run: just bootstrap
+
+      - name: Generate and check clean git state
+        run: |
+          just generate
+          git diff --exit-code
+
+      - name: Lint
+        run: just lint
+
+      - name: Unit tests
+        run: just test
+
+      - name: Build
+        run: just build

@@ -1,16 +1,30 @@
 # Open RTLS Hub
 
-Open RTLS Hub is an open real-time location services (RTLS) hub intended to interoperate through open specifications and standards.
+Open RTLS Hub is an OpenAPI-first Go implementation scaffold for an OMLOX-compatible RTLS hub.
 
-The project is designed around:
-- **OMLOX** for interoperable RTLS domain models and APIs.
-- **MQTT** for event-driven integration and telemetry exchange.
-- **OGC standards** (including **IMDF**) for spatial data, map context, and indoor geospatial interoperability.
+## What is included
+- Normative REST contract: `specifications/openapi/omlox-hub.v0.yaml`
+- Go server scaffold with strict handler interface shape
+- Dockerized local runtime for Postgres, Valkey, Mosquitto, and app
+- `just` orchestration for generation, checks, tests, and compose
+- JWT auth modes: `oidc`, `static`, and `hybrid`
+- Unit tests and Testcontainers integration test harness
 
-## Goal
+## Quickstart
+1. `cp .env.example .env`
+2. `just bootstrap`
+3. `just generate`
+4. `just compose-up`
+5. `just run` (or run app in compose)
 
-Provide a vendor-neutral hub that can ingest, normalize, and expose positioning and asset context data in a way that is portable across hardware vendors and software ecosystems.
+## Key commands
+- `just check` runs formatting, lint, tests, and build
+- `just test-int` runs integration tests (Docker required)
+- `just compose-logs` tails compose services
 
-## Status
-
-This repository currently contains foundational documentation and REST resource specifications that will serve as implementation input.
+## Project docs
+- `docs/architecture.md`
+- `docs/configuration.md`
+- `docs/testing.md`
+- `docs/openapi-governance.md`
+- `docs/implementation-plan.md`
