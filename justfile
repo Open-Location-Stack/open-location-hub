@@ -1,9 +1,9 @@
 set shell := ["zsh", "-uc"]
 
 bootstrap:
-	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-	go install github.com/pressly/goose/v3/cmd/goose@latest
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+	go install github.com/pressly/goose/v3/cmd/goose@v3.27.0
 
 generate:
 	oapi-codegen -config tools/openapi/oapi-codegen.server.yaml specifications/openapi/omlox-hub.v0.yaml

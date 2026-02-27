@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
@@ -26,7 +27,9 @@ func New(deps Dependencies) *Handler {
 }
 
 func notImplemented(w http.ResponseWriter, endpoint string) {
-	gen.WriteJSON(w, http.StatusNotImplemented, gen.ErrorResponse{
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
 		Code:    "not_implemented",
 		Message: endpoint + " is scaffolded but not implemented yet",
 	})

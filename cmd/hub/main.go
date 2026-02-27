@@ -66,7 +66,7 @@ func main() {
 		Cache:  cache,
 		MQTT:   mq,
 	})
-	gen.RegisterHandlers(r, h)
+	gen.HandlerFromMux(h, r)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPListenAddr,
