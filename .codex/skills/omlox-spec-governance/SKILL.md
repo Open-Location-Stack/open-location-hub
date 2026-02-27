@@ -17,3 +17,7 @@ Use for API contract work and normative alignment decisions.
 ## Validation
 - Check that operation IDs and schemas align with handler interface names.
 - Ensure required fields match OMLOX notes in `specifications/omlox/`.
+
+## Project Status
+- Until further notice, this project is in `alpha` status.
+- During alpha iterations, do not preserve backward compatibility by default; prioritize forward progress unless compatibility is explicitly requested.

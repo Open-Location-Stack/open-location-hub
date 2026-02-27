@@ -18,3 +18,7 @@ Use for requests to scaffold or evolve this Go service harness.
 - Do not hand-edit generated files unless explicitly bootstrapping placeholders.
 - Prefer environment variables over hardcoded config.
 - Keep Docker compose and README aligned.
+
+## Project Status
+- Until further notice, this project is in `alpha` status.
+- During alpha iterations, do not add backward-compatibility shims or migration layers unless explicitly requested.

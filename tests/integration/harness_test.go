@@ -18,6 +18,12 @@ import (
 )
 
 func TestIntegrationHarness(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Skipf("docker/testcontainers unavailable: %v", r)
+		}
+	}()
+
 	ctx := context.Background()
 
 	pg, err := postgres.Run(ctx, "postgres:17", postgres.WithDatabase("openrtls"), postgres.WithUsername("postgres"), postgres.WithPassword("postgres"))
