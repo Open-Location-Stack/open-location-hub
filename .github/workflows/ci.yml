@@ -8,15 +8,26 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      OAPI_CODEGEN_VERSION: v2.6.0
+      SQLC_VERSION: v1.30.0
+      GOOSE_VERSION: v3.27.0
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Install just
         uses: extractions/setup-just@v2
+
+      - name: Cache Go tool binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}
 
       - name: Bootstrap tools
         run: just bootstrap
