@@ -1,4 +1,4 @@
-set shell := ["zsh", "-uc"]
+set shell := ["bash", "-euo", "pipefail", "-c"]
 
 bootstrap:
 	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0
