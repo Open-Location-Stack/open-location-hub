@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
@@ -19,82 +20,583 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
-// Defines values for TrackableType.
+// Defines values for CollisionEventCollisionType.
 const (
-	Omlox   TrackableType = "omlox"
-	Virtual TrackableType = "virtual"
+	Colliding      CollisionEventCollisionType = "colliding"
+	CollisionEnd   CollisionEventCollisionType = "collision_end"
+	CollisionStart CollisionEventCollisionType = "collision_start"
 )
 
-// Valid indicates whether the value is a known member of the TrackableType enum.
-func (e TrackableType) Valid() bool {
+// Valid indicates whether the value is a known member of the CollisionEventCollisionType enum.
+func (e CollisionEventCollisionType) Valid() bool {
 	switch e {
-	case Omlox:
+	case Colliding:
 		return true
-	case Virtual:
+	case CollisionEnd:
+		return true
+	case CollisionStart:
 		return true
 	default:
 		return false
 	}
 }
 
+// Defines values for FenceElevationRef.
+const (
+	FenceElevationRefFloor FenceElevationRef = "floor"
+	FenceElevationRefWgs84 FenceElevationRef = "wgs84"
+)
+
+// Valid indicates whether the value is a known member of the FenceElevationRef enum.
+func (e FenceElevationRef) Valid() bool {
+	switch e {
+	case FenceElevationRefFloor:
+		return true
+	case FenceElevationRefWgs84:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FenceEventEventType.
+const (
+	RegionEntry FenceEventEventType = "region_entry"
+	RegionExit  FenceEventEventType = "region_exit"
+)
+
+// Valid indicates whether the value is a known member of the FenceEventEventType enum.
+func (e FenceEventEventType) Valid() bool {
+	switch e {
+	case RegionEntry:
+		return true
+	case RegionExit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FenceWriteElevationRef.
+const (
+	FenceWriteElevationRefFloor FenceWriteElevationRef = "floor"
+	FenceWriteElevationRefWgs84 FenceWriteElevationRef = "wgs84"
+)
+
+// Valid indicates whether the value is a known member of the FenceWriteElevationRef enum.
+func (e FenceWriteElevationRef) Valid() bool {
+	switch e {
+	case FenceWriteElevationRefFloor:
+		return true
+	case FenceWriteElevationRefWgs84:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JsonRpcRequestParamsAggregation.
+const (
+	UnderscoreAllWithinTimeout   JsonRpcRequestParamsAggregation = "_all_within_timeout"
+	UnderscoreReturnFirstError   JsonRpcRequestParamsAggregation = "_return_first_error"
+	UnderscoreReturnFirstSuccess JsonRpcRequestParamsAggregation = "_return_first_success"
+)
+
+// Valid indicates whether the value is a known member of the JsonRpcRequestParamsAggregation enum.
+func (e JsonRpcRequestParamsAggregation) Valid() bool {
+	switch e {
+	case UnderscoreAllWithinTimeout:
+		return true
+	case UnderscoreReturnFirstError:
+		return true
+	case UnderscoreReturnFirstSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LocationElevationRef.
+const (
+	Floor LocationElevationRef = "floor"
+	Wgs84 LocationElevationRef = "wgs84"
+)
+
+// Valid indicates whether the value is a known member of the LocationElevationRef enum.
+func (e LocationElevationRef) Valid() bool {
+	switch e {
+	case Floor:
+		return true
+	case Wgs84:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrackableType.
+const (
+	TrackableTypeOmlox   TrackableType = "omlox"
+	TrackableTypeVirtual TrackableType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the TrackableType enum.
+func (e TrackableType) Valid() bool {
+	switch e {
+	case TrackableTypeOmlox:
+		return true
+	case TrackableTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrackableWriteType.
+const (
+	TrackableWriteTypeOmlox   TrackableWriteType = "omlox"
+	TrackableWriteTypeVirtual TrackableWriteType = "virtual"
+)
+
+// Valid indicates whether the value is a known member of the TrackableWriteType enum.
+func (e TrackableWriteType) Valid() bool {
+	switch e {
+	case TrackableWriteTypeOmlox:
+		return true
+	case TrackableWriteTypeVirtual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Collision defines model for Collision.
+type Collision struct {
+	Floor      *float32           `json:"floor,omitempty"`
+	Geometry   Polygon            `json:"geometry"`
+	Id         openapi_types.UUID `json:"id"`
+	ObjectType string             `json:"object_type"`
+	Position   Point              `json:"position"`
+}
+
+// CollisionEvent defines model for CollisionEvent.
+type CollisionEvent struct {
+	CenterDistance *float32                      `json:"center_distance,omitempty"`
+	CollisionArea  *CollisionEvent_CollisionArea `json:"collision_area,omitempty"`
+	CollisionTime  *time.Time                    `json:"collision_time,omitempty"`
+	CollisionType  CollisionEventCollisionType   `json:"collision_type"`
+	Collisions     []Collision                   `json:"collisions"`
+	EndTime        *time.Time                    `json:"end_time,omitempty"`
+	Id             openapi_types.UUID            `json:"id"`
+	StartTime      *time.Time                    `json:"start_time,omitempty"`
+}
+
+// CollisionEvent_CollisionArea defines model for CollisionEvent.CollisionArea.
+type CollisionEvent_CollisionArea struct {
+	union json.RawMessage
+}
+
+// CollisionEventCollisionType defines model for CollisionEvent.CollisionType.
+type CollisionEventCollisionType string
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string  `json:"code"`
+	Message string  `json:"message"`
+	Type    *string `json:"type,omitempty"`
 }
+
+// ExtensionProperties defines model for ExtensionProperties.
+type ExtensionProperties map[string]interface{}
 
 // Fence defines model for Fence.
 type Fence struct {
-	ForeignId  *string                 `json:"foreign_id,omitempty"`
-	Id         openapi_types.UUID      `json:"id"`
-	Name       *string                 `json:"name,omitempty"`
-	Properties *map[string]interface{} `json:"properties,omitempty"`
+	// Crs Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
+	Crs              *string              `json:"crs,omitempty"`
+	ElevationRef     *FenceElevationRef   `json:"elevation_ref,omitempty"`
+	ExitDelay        *float32             `json:"exit_delay,omitempty"`
+	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
+	Extrusion        *float32             `json:"extrusion,omitempty"`
+	Floor            *float32             `json:"floor,omitempty"`
+	ForeignId        *string              `json:"foreign_id,omitempty"`
+	Id               openapi_types.UUID   `json:"id"`
+	Name             *string              `json:"name,omitempty"`
+	Properties       *ExtensionProperties `json:"properties,omitempty"`
+	Radius           *float32             `json:"radius,omitempty"`
+	Region           Fence_Region         `json:"region"`
+	Timeout          *float32             `json:"timeout,omitempty"`
+	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+
+	// ZoneId Required when `crs` is `local`.
+	ZoneId *string `json:"zone_id,omitempty"`
+}
+
+// FenceElevationRef defines model for Fence.ElevationRef.
+type FenceElevationRef string
+
+// Fence_Region defines model for Fence.Region.
+type Fence_Region struct {
+	union json.RawMessage
+}
+
+// FenceEvent defines model for FenceEvent.
+type FenceEvent struct {
+	EntryTime   *time.Time           `json:"entry_time,omitempty"`
+	EventType   FenceEventEventType  `json:"event_type"`
+	ExitTime    *time.Time           `json:"exit_time,omitempty"`
+	FenceId     openapi_types.UUID   `json:"fence_id"`
+	ForeignId   *string              `json:"foreign_id,omitempty"`
+	Id          openapi_types.UUID   `json:"id"`
+	Properties  *ExtensionProperties `json:"properties,omitempty"`
+	ProviderId  *string              `json:"provider_id,omitempty"`
+	TrackableId *string              `json:"trackable_id,omitempty"`
+	Trackables  *StringIdList        `json:"trackables,omitempty"`
+}
+
+// FenceEventEventType defines model for FenceEvent.EventType.
+type FenceEventEventType string
+
+// FenceWrite defines model for FenceWrite.
+type FenceWrite struct {
+	Crs           *string                 `json:"crs,omitempty"`
+	ElevationRef  *FenceWriteElevationRef `json:"elevation_ref,omitempty"`
+	ExitDelay     *float32                `json:"exit_delay,omitempty"`
+	ExitTolerance *float32                `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32                `json:"extrusion,omitempty"`
+	Floor         *float32                `json:"floor,omitempty"`
+	ForeignId     *string                 `json:"foreign_id,omitempty"`
+
+	// Id If omitted on create, the hub generates a UUID.
+	Id               *openapi_types.UUID  `json:"id,omitempty"`
+	Name             *string              `json:"name,omitempty"`
+	Properties       *ExtensionProperties `json:"properties,omitempty"`
+	Radius           *float32             `json:"radius,omitempty"`
+	Region           FenceWrite_Region    `json:"region"`
+	Timeout          *float32             `json:"timeout,omitempty"`
+	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	ZoneId           *string              `json:"zone_id,omitempty"`
+}
+
+// FenceWriteElevationRef defines model for FenceWrite.ElevationRef.
+type FenceWriteElevationRef string
+
+// FenceWrite_Region defines model for FenceWrite.Region.
+type FenceWrite_Region struct {
+	union json.RawMessage
+}
+
+// GeoJsonPosition defines model for GeoJsonPosition.
+type GeoJsonPosition struct {
+	union json.RawMessage
+}
+
+// GeoJsonPosition2D defines model for GeoJsonPosition2D.
+type GeoJsonPosition2D = []float32
+
+// GeoJsonPosition3D defines model for GeoJsonPosition3D.
+type GeoJsonPosition3D = []float32
+
+// GroundControlPoint Inferred companion schema for section 6.7.19. The PDF requires each
+// item to map WGS84 coordinates to local zone coordinates but does not
+// name the child properties.
+type GroundControlPoint struct {
+	Local Point `json:"local"`
+	Wgs84 Point `json:"wgs84"`
+}
+
+// JsonRpcErrorObject defines model for JsonRpcErrorObject.
+type JsonRpcErrorObject struct {
+	Code    int                     `json:"code"`
+	Data    *map[string]interface{} `json:"data,omitempty"`
+	Message string                  `json:"message"`
+}
+
+// JsonRpcErrorResponse defines model for JsonRpcErrorResponse.
+type JsonRpcErrorResponse struct {
+	Error   JsonRpcErrorObject      `json:"error"`
+	Id      JsonRpcErrorResponse_Id `json:"id"`
+	Jsonrpc string                  `json:"jsonrpc"`
+}
+
+// JsonRpcErrorResponseId0 defines model for .
+type JsonRpcErrorResponseId0 = string
+
+// JsonRpcErrorResponseId1 defines model for .
+type JsonRpcErrorResponseId1 = int
+
+// JsonRpcErrorResponseId2 defines model for .
+type JsonRpcErrorResponseId2 = float32
+
+// JsonRpcErrorResponse_Id defines model for JsonRpcErrorResponse.Id.
+type JsonRpcErrorResponse_Id struct {
+	union json.RawMessage
+}
+
+// JsonRpcRequest defines model for JsonRpcRequest.
+type JsonRpcRequest struct {
+	Id      *JsonRpcRequest_Id     `json:"id,omitempty"`
+	Jsonrpc string                 `json:"jsonrpc"`
+	Method  string                 `json:"method"`
+	Params  *JsonRpcRequest_Params `json:"params,omitempty"`
+}
+
+// JsonRpcRequestId0 defines model for .
+type JsonRpcRequestId0 = string
+
+// JsonRpcRequestId1 defines model for .
+type JsonRpcRequestId1 = int
+
+// JsonRpcRequestId2 defines model for .
+type JsonRpcRequestId2 = float32
+
+// JsonRpcRequest_Id defines model for JsonRpcRequest.Id.
+type JsonRpcRequest_Id struct {
+	union json.RawMessage
+}
+
+// JsonRpcRequestParamsAggregation defines model for JsonRpcRequest.Params.Aggregation.
+type JsonRpcRequestParamsAggregation string
+
+// JsonRpcRequest_Params defines model for JsonRpcRequest.Params.
+type JsonRpcRequest_Params struct {
+	UnderscoreAggregation *JsonRpcRequestParamsAggregation `json:"_aggregation,omitempty"`
+	UnderscoreCallerId    *string                          `json:"_caller_id,omitempty"`
+	UnderscoreHandlerId   *string                          `json:"_handler_id,omitempty"`
+	UnderscoreTimeout     *float32                         `json:"_timeout,omitempty"`
+	AdditionalProperties  map[string]interface{}           `json:"-"`
+}
+
+// JsonRpcSuccessResponse defines model for JsonRpcSuccessResponse.
+type JsonRpcSuccessResponse struct {
+	Id      JsonRpcSuccessResponse_Id `json:"id"`
+	Jsonrpc string                    `json:"jsonrpc"`
+	Result  map[string]interface{}    `json:"result"`
+}
+
+// JsonRpcSuccessResponseId0 defines model for .
+type JsonRpcSuccessResponseId0 = string
+
+// JsonRpcSuccessResponseId1 defines model for .
+type JsonRpcSuccessResponseId1 = int
+
+// JsonRpcSuccessResponseId2 defines model for .
+type JsonRpcSuccessResponseId2 = float32
+
+// JsonRpcSuccessResponse_Id defines model for JsonRpcSuccessResponse.Id.
+type JsonRpcSuccessResponse_Id struct {
+	union json.RawMessage
+}
+
+// LineString defines model for LineString.
+type LineString struct {
+	Coordinates []GeoJsonPosition `json:"coordinates"`
+	Type        string            `json:"type"`
+}
+
+// LocatingRule defines model for LocatingRule.
+type LocatingRule struct {
+	// Expression Rule expression. Supported properties named in the PDF are `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and `timestamp_diff`.
+	Expression string  `json:"expression"`
+	Priority   float32 `json:"priority"`
 }
 
 // Location defines model for Location.
 type Location struct {
-	Position     *map[string]interface{} `json:"position,omitempty"`
-	Properties   *map[string]interface{} `json:"properties,omitempty"`
-	ProviderId   string                  `json:"provider_id"`
-	ProviderType string                  `json:"provider_type"`
-	Source       string                  `json:"source"`
+	Accuracy   *float32 `json:"accuracy,omitempty"`
+	Associated *bool    `json:"associated,omitempty"`
+	Course     *float32 `json:"course,omitempty"`
+
+	// Crs Valid EPSG identifier or `local`. Defaults to `local`.
+	Crs                *string               `json:"crs,omitempty"`
+	ElevationRef       *LocationElevationRef `json:"elevation_ref,omitempty"`
+	Floor              *float32              `json:"floor,omitempty"`
+	HeadingAccuracy    *float32              `json:"heading_accuracy,omitempty"`
+	MagneticHeading    *float32              `json:"magnetic_heading,omitempty"`
+	Position           Point                 `json:"position"`
+	Properties         *ExtensionProperties  `json:"properties,omitempty"`
+	ProviderId         string                `json:"provider_id"`
+	ProviderType       string                `json:"provider_type"`
+	Source             string                `json:"source"`
+	Speed              *float32              `json:"speed,omitempty"`
+	TimestampGenerated *time.Time            `json:"timestamp_generated,omitempty"`
+	TimestampSent      *time.Time            `json:"timestamp_sent,omitempty"`
+	Trackables         *StringIdList         `json:"trackables,omitempty"`
+	TrueHeading        *float32              `json:"true_heading,omitempty"`
 }
+
+// LocationElevationRef defines model for Location.ElevationRef.
+type LocationElevationRef string
 
 // LocationProvider defines model for LocationProvider.
 type LocationProvider struct {
-	Id         string                  `json:"id"`
-	Name       *string                 `json:"name,omitempty"`
-	Properties *map[string]interface{} `json:"properties,omitempty"`
-	Type       string                  `json:"type"`
+	ExitDelay        *float32             `json:"exit_delay,omitempty"`
+	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
+	FenceTimeout     *float32             `json:"fence_timeout,omitempty"`
+	Id               string               `json:"id"`
+	Name             *string              `json:"name,omitempty"`
+	Properties       *ExtensionProperties `json:"properties,omitempty"`
+	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
+	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	Type             string               `json:"type"`
+}
+
+// LocationProviderWrite defines model for LocationProviderWrite.
+type LocationProviderWrite struct {
+	ExitDelay        *float32             `json:"exit_delay,omitempty"`
+	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
+	FenceTimeout     *float32             `json:"fence_timeout,omitempty"`
+	Id               string               `json:"id"`
+	Name             *string              `json:"name,omitempty"`
+	Properties       *ExtensionProperties `json:"properties,omitempty"`
+	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
+	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	Type             string               `json:"type"`
+}
+
+// Point defines model for Point.
+type Point struct {
+	Coordinates GeoJsonPosition `json:"coordinates"`
+	Type        string          `json:"type"`
+}
+
+// Polygon defines model for Polygon.
+type Polygon struct {
+	Coordinates [][]GeoJsonPosition `json:"coordinates"`
+	Type        string              `json:"type"`
 }
 
 // Proximity defines model for Proximity.
 type Proximity struct {
-	Properties   *map[string]interface{} `json:"properties,omitempty"`
-	ProviderId   string                  `json:"provider_id"`
-	ProviderType string                  `json:"provider_type"`
-	Source       string                  `json:"source"`
+	Accuracy           *float32             `json:"accuracy,omitempty"`
+	Properties         *ExtensionProperties `json:"properties,omitempty"`
+	ProviderId         string               `json:"provider_id"`
+	ProviderType       string               `json:"provider_type"`
+	Source             string               `json:"source"`
+	TimestampGenerated *time.Time           `json:"timestamp_generated,omitempty"`
+	TimestampSent      *time.Time           `json:"timestamp_sent,omitempty"`
 }
+
+// RpcAvailableMethods defines model for RpcAvailableMethods.
+type RpcAvailableMethods map[string]RpcAvailableMethodsEntry
+
+// RpcAvailableMethodsEntry defines model for RpcAvailableMethodsEntry.
+type RpcAvailableMethodsEntry struct {
+	HandlerId []string `json:"handler_id"`
+}
+
+// StringIdList defines model for StringIdList.
+type StringIdList = []string
 
 // Trackable defines model for Trackable.
 type Trackable struct {
-	Id         openapi_types.UUID      `json:"id"`
-	Name       *string                 `json:"name,omitempty"`
-	Properties *map[string]interface{} `json:"properties,omitempty"`
-	Type       TrackableType           `json:"type"`
+	ExitDelay         *float32             `json:"exit_delay,omitempty"`
+	ExitTolerance     *float32             `json:"exit_tolerance,omitempty"`
+	Extrusion         *float32             `json:"extrusion,omitempty"`
+	FenceTimeout      *float32             `json:"fence_timeout,omitempty"`
+	Geometry          *Polygon             `json:"geometry,omitempty"`
+	Id                openapi_types.UUID   `json:"id"`
+	LocatingRules     *[]LocatingRule      `json:"locating_rules,omitempty"`
+	LocationProviders *StringIdList        `json:"location_providers,omitempty"`
+	Name              *string              `json:"name,omitempty"`
+	Properties        *ExtensionProperties `json:"properties,omitempty"`
+	Radius            *float32             `json:"radius,omitempty"`
+	ToleranceTimeout  *float32             `json:"tolerance_timeout,omitempty"`
+	Type              TrackableType        `json:"type"`
 }
 
 // TrackableType defines model for Trackable.Type.
 type TrackableType string
 
+// TrackableMotion defines model for TrackableMotion.
+type TrackableMotion struct {
+	Extrusion  *float32             `json:"extrusion,omitempty"`
+	Geometry   *Polygon             `json:"geometry,omitempty"`
+	Id         string               `json:"id"`
+	Location   Location             `json:"location"`
+	Name       *string              `json:"name,omitempty"`
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+}
+
+// TrackableWrite defines model for TrackableWrite.
+type TrackableWrite struct {
+	ExitDelay     *float32 `json:"exit_delay,omitempty"`
+	ExitTolerance *float32 `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32 `json:"extrusion,omitempty"`
+	FenceTimeout  *float32 `json:"fence_timeout,omitempty"`
+	Geometry      *Polygon `json:"geometry,omitempty"`
+
+	// Id If omitted on create, the hub generates a UUID.
+	Id                *openapi_types.UUID  `json:"id,omitempty"`
+	LocatingRules     *[]LocatingRule      `json:"locating_rules,omitempty"`
+	LocationProviders *StringIdList        `json:"location_providers,omitempty"`
+	Name              *string              `json:"name,omitempty"`
+	Properties        *ExtensionProperties `json:"properties,omitempty"`
+	Radius            *float32             `json:"radius,omitempty"`
+	ToleranceTimeout  *float32             `json:"tolerance_timeout,omitempty"`
+	Type              TrackableWriteType   `json:"type"`
+}
+
+// TrackableWriteType defines model for TrackableWrite.Type.
+type TrackableWriteType string
+
 // Zone defines model for Zone.
 type Zone struct {
-	ForeignId               *string                 `json:"foreign_id,omitempty"`
-	Id                      openapi_types.UUID      `json:"id"`
-	IncompleteConfiguration *bool                   `json:"incomplete_configuration,omitempty"`
-	Properties              *map[string]interface{} `json:"properties,omitempty"`
-	Type                    string                  `json:"type"`
+	Address                 *string               `json:"address,omitempty"`
+	Building                *string               `json:"building,omitempty"`
+	Description             *string               `json:"description,omitempty"`
+	Floor                   *float32              `json:"floor,omitempty"`
+	ForeignId               *string               `json:"foreign_id,omitempty"`
+	GroundControlPoints     *[]GroundControlPoint `json:"ground_control_points,omitempty"`
+	Id                      openapi_types.UUID    `json:"id"`
+	IncompleteConfiguration *bool                 `json:"incomplete_configuration,omitempty"`
+	MeasurementTimestamp    *time.Time            `json:"measurement_timestamp,omitempty"`
+	Name                    *string               `json:"name,omitempty"`
+	Position                *Point                `json:"position,omitempty"`
+	Properties              *ExtensionProperties  `json:"properties,omitempty"`
+	Radius                  *float32              `json:"radius,omitempty"`
+	Site                    *string               `json:"site,omitempty"`
+
+	// Type Positioning system type. OMLOX behavior chapters require support for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
+	Type        string   `json:"type"`
+	Wgs84Height *float32 `json:"wgs84_height,omitempty"`
 }
+
+// ZoneWrite defines model for ZoneWrite.
+type ZoneWrite struct {
+	Address             *string               `json:"address,omitempty"`
+	Building            *string               `json:"building,omitempty"`
+	Description         *string               `json:"description,omitempty"`
+	Floor               *float32              `json:"floor,omitempty"`
+	ForeignId           *string               `json:"foreign_id,omitempty"`
+	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
+
+	// Id If omitted on create, the hub generates a UUID.
+	Id                      *openapi_types.UUID  `json:"id,omitempty"`
+	IncompleteConfiguration *bool                `json:"incomplete_configuration,omitempty"`
+	MeasurementTimestamp    *time.Time           `json:"measurement_timestamp,omitempty"`
+	Name                    *string              `json:"name,omitempty"`
+	Position                *Point               `json:"position,omitempty"`
+	Properties              *ExtensionProperties `json:"properties,omitempty"`
+	Radius                  *float32             `json:"radius,omitempty"`
+	Site                    *string              `json:"site,omitempty"`
+	Type                    string               `json:"type"`
+	Wgs84Height             *float32             `json:"wgs84_height,omitempty"`
+}
+
+// FenceId defines model for FenceId.
+type FenceId = openapi_types.UUID
+
+// ProviderId defines model for ProviderId.
+type ProviderId = string
+
+// TrackableId defines model for TrackableId.
+type TrackableId = openapi_types.UUID
+
+// ZoneId defines model for ZoneId.
+type ZoneId = openapi_types.UUID
+
+// BadRequest defines model for BadRequest.
+type BadRequest = ErrorResponse
 
 // NotFound defines model for NotFound.
 type NotFound = ErrorResponse
@@ -105,14 +607,14 @@ type PostProviderLocationsJSONBody = []Location
 // PostProviderProximitiesJSONBody defines parameters for PostProviderProximities.
 type PostProviderProximitiesJSONBody = []Proximity
 
-// PutRPCJSONBody defines parameters for PutRPC.
-type PutRPCJSONBody = map[string]interface{}
-
 // CreateFenceJSONRequestBody defines body for CreateFence for application/json ContentType.
-type CreateFenceJSONRequestBody = Fence
+type CreateFenceJSONRequestBody = FenceWrite
+
+// UpdateFenceJSONRequestBody defines body for UpdateFence for application/json ContentType.
+type UpdateFenceJSONRequestBody = FenceWrite
 
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
-type CreateProviderJSONRequestBody = LocationProvider
+type CreateProviderJSONRequestBody = LocationProviderWrite
 
 // PostProviderLocationsJSONRequestBody defines body for PostProviderLocations for application/json ContentType.
 type PostProviderLocationsJSONRequestBody = PostProviderLocationsJSONBody
@@ -120,14 +622,648 @@ type PostProviderLocationsJSONRequestBody = PostProviderLocationsJSONBody
 // PostProviderProximitiesJSONRequestBody defines body for PostProviderProximities for application/json ContentType.
 type PostProviderProximitiesJSONRequestBody = PostProviderProximitiesJSONBody
 
+// UpdateProviderJSONRequestBody defines body for UpdateProvider for application/json ContentType.
+type UpdateProviderJSONRequestBody = LocationProviderWrite
+
 // PutRPCJSONRequestBody defines body for PutRPC for application/json ContentType.
-type PutRPCJSONRequestBody = PutRPCJSONBody
+type PutRPCJSONRequestBody = JsonRpcRequest
 
 // CreateTrackableJSONRequestBody defines body for CreateTrackable for application/json ContentType.
-type CreateTrackableJSONRequestBody = Trackable
+type CreateTrackableJSONRequestBody = TrackableWrite
+
+// UpdateTrackableJSONRequestBody defines body for UpdateTrackable for application/json ContentType.
+type UpdateTrackableJSONRequestBody = TrackableWrite
 
 // CreateZoneJSONRequestBody defines body for CreateZone for application/json ContentType.
-type CreateZoneJSONRequestBody = Zone
+type CreateZoneJSONRequestBody = ZoneWrite
+
+// UpdateZoneJSONRequestBody defines body for UpdateZone for application/json ContentType.
+type UpdateZoneJSONRequestBody = ZoneWrite
+
+// Getter for additional properties for JsonRpcRequest_Params. Returns the specified
+// element and whether it was found
+func (a JsonRpcRequest_Params) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for JsonRpcRequest_Params
+func (a *JsonRpcRequest_Params) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for JsonRpcRequest_Params to handle AdditionalProperties
+func (a *JsonRpcRequest_Params) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["_aggregation"]; found {
+		err = json.Unmarshal(raw, &a.UnderscoreAggregation)
+		if err != nil {
+			return fmt.Errorf("error reading '_aggregation': %w", err)
+		}
+		delete(object, "_aggregation")
+	}
+
+	if raw, found := object["_caller_id"]; found {
+		err = json.Unmarshal(raw, &a.UnderscoreCallerId)
+		if err != nil {
+			return fmt.Errorf("error reading '_caller_id': %w", err)
+		}
+		delete(object, "_caller_id")
+	}
+
+	if raw, found := object["_handler_id"]; found {
+		err = json.Unmarshal(raw, &a.UnderscoreHandlerId)
+		if err != nil {
+			return fmt.Errorf("error reading '_handler_id': %w", err)
+		}
+		delete(object, "_handler_id")
+	}
+
+	if raw, found := object["_timeout"]; found {
+		err = json.Unmarshal(raw, &a.UnderscoreTimeout)
+		if err != nil {
+			return fmt.Errorf("error reading '_timeout': %w", err)
+		}
+		delete(object, "_timeout")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for JsonRpcRequest_Params to handle AdditionalProperties
+func (a JsonRpcRequest_Params) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.UnderscoreAggregation != nil {
+		object["_aggregation"], err = json.Marshal(a.UnderscoreAggregation)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '_aggregation': %w", err)
+		}
+	}
+
+	if a.UnderscoreCallerId != nil {
+		object["_caller_id"], err = json.Marshal(a.UnderscoreCallerId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '_caller_id': %w", err)
+		}
+	}
+
+	if a.UnderscoreHandlerId != nil {
+		object["_handler_id"], err = json.Marshal(a.UnderscoreHandlerId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '_handler_id': %w", err)
+		}
+	}
+
+	if a.UnderscoreTimeout != nil {
+		object["_timeout"], err = json.Marshal(a.UnderscoreTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '_timeout': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// AsLineString returns the union data inside the CollisionEvent_CollisionArea as a LineString
+func (t CollisionEvent_CollisionArea) AsLineString() (LineString, error) {
+	var body LineString
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLineString overwrites any union data inside the CollisionEvent_CollisionArea as the provided LineString
+func (t *CollisionEvent_CollisionArea) FromLineString(v LineString) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLineString performs a merge with any union data inside the CollisionEvent_CollisionArea, using the provided LineString
+func (t *CollisionEvent_CollisionArea) MergeLineString(v LineString) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPoint returns the union data inside the CollisionEvent_CollisionArea as a Point
+func (t CollisionEvent_CollisionArea) AsPoint() (Point, error) {
+	var body Point
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPoint overwrites any union data inside the CollisionEvent_CollisionArea as the provided Point
+func (t *CollisionEvent_CollisionArea) FromPoint(v Point) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePoint performs a merge with any union data inside the CollisionEvent_CollisionArea, using the provided Point
+func (t *CollisionEvent_CollisionArea) MergePoint(v Point) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CollisionEvent_CollisionArea) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *CollisionEvent_CollisionArea) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsPolygon returns the union data inside the Fence_Region as a Polygon
+func (t Fence_Region) AsPolygon() (Polygon, error) {
+	var body Polygon
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPolygon overwrites any union data inside the Fence_Region as the provided Polygon
+func (t *Fence_Region) FromPolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePolygon performs a merge with any union data inside the Fence_Region, using the provided Polygon
+func (t *Fence_Region) MergePolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPoint returns the union data inside the Fence_Region as a Point
+func (t Fence_Region) AsPoint() (Point, error) {
+	var body Point
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPoint overwrites any union data inside the Fence_Region as the provided Point
+func (t *Fence_Region) FromPoint(v Point) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePoint performs a merge with any union data inside the Fence_Region, using the provided Point
+func (t *Fence_Region) MergePoint(v Point) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t Fence_Region) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *Fence_Region) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsPolygon returns the union data inside the FenceWrite_Region as a Polygon
+func (t FenceWrite_Region) AsPolygon() (Polygon, error) {
+	var body Polygon
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPolygon overwrites any union data inside the FenceWrite_Region as the provided Polygon
+func (t *FenceWrite_Region) FromPolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePolygon performs a merge with any union data inside the FenceWrite_Region, using the provided Polygon
+func (t *FenceWrite_Region) MergePolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPoint returns the union data inside the FenceWrite_Region as a Point
+func (t FenceWrite_Region) AsPoint() (Point, error) {
+	var body Point
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPoint overwrites any union data inside the FenceWrite_Region as the provided Point
+func (t *FenceWrite_Region) FromPoint(v Point) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePoint performs a merge with any union data inside the FenceWrite_Region, using the provided Point
+func (t *FenceWrite_Region) MergePoint(v Point) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t FenceWrite_Region) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *FenceWrite_Region) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsGeoJsonPosition2D returns the union data inside the GeoJsonPosition as a GeoJsonPosition2D
+func (t GeoJsonPosition) AsGeoJsonPosition2D() (GeoJsonPosition2D, error) {
+	var body GeoJsonPosition2D
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJsonPosition2D overwrites any union data inside the GeoJsonPosition as the provided GeoJsonPosition2D
+func (t *GeoJsonPosition) FromGeoJsonPosition2D(v GeoJsonPosition2D) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJsonPosition2D performs a merge with any union data inside the GeoJsonPosition, using the provided GeoJsonPosition2D
+func (t *GeoJsonPosition) MergeGeoJsonPosition2D(v GeoJsonPosition2D) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJsonPosition3D returns the union data inside the GeoJsonPosition as a GeoJsonPosition3D
+func (t GeoJsonPosition) AsGeoJsonPosition3D() (GeoJsonPosition3D, error) {
+	var body GeoJsonPosition3D
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJsonPosition3D overwrites any union data inside the GeoJsonPosition as the provided GeoJsonPosition3D
+func (t *GeoJsonPosition) FromGeoJsonPosition3D(v GeoJsonPosition3D) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJsonPosition3D performs a merge with any union data inside the GeoJsonPosition, using the provided GeoJsonPosition3D
+func (t *GeoJsonPosition) MergeGeoJsonPosition3D(v GeoJsonPosition3D) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GeoJsonPosition) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GeoJsonPosition) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsJsonRpcErrorResponseId0 returns the union data inside the JsonRpcErrorResponse_Id as a JsonRpcErrorResponseId0
+func (t JsonRpcErrorResponse_Id) AsJsonRpcErrorResponseId0() (JsonRpcErrorResponseId0, error) {
+	var body JsonRpcErrorResponseId0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcErrorResponseId0 overwrites any union data inside the JsonRpcErrorResponse_Id as the provided JsonRpcErrorResponseId0
+func (t *JsonRpcErrorResponse_Id) FromJsonRpcErrorResponseId0(v JsonRpcErrorResponseId0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcErrorResponseId0 performs a merge with any union data inside the JsonRpcErrorResponse_Id, using the provided JsonRpcErrorResponseId0
+func (t *JsonRpcErrorResponse_Id) MergeJsonRpcErrorResponseId0(v JsonRpcErrorResponseId0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcErrorResponseId1 returns the union data inside the JsonRpcErrorResponse_Id as a JsonRpcErrorResponseId1
+func (t JsonRpcErrorResponse_Id) AsJsonRpcErrorResponseId1() (JsonRpcErrorResponseId1, error) {
+	var body JsonRpcErrorResponseId1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcErrorResponseId1 overwrites any union data inside the JsonRpcErrorResponse_Id as the provided JsonRpcErrorResponseId1
+func (t *JsonRpcErrorResponse_Id) FromJsonRpcErrorResponseId1(v JsonRpcErrorResponseId1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcErrorResponseId1 performs a merge with any union data inside the JsonRpcErrorResponse_Id, using the provided JsonRpcErrorResponseId1
+func (t *JsonRpcErrorResponse_Id) MergeJsonRpcErrorResponseId1(v JsonRpcErrorResponseId1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcErrorResponseId2 returns the union data inside the JsonRpcErrorResponse_Id as a JsonRpcErrorResponseId2
+func (t JsonRpcErrorResponse_Id) AsJsonRpcErrorResponseId2() (JsonRpcErrorResponseId2, error) {
+	var body JsonRpcErrorResponseId2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcErrorResponseId2 overwrites any union data inside the JsonRpcErrorResponse_Id as the provided JsonRpcErrorResponseId2
+func (t *JsonRpcErrorResponse_Id) FromJsonRpcErrorResponseId2(v JsonRpcErrorResponseId2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcErrorResponseId2 performs a merge with any union data inside the JsonRpcErrorResponse_Id, using the provided JsonRpcErrorResponseId2
+func (t *JsonRpcErrorResponse_Id) MergeJsonRpcErrorResponseId2(v JsonRpcErrorResponseId2) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t JsonRpcErrorResponse_Id) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *JsonRpcErrorResponse_Id) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsJsonRpcRequestId0 returns the union data inside the JsonRpcRequest_Id as a JsonRpcRequestId0
+func (t JsonRpcRequest_Id) AsJsonRpcRequestId0() (JsonRpcRequestId0, error) {
+	var body JsonRpcRequestId0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcRequestId0 overwrites any union data inside the JsonRpcRequest_Id as the provided JsonRpcRequestId0
+func (t *JsonRpcRequest_Id) FromJsonRpcRequestId0(v JsonRpcRequestId0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcRequestId0 performs a merge with any union data inside the JsonRpcRequest_Id, using the provided JsonRpcRequestId0
+func (t *JsonRpcRequest_Id) MergeJsonRpcRequestId0(v JsonRpcRequestId0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcRequestId1 returns the union data inside the JsonRpcRequest_Id as a JsonRpcRequestId1
+func (t JsonRpcRequest_Id) AsJsonRpcRequestId1() (JsonRpcRequestId1, error) {
+	var body JsonRpcRequestId1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcRequestId1 overwrites any union data inside the JsonRpcRequest_Id as the provided JsonRpcRequestId1
+func (t *JsonRpcRequest_Id) FromJsonRpcRequestId1(v JsonRpcRequestId1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcRequestId1 performs a merge with any union data inside the JsonRpcRequest_Id, using the provided JsonRpcRequestId1
+func (t *JsonRpcRequest_Id) MergeJsonRpcRequestId1(v JsonRpcRequestId1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcRequestId2 returns the union data inside the JsonRpcRequest_Id as a JsonRpcRequestId2
+func (t JsonRpcRequest_Id) AsJsonRpcRequestId2() (JsonRpcRequestId2, error) {
+	var body JsonRpcRequestId2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcRequestId2 overwrites any union data inside the JsonRpcRequest_Id as the provided JsonRpcRequestId2
+func (t *JsonRpcRequest_Id) FromJsonRpcRequestId2(v JsonRpcRequestId2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcRequestId2 performs a merge with any union data inside the JsonRpcRequest_Id, using the provided JsonRpcRequestId2
+func (t *JsonRpcRequest_Id) MergeJsonRpcRequestId2(v JsonRpcRequestId2) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t JsonRpcRequest_Id) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *JsonRpcRequest_Id) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsJsonRpcSuccessResponseId0 returns the union data inside the JsonRpcSuccessResponse_Id as a JsonRpcSuccessResponseId0
+func (t JsonRpcSuccessResponse_Id) AsJsonRpcSuccessResponseId0() (JsonRpcSuccessResponseId0, error) {
+	var body JsonRpcSuccessResponseId0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcSuccessResponseId0 overwrites any union data inside the JsonRpcSuccessResponse_Id as the provided JsonRpcSuccessResponseId0
+func (t *JsonRpcSuccessResponse_Id) FromJsonRpcSuccessResponseId0(v JsonRpcSuccessResponseId0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcSuccessResponseId0 performs a merge with any union data inside the JsonRpcSuccessResponse_Id, using the provided JsonRpcSuccessResponseId0
+func (t *JsonRpcSuccessResponse_Id) MergeJsonRpcSuccessResponseId0(v JsonRpcSuccessResponseId0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcSuccessResponseId1 returns the union data inside the JsonRpcSuccessResponse_Id as a JsonRpcSuccessResponseId1
+func (t JsonRpcSuccessResponse_Id) AsJsonRpcSuccessResponseId1() (JsonRpcSuccessResponseId1, error) {
+	var body JsonRpcSuccessResponseId1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcSuccessResponseId1 overwrites any union data inside the JsonRpcSuccessResponse_Id as the provided JsonRpcSuccessResponseId1
+func (t *JsonRpcSuccessResponse_Id) FromJsonRpcSuccessResponseId1(v JsonRpcSuccessResponseId1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcSuccessResponseId1 performs a merge with any union data inside the JsonRpcSuccessResponse_Id, using the provided JsonRpcSuccessResponseId1
+func (t *JsonRpcSuccessResponse_Id) MergeJsonRpcSuccessResponseId1(v JsonRpcSuccessResponseId1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsJsonRpcSuccessResponseId2 returns the union data inside the JsonRpcSuccessResponse_Id as a JsonRpcSuccessResponseId2
+func (t JsonRpcSuccessResponse_Id) AsJsonRpcSuccessResponseId2() (JsonRpcSuccessResponseId2, error) {
+	var body JsonRpcSuccessResponseId2
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromJsonRpcSuccessResponseId2 overwrites any union data inside the JsonRpcSuccessResponse_Id as the provided JsonRpcSuccessResponseId2
+func (t *JsonRpcSuccessResponse_Id) FromJsonRpcSuccessResponseId2(v JsonRpcSuccessResponseId2) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeJsonRpcSuccessResponseId2 performs a merge with any union data inside the JsonRpcSuccessResponse_Id, using the provided JsonRpcSuccessResponseId2
+func (t *JsonRpcSuccessResponse_Id) MergeJsonRpcSuccessResponseId2(v JsonRpcSuccessResponseId2) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t JsonRpcSuccessResponse_Id) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *JsonRpcSuccessResponse_Id) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -138,8 +1274,14 @@ type ServerInterface interface {
 	// (POST /v2/fences)
 	CreateFence(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /v2/fences/{fenceId})
+	DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+
 	// (GET /v2/fences/{fenceId})
-	GetFence(w http.ResponseWriter, r *http.Request, fenceId string)
+	GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+
+	// (PUT /v2/fences/{fenceId})
+	UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
 
 	// (GET /v2/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
@@ -153,8 +1295,14 @@ type ServerInterface interface {
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /v2/providers/{providerId})
+	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+
 	// (GET /v2/providers/{providerId})
-	GetProvider(w http.ResponseWriter, r *http.Request, providerId string)
+	GetProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+
+	// (PUT /v2/providers/{providerId})
+	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
 
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
@@ -168,8 +1316,14 @@ type ServerInterface interface {
 	// (POST /v2/trackables)
 	CreateTrackable(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /v2/trackables/{trackableId})
+	DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+
 	// (GET /v2/trackables/{trackableId})
-	GetTrackable(w http.ResponseWriter, r *http.Request, trackableId string)
+	GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+
+	// (PUT /v2/trackables/{trackableId})
+	UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
 
 	// (GET /v2/zones)
 	ListZones(w http.ResponseWriter, r *http.Request)
@@ -177,8 +1331,14 @@ type ServerInterface interface {
 	// (POST /v2/zones)
 	CreateZone(w http.ResponseWriter, r *http.Request)
 
+	// (DELETE /v2/zones/{zoneId})
+	DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
+
 	// (GET /v2/zones/{zoneId})
-	GetZone(w http.ResponseWriter, r *http.Request, zoneId string)
+	GetZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
+
+	// (PUT /v2/zones/{zoneId})
+	UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -195,8 +1355,18 @@ func (_ Unimplemented) CreateFence(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (DELETE /v2/fences/{fenceId})
+func (_ Unimplemented) DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v2/fences/{fenceId})
-func (_ Unimplemented) GetFence(w http.ResponseWriter, r *http.Request, fenceId string) {
+func (_ Unimplemented) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /v2/fences/{fenceId})
+func (_ Unimplemented) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -220,8 +1390,18 @@ func (_ Unimplemented) PostProviderProximities(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (DELETE /v2/providers/{providerId})
+func (_ Unimplemented) DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v2/providers/{providerId})
-func (_ Unimplemented) GetProvider(w http.ResponseWriter, r *http.Request, providerId string) {
+func (_ Unimplemented) GetProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /v2/providers/{providerId})
+func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -245,8 +1425,18 @@ func (_ Unimplemented) CreateTrackable(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (DELETE /v2/trackables/{trackableId})
+func (_ Unimplemented) DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v2/trackables/{trackableId})
-func (_ Unimplemented) GetTrackable(w http.ResponseWriter, r *http.Request, trackableId string) {
+func (_ Unimplemented) GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /v2/trackables/{trackableId})
+func (_ Unimplemented) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -260,8 +1450,18 @@ func (_ Unimplemented) CreateZone(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (DELETE /v2/zones/{zoneId})
+func (_ Unimplemented) DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v2/zones/{zoneId})
-func (_ Unimplemented) GetZone(w http.ResponseWriter, r *http.Request, zoneId string) {
+func (_ Unimplemented) GetZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /v2/zones/{zoneId})
+func (_ Unimplemented) UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -314,15 +1514,46 @@ func (siw *ServerInterfaceWrapper) CreateFence(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteFence operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFence(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFence(w, r, fenceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFence operation middleware
 func (siw *ServerInterfaceWrapper) GetFence(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// ------------- Path parameter "fenceId" -------------
-	var fenceId string
+	var fenceId FenceId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
 		return
@@ -336,6 +1567,37 @@ func (siw *ServerInterfaceWrapper) GetFence(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFence(w, r, fenceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFence operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFence(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFence(w, r, fenceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -425,13 +1687,44 @@ func (siw *ServerInterfaceWrapper) PostProviderProximities(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteProvider operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProvider operation middleware
 func (siw *ServerInterfaceWrapper) GetProvider(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// ------------- Path parameter "providerId" -------------
-	var providerId string
+	var providerId ProviderId
 
 	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
 	if err != nil {
@@ -447,6 +1740,37 @@ func (siw *ServerInterfaceWrapper) GetProvider(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProvider operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProvider(w, r, providerId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -536,15 +1860,46 @@ func (siw *ServerInterfaceWrapper) CreateTrackable(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTrackable operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTrackable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTrackable(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTrackable operation middleware
 func (siw *ServerInterfaceWrapper) GetTrackable(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// ------------- Path parameter "trackableId" -------------
-	var trackableId string
+	var trackableId TrackableId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
 		return
@@ -558,6 +1913,37 @@ func (siw *ServerInterfaceWrapper) GetTrackable(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTrackable(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTrackable operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTrackable(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTrackable(w, r, trackableId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -607,15 +1993,46 @@ func (siw *ServerInterfaceWrapper) CreateZone(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteZone operation middleware
+func (siw *ServerInterfaceWrapper) DeleteZone(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "zoneId" -------------
+	var zoneId ZoneId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zoneId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteZone(w, r, zoneId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetZone operation middleware
 func (siw *ServerInterfaceWrapper) GetZone(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
 	// ------------- Path parameter "zoneId" -------------
-	var zoneId string
+	var zoneId ZoneId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zoneId", Err: err})
 		return
@@ -629,6 +2046,37 @@ func (siw *ServerInterfaceWrapper) GetZone(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetZone(w, r, zoneId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateZone operation middleware
+func (siw *ServerInterfaceWrapper) UpdateZone(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "zoneId" -------------
+	var zoneId ZoneId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zoneId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateZone(w, r, zoneId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -758,7 +2206,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v2/fences", wrapper.CreateFence)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/fences/{fenceId}", wrapper.DeleteFence)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/fences/{fenceId}", wrapper.GetFence)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/fences/{fenceId}", wrapper.UpdateFence)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/providers", wrapper.ListProviders)
@@ -773,7 +2227,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v2/providers/proximities", wrapper.PostProviderProximities)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/providers/{providerId}", wrapper.DeleteProvider)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/providers/{providerId}", wrapper.GetProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/{providerId}", wrapper.UpdateProvider)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/rpc", wrapper.PutRPC)
@@ -788,7 +2248,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v2/trackables", wrapper.CreateTrackable)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/trackables/{trackableId}", wrapper.DeleteTrackable)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/trackables/{trackableId}", wrapper.GetTrackable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/trackables/{trackableId}", wrapper.UpdateTrackable)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/zones", wrapper.ListZones)
@@ -797,11 +2263,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v2/zones", wrapper.CreateZone)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/zones/{zoneId}", wrapper.DeleteZone)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/zones/{zoneId}", wrapper.GetZone)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/zones/{zoneId}", wrapper.UpdateZone)
 	})
 
 	return r
 }
+
+type BadRequestJSONResponse ErrorResponse
 
 type NotFoundJSONResponse ErrorResponse
 
@@ -838,8 +2312,42 @@ func (response CreateFence201JSONResponse) VisitCreateFenceResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateFence400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateFence400JSONResponse) VisitCreateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteFenceRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+}
+
+type DeleteFenceResponseObject interface {
+	VisitDeleteFenceResponse(w http.ResponseWriter) error
+}
+
+type DeleteFence204Response struct {
+}
+
+func (response DeleteFence204Response) VisitDeleteFenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFence404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteFence404JSONResponse) VisitDeleteFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetFenceRequestObject struct {
-	FenceId string `json:"fenceId"`
+	FenceId FenceId `json:"fenceId"`
 }
 
 type GetFenceResponseObject interface {
@@ -851,6 +2359,51 @@ type GetFence200JSONResponse Fence
 func (response GetFence200JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFence404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFence404JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFenceRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+	Body    *UpdateFenceJSONRequestBody
+}
+
+type UpdateFenceResponseObject interface {
+	VisitUpdateFenceResponse(w http.ResponseWriter) error
+}
+
+type UpdateFence200JSONResponse Fence
+
+func (response UpdateFence200JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFence400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateFence400JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFence404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateFence404JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -888,6 +2441,15 @@ func (response CreateProvider201JSONResponse) VisitCreateProviderResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateProvider400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProvider400JSONResponse) VisitCreateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type PostProviderLocationsRequestObject struct {
 	Body *PostProviderLocationsJSONRequestBody
 }
@@ -902,6 +2464,15 @@ type PostProviderLocations202Response struct {
 func (response PostProviderLocations202Response) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
 	w.WriteHeader(202)
 	return nil
+}
+
+type PostProviderLocations400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PostProviderLocations400JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type PostProviderProximitiesRequestObject struct {
@@ -920,8 +2491,42 @@ func (response PostProviderProximities202Response) VisitPostProviderProximitiesR
 	return nil
 }
 
+type PostProviderProximities400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PostProviderProximities400JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProviderRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type DeleteProviderResponseObject interface {
+	VisitDeleteProviderResponse(w http.ResponseWriter) error
+}
+
+type DeleteProvider204Response struct {
+}
+
+func (response DeleteProvider204Response) VisitDeleteProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProvider404JSONResponse) VisitDeleteProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProviderRequestObject struct {
-	ProviderId string `json:"providerId"`
+	ProviderId ProviderId `json:"providerId"`
 }
 
 type GetProviderResponseObject interface {
@@ -937,6 +2542,51 @@ func (response GetProvider200JSONResponse) VisitGetProviderResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProvider404JSONResponse) VisitGetProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProviderRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+	Body       *UpdateProviderJSONRequestBody
+}
+
+type UpdateProviderResponseObject interface {
+	VisitUpdateProviderResponse(w http.ResponseWriter) error
+}
+
+type UpdateProvider200JSONResponse LocationProvider
+
+func (response UpdateProvider200JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProvider400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProvider400JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProvider404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProvider404JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type PutRPCRequestObject struct {
 	Body *PutRPCJSONRequestBody
 }
@@ -945,12 +2595,15 @@ type PutRPCResponseObject interface {
 	VisitPutRPCResponse(w http.ResponseWriter) error
 }
 
-type PutRPC200Response struct {
+type PutRPC200JSONResponse struct {
+	union json.RawMessage
 }
 
-func (response PutRPC200Response) VisitPutRPCResponse(w http.ResponseWriter) error {
+func (response PutRPC200JSONResponse) VisitPutRPCResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	return nil
+
+	return json.NewEncoder(w).Encode(response.union)
 }
 
 type PutRPC204Response struct {
@@ -961,6 +2614,15 @@ func (response PutRPC204Response) VisitPutRPCResponse(w http.ResponseWriter) err
 	return nil
 }
 
+type PutRPC400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutRPC400JSONResponse) VisitPutRPCResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetRPCAvailableRequestObject struct {
 }
 
@@ -968,9 +2630,7 @@ type GetRPCAvailableResponseObject interface {
 	VisitGetRPCAvailableResponse(w http.ResponseWriter) error
 }
 
-type GetRPCAvailable200JSONResponse struct {
-	Methods *[]string `json:"methods,omitempty"`
-}
+type GetRPCAvailable200JSONResponse RpcAvailableMethods
 
 func (response GetRPCAvailable200JSONResponse) VisitGetRPCAvailableResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -1012,8 +2672,42 @@ func (response CreateTrackable201JSONResponse) VisitCreateTrackableResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateTrackable400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateTrackable400JSONResponse) VisitCreateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTrackableRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type DeleteTrackableResponseObject interface {
+	VisitDeleteTrackableResponse(w http.ResponseWriter) error
+}
+
+type DeleteTrackable204Response struct {
+}
+
+func (response DeleteTrackable204Response) VisitDeleteTrackableResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteTrackable404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteTrackable404JSONResponse) VisitDeleteTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetTrackableRequestObject struct {
-	TrackableId string `json:"trackableId"`
+	TrackableId TrackableId `json:"trackableId"`
 }
 
 type GetTrackableResponseObject interface {
@@ -1025,6 +2719,51 @@ type GetTrackable200JSONResponse Trackable
 func (response GetTrackable200JSONResponse) VisitGetTrackableResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTrackable404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackable404JSONResponse) VisitGetTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTrackableRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+	Body        *UpdateTrackableJSONRequestBody
+}
+
+type UpdateTrackableResponseObject interface {
+	VisitUpdateTrackableResponse(w http.ResponseWriter) error
+}
+
+type UpdateTrackable200JSONResponse Trackable
+
+func (response UpdateTrackable200JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTrackable400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateTrackable400JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTrackable404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateTrackable404JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1062,8 +2801,42 @@ func (response CreateZone201JSONResponse) VisitCreateZoneResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateZone400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateZone400JSONResponse) VisitCreateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteZoneRequestObject struct {
+	ZoneId ZoneId `json:"zoneId"`
+}
+
+type DeleteZoneResponseObject interface {
+	VisitDeleteZoneResponse(w http.ResponseWriter) error
+}
+
+type DeleteZone204Response struct {
+}
+
+func (response DeleteZone204Response) VisitDeleteZoneResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteZone404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteZone404JSONResponse) VisitDeleteZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetZoneRequestObject struct {
-	ZoneId string `json:"zoneId"`
+	ZoneId ZoneId `json:"zoneId"`
 }
 
 type GetZoneResponseObject interface {
@@ -1088,6 +2861,42 @@ func (response GetZone404JSONResponse) VisitGetZoneResponse(w http.ResponseWrite
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateZoneRequestObject struct {
+	ZoneId ZoneId `json:"zoneId"`
+	Body   *UpdateZoneJSONRequestBody
+}
+
+type UpdateZoneResponseObject interface {
+	VisitUpdateZoneResponse(w http.ResponseWriter) error
+}
+
+type UpdateZone200JSONResponse Zone
+
+func (response UpdateZone200JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateZone400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateZone400JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateZone404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateZone404JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -1097,8 +2906,14 @@ type StrictServerInterface interface {
 	// (POST /v2/fences)
 	CreateFence(ctx context.Context, request CreateFenceRequestObject) (CreateFenceResponseObject, error)
 
+	// (DELETE /v2/fences/{fenceId})
+	DeleteFence(ctx context.Context, request DeleteFenceRequestObject) (DeleteFenceResponseObject, error)
+
 	// (GET /v2/fences/{fenceId})
 	GetFence(ctx context.Context, request GetFenceRequestObject) (GetFenceResponseObject, error)
+
+	// (PUT /v2/fences/{fenceId})
+	UpdateFence(ctx context.Context, request UpdateFenceRequestObject) (UpdateFenceResponseObject, error)
 
 	// (GET /v2/providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
@@ -1112,8 +2927,14 @@ type StrictServerInterface interface {
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(ctx context.Context, request PostProviderProximitiesRequestObject) (PostProviderProximitiesResponseObject, error)
 
+	// (DELETE /v2/providers/{providerId})
+	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
+
 	// (GET /v2/providers/{providerId})
 	GetProvider(ctx context.Context, request GetProviderRequestObject) (GetProviderResponseObject, error)
+
+	// (PUT /v2/providers/{providerId})
+	UpdateProvider(ctx context.Context, request UpdateProviderRequestObject) (UpdateProviderResponseObject, error)
 
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
@@ -1127,8 +2948,14 @@ type StrictServerInterface interface {
 	// (POST /v2/trackables)
 	CreateTrackable(ctx context.Context, request CreateTrackableRequestObject) (CreateTrackableResponseObject, error)
 
+	// (DELETE /v2/trackables/{trackableId})
+	DeleteTrackable(ctx context.Context, request DeleteTrackableRequestObject) (DeleteTrackableResponseObject, error)
+
 	// (GET /v2/trackables/{trackableId})
 	GetTrackable(ctx context.Context, request GetTrackableRequestObject) (GetTrackableResponseObject, error)
+
+	// (PUT /v2/trackables/{trackableId})
+	UpdateTrackable(ctx context.Context, request UpdateTrackableRequestObject) (UpdateTrackableResponseObject, error)
 
 	// (GET /v2/zones)
 	ListZones(ctx context.Context, request ListZonesRequestObject) (ListZonesResponseObject, error)
@@ -1136,8 +2963,14 @@ type StrictServerInterface interface {
 	// (POST /v2/zones)
 	CreateZone(ctx context.Context, request CreateZoneRequestObject) (CreateZoneResponseObject, error)
 
+	// (DELETE /v2/zones/{zoneId})
+	DeleteZone(ctx context.Context, request DeleteZoneRequestObject) (DeleteZoneResponseObject, error)
+
 	// (GET /v2/zones/{zoneId})
 	GetZone(ctx context.Context, request GetZoneRequestObject) (GetZoneResponseObject, error)
+
+	// (PUT /v2/zones/{zoneId})
+	UpdateZone(ctx context.Context, request UpdateZoneRequestObject) (UpdateZoneResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -1224,8 +3057,34 @@ func (sh *strictHandler) CreateFence(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteFence operation middleware
+func (sh *strictHandler) DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	var request DeleteFenceRequestObject
+
+	request.FenceId = fenceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFence(ctx, request.(DeleteFenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFence")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFenceResponseObject); ok {
+		if err := validResponse.VisitDeleteFenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetFence operation middleware
-func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceId string) {
+func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
 	var request GetFenceRequestObject
 
 	request.FenceId = fenceId
@@ -1243,6 +3102,39 @@ func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceI
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetFenceResponseObject); ok {
 		if err := validResponse.VisitGetFenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateFence operation middleware
+func (sh *strictHandler) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	var request UpdateFenceRequestObject
+
+	request.FenceId = fenceId
+
+	var body UpdateFenceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFence(ctx, request.(UpdateFenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFence")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFenceResponseObject); ok {
+		if err := validResponse.VisitUpdateFenceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1367,8 +3259,34 @@ func (sh *strictHandler) PostProviderProximities(w http.ResponseWriter, r *http.
 	}
 }
 
+// DeleteProvider operation middleware
+func (sh *strictHandler) DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request DeleteProviderRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProvider(ctx, request.(DeleteProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProviderResponseObject); ok {
+		if err := validResponse.VisitDeleteProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetProvider operation middleware
-func (sh *strictHandler) GetProvider(w http.ResponseWriter, r *http.Request, providerId string) {
+func (sh *strictHandler) GetProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	var request GetProviderRequestObject
 
 	request.ProviderId = providerId
@@ -1386,6 +3304,39 @@ func (sh *strictHandler) GetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProviderResponseObject); ok {
 		if err := validResponse.VisitGetProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProvider operation middleware
+func (sh *strictHandler) UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request UpdateProviderRequestObject
+
+	request.ProviderId = providerId
+
+	var body UpdateProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProvider(ctx, request.(UpdateProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProviderResponseObject); ok {
+		if err := validResponse.VisitUpdateProviderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1503,8 +3454,34 @@ func (sh *strictHandler) CreateTrackable(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// DeleteTrackable operation middleware
+func (sh *strictHandler) DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request DeleteTrackableRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTrackable(ctx, request.(DeleteTrackableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTrackable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTrackableResponseObject); ok {
+		if err := validResponse.VisitDeleteTrackableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTrackable operation middleware
-func (sh *strictHandler) GetTrackable(w http.ResponseWriter, r *http.Request, trackableId string) {
+func (sh *strictHandler) GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
 	var request GetTrackableRequestObject
 
 	request.TrackableId = trackableId
@@ -1522,6 +3499,39 @@ func (sh *strictHandler) GetTrackable(w http.ResponseWriter, r *http.Request, tr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTrackableResponseObject); ok {
 		if err := validResponse.VisitGetTrackableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTrackable operation middleware
+func (sh *strictHandler) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request UpdateTrackableRequestObject
+
+	request.TrackableId = trackableId
+
+	var body UpdateTrackableJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTrackable(ctx, request.(UpdateTrackableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTrackable")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateTrackableResponseObject); ok {
+		if err := validResponse.VisitUpdateTrackableResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1584,8 +3594,34 @@ func (sh *strictHandler) CreateZone(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteZone operation middleware
+func (sh *strictHandler) DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	var request DeleteZoneRequestObject
+
+	request.ZoneId = zoneId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteZone(ctx, request.(DeleteZoneRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteZone")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteZoneResponseObject); ok {
+		if err := validResponse.VisitDeleteZoneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetZone operation middleware
-func (sh *strictHandler) GetZone(w http.ResponseWriter, r *http.Request, zoneId string) {
+func (sh *strictHandler) GetZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
 	var request GetZoneRequestObject
 
 	request.ZoneId = zoneId
@@ -1603,6 +3639,39 @@ func (sh *strictHandler) GetZone(w http.ResponseWriter, r *http.Request, zoneId 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetZoneResponseObject); ok {
 		if err := validResponse.VisitGetZoneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateZone operation middleware
+func (sh *strictHandler) UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	var request UpdateZoneRequestObject
+
+	request.ZoneId = zoneId
+
+	var body UpdateZoneJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateZone(ctx, request.(UpdateZoneRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateZone")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateZoneResponseObject); ok {
+		if err := validResponse.VisitUpdateZoneResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

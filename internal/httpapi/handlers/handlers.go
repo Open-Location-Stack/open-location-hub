@@ -37,8 +37,14 @@ func notImplemented(w http.ResponseWriter, endpoint string) {
 
 func (h *Handler) ListZones(w http.ResponseWriter, _ *http.Request)  { notImplemented(w, "ListZones") }
 func (h *Handler) CreateZone(w http.ResponseWriter, _ *http.Request) { notImplemented(w, "CreateZone") }
-func (h *Handler) GetZone(w http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) GetZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
 	notImplemented(w, "GetZone")
+}
+func (h *Handler) UpdateZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
+	notImplemented(w, "UpdateZone")
+}
+func (h *Handler) DeleteZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
+	notImplemented(w, "DeleteZone")
 }
 func (h *Handler) ListTrackables(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "ListTrackables")
@@ -46,8 +52,14 @@ func (h *Handler) ListTrackables(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) CreateTrackable(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "CreateTrackable")
 }
-func (h *Handler) GetTrackable(w http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) GetTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
 	notImplemented(w, "GetTrackable")
+}
+func (h *Handler) UpdateTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
+	notImplemented(w, "UpdateTrackable")
+}
+func (h *Handler) DeleteTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
+	notImplemented(w, "DeleteTrackable")
 }
 func (h *Handler) ListProviders(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "ListProviders")
@@ -55,8 +67,14 @@ func (h *Handler) ListProviders(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) CreateProvider(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "CreateProvider")
 }
-func (h *Handler) GetProvider(w http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) GetProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
 	notImplemented(w, "GetProvider")
+}
+func (h *Handler) UpdateProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
+	notImplemented(w, "UpdateProvider")
+}
+func (h *Handler) DeleteProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
+	notImplemented(w, "DeleteProvider")
 }
 func (h *Handler) PostProviderLocations(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "PostProviderLocations")
@@ -68,8 +86,14 @@ func (h *Handler) ListFences(w http.ResponseWriter, _ *http.Request) { notImplem
 func (h *Handler) CreateFence(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "CreateFence")
 }
-func (h *Handler) GetFence(w http.ResponseWriter, _ *http.Request, _ string) {
+func (h *Handler) GetFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
 	notImplemented(w, "GetFence")
+}
+func (h *Handler) UpdateFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
+	notImplemented(w, "UpdateFence")
+}
+func (h *Handler) DeleteFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
+	notImplemented(w, "DeleteFence")
 }
 func (h *Handler) GetRPCAvailable(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "GetRPCAvailable")

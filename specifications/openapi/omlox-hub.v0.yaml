@@ -1,16 +1,30 @@
 openapi: 3.1.0
 info:
   title: Open RTLS Hub API
-  version: 0.1.0
-  description: Normative REST contract for Open RTLS Hub v2-compatible endpoints.
+  version: 0.2.0
+  description: |
+    Normative REST contract for the Open RTLS Hub OMLOX v2-compatible API.
+
+    This contract is aligned to `omlox-hub-spec_20112_V200_Aug23.pdf`.
+    Where the PDF defines setup or lifecycle behavior but does not enumerate a
+    verb/path pair, companion REST lifecycle endpoints are included here and
+    marked as inferred.
 servers:
   - url: http://localhost:8080
 security:
   - bearerAuth: []
+tags:
+  - name: zones
+  - name: trackables
+  - name: providers
+  - name: fences
+  - name: rpc
 paths:
   /v2/zones:
     get:
+      tags: [zones]
       operationId: listZones
+      description: Inferred management collection endpoint for OMLOX Zone API.
       responses:
         '200':
           description: Zones
@@ -21,13 +35,17 @@ paths:
                 items:
                   $ref: '#/components/schemas/Zone'
     post:
+      tags: [zones]
       operationId: createZone
+      description: |
+        Explicit zone announcement endpoint from OMLOX chapter 7.12. Supports
+        both incomplete and fully configured zones.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Zone'
+              $ref: '#/components/schemas/ZoneWrite'
       responses:
         '201':
           description: Created
@@ -35,14 +53,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Zone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /v2/zones/{zoneId}:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
     get:
+      tags: [zones]
       operationId: getZone
-      parameters:
-        - in: path
-          name: zoneId
-          required: true
-          schema: { type: string }
+      description: Explicit example lookup from OMLOX chapter 7.12.
       responses:
         '200':
           description: Zone
@@ -52,171 +71,386 @@ paths:
                 $ref: '#/components/schemas/Zone'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v2/trackables:
-    get:
-      operationId: listTrackables
-      responses:
-        '200':
-          description: Trackables
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: '#/components/schemas/Trackable' } }
-    post:
-      operationId: createTrackable
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/Trackable' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Trackable' }
-  /v2/trackables/{trackableId}:
-    get:
-      operationId: getTrackable
-      parameters:
-        - in: path
-          name: trackableId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Trackable
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Trackable' }
-  /v2/providers:
-    get:
-      operationId: listProviders
-      responses:
-        '200':
-          description: Providers
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: '#/components/schemas/LocationProvider' } }
-    post:
-      operationId: createProvider
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/LocationProvider' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/LocationProvider' }
-  /v2/providers/{providerId}:
-    get:
-      operationId: getProvider
-      parameters:
-        - in: path
-          name: providerId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Provider
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/LocationProvider' }
-  /v2/providers/locations:
-    post:
-      operationId: postProviderLocations
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: array, items: { $ref: '#/components/schemas/Location' } }
-      responses:
-        '202':
-          description: Accepted
-  /v2/providers/proximities:
-    post:
-      operationId: postProviderProximities
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: array, items: { $ref: '#/components/schemas/Proximity' } }
-      responses:
-        '202':
-          description: Accepted
-  /v2/fences:
-    get:
-      operationId: listFences
-      responses:
-        '200':
-          description: Fences
-          content:
-            application/json:
-              schema: { type: array, items: { $ref: '#/components/schemas/Fence' } }
-    post:
-      operationId: createFence
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/Fence' }
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Fence' }
-  /v2/fences/{fenceId}:
-    get:
-      operationId: getFence
-      parameters:
-        - in: path
-          name: fenceId
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Fence
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Fence' }
-  /v2/rpc/available:
-    get:
-      operationId: getRPCAvailable
-      responses:
-        '200':
-          description: Available methods
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  methods:
-                    type: array
-                    items: { type: string }
-  /v2/rpc:
     put:
-      operationId: putRPC
+      tags: [zones]
+      operationId: updateZone
+      description: Inferred management update endpoint for OMLOX Zone API.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
+              $ref: '#/components/schemas/ZoneWrite'
       responses:
         '200':
-          description: RPC result
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [zones]
+      operationId: deleteZone
+      description: Inferred management delete endpoint for OMLOX Zone API.
+      responses:
         '204':
-          description: Notification accepted
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/trackables:
+    get:
+      tags: [trackables]
+      operationId: listTrackables
+      description: Inferred management collection endpoint for OMLOX Trackable API.
+      responses:
+        '200':
+          description: Trackables
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trackable'
+    post:
+      tags: [trackables]
+      operationId: createTrackable
+      description: Inferred management create endpoint for OMLOX Trackable API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackableWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trackable'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v2/trackables/{trackableId}:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackable
+      description: Inferred management read endpoint for OMLOX Trackable API.
+      responses:
+        '200':
+          description: Trackable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trackable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [trackables]
+      operationId: updateTrackable
+      description: Inferred management update endpoint for OMLOX Trackable API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackableWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trackable'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [trackables]
+      operationId: deleteTrackable
+      description: Inferred management delete endpoint for OMLOX Trackable API.
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/providers:
+    get:
+      tags: [providers]
+      operationId: listProviders
+      description: Inferred management collection endpoint for OMLOX Location Provider API.
+      responses:
+        '200':
+          description: Providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationProvider'
+    post:
+      tags: [providers]
+      operationId: createProvider
+      description: Inferred management create endpoint for OMLOX Location Provider API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationProviderWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationProvider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v2/providers/{providerId}:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags: [providers]
+      operationId: getProvider
+      description: Inferred management read endpoint for OMLOX Location Provider API.
+      responses:
+        '200':
+          description: Provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationProvider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [providers]
+      operationId: updateProvider
+      description: Inferred management update endpoint for OMLOX Location Provider API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocationProviderWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationProvider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [providers]
+      operationId: deleteProvider
+      description: Inferred management delete endpoint for OMLOX Location Provider API.
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/providers/locations:
+    post:
+      tags: [providers]
+      operationId: postProviderLocations
+      description: Explicit OMLOX ingest endpoint for Location updates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Location'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v2/providers/proximities:
+    post:
+      tags: [providers]
+      operationId: postProviderProximities
+      description: Explicit OMLOX ingest endpoint for Proximity updates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Proximity'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v2/fences:
+    get:
+      tags: [fences]
+      operationId: listFences
+      description: Inferred collection endpoint for OMLOX Fence API.
+      responses:
+        '200':
+          description: Fences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Fence'
+    post:
+      tags: [fences]
+      operationId: createFence
+      description: Explicit create endpoint implied by OMLOX Fence API lifecycle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FenceWrite'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fence'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v2/fences/{fenceId}:
+    parameters:
+      - $ref: '#/components/parameters/FenceId'
+    get:
+      tags: [fences]
+      operationId: getFence
+      description: Inferred read endpoint for OMLOX Fence API.
+      responses:
+        '200':
+          description: Fence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [fences]
+      operationId: updateFence
+      description: Explicit update endpoint implied by OMLOX Fence API lifecycle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FenceWrite'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fence'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [fences]
+      operationId: deleteFence
+      description: Explicit delete endpoint implied by OMLOX Fence API lifecycle.
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/rpc/available:
+    get:
+      tags: [rpc]
+      operationId: getRPCAvailable
+      description: Explicit OMLOX RPC method availability endpoint.
+      responses:
+        '200':
+          description: Available methods grouped by method name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RpcAvailableMethods'
+  /v2/rpc:
+    put:
+      tags: [rpc]
+      operationId: putRPC
+      description: Explicit OMLOX RPC bridge endpoint for JSON-RPC 2.0 messages.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonRpcRequest'
+      responses:
+        '200':
+          description: JSON-RPC result or JSON-RPC error.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JsonRpcSuccessResponse'
+                  - $ref: '#/components/schemas/JsonRpcErrorResponse'
+        '204':
+          description: Notification accepted. Returned when `id` and `_caller_id` are omitted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    ZoneId:
+      in: path
+      name: zoneId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TrackableId:
+      in: path
+      name: trackableId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProviderId:
+      in: path
+      name: providerId
+      required: true
+      schema:
+        type: string
+    FenceId:
+      in: path
+      name: fenceId
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource not found
       content:
@@ -228,55 +462,637 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: { type: string }
-        message: { type: string }
+        code:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+
+    ExtensionProperties:
+      type: object
+      additionalProperties: true
+
+    StringIdList:
+      type: array
+      items:
+        type: string
+
+    GeoJsonPosition2D:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items:
+        type: number
+    GeoJsonPosition3D:
+      type: array
+      minItems: 3
+      maxItems: 3
+      items:
+        type: number
+    GeoJsonPosition:
+      oneOf:
+        - $ref: '#/components/schemas/GeoJsonPosition2D'
+        - $ref: '#/components/schemas/GeoJsonPosition3D'
+
+    Point:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          const: Point
+        coordinates:
+          $ref: '#/components/schemas/GeoJsonPosition'
+
+    LineString:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          const: LineString
+        coordinates:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/GeoJsonPosition'
+
+    Polygon:
+      type: object
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          const: Polygon
+        coordinates:
+          type: array
+          minItems: 1
+          items:
+            type: array
+            minItems: 4
+            items:
+              $ref: '#/components/schemas/GeoJsonPosition'
+
+    GroundControlPoint:
+      type: object
+      description: |
+        Inferred companion schema for section 6.7.19. The PDF requires each
+        item to map WGS84 coordinates to local zone coordinates but does not
+        name the child properties.
+      required: [wgs84, local]
+      properties:
+        wgs84:
+          $ref: '#/components/schemas/Point'
+        local:
+          $ref: '#/components/schemas/Point'
+
+    LocatingRule:
+      type: object
+      required: [expression, priority]
+      properties:
+        expression:
+          type: string
+          description: >
+            Rule expression. Supported properties named in the PDF are
+            `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and
+            `timestamp_diff`.
+        priority:
+          type: number
+
     Zone:
       type: object
       required: [id, type]
       properties:
-        id: { type: string, format: uuid }
-        type: { type: string }
-        foreign_id: { type: string }
-        incomplete_configuration: { type: boolean }
-        properties: { type: object, additionalProperties: true }
+        id:
+          type: string
+          format: uuid
+        foreign_id:
+          type: string
+        position:
+          $ref: '#/components/schemas/Point'
+        radius:
+          type: number
+        ground_control_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroundControlPoint'
+        incomplete_configuration:
+          type: boolean
+        measurement_timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          description: >
+            Positioning system type. OMLOX behavior chapters require support
+            for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
+        site:
+          type: string
+        building:
+          type: string
+        floor:
+          type: number
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+        wgs84_height:
+          type: number
+
+    ZoneWrite:
+      type: object
+      required: [type]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: If omitted on create, the hub generates a UUID.
+        foreign_id:
+          type: string
+        position:
+          $ref: '#/components/schemas/Point'
+        radius:
+          type: number
+        ground_control_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroundControlPoint'
+        incomplete_configuration:
+          type: boolean
+        measurement_timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+        site:
+          type: string
+        building:
+          type: string
+        floor:
+          type: number
+        name:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+        wgs84_height:
+          type: number
+
     Trackable:
       type: object
       required: [id, type]
       properties:
-        id: { type: string, format: uuid }
-        type: { type: string, enum: [omlox, virtual] }
-        name: { type: string }
-        properties: { type: object, additionalProperties: true }
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [omlox, virtual]
+        name:
+          type: string
+        geometry:
+          $ref: '#/components/schemas/Polygon'
+        extrusion:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        location_providers:
+          $ref: '#/components/schemas/StringIdList'
+        fence_timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        radius:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+        locating_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocatingRule'
+
+    TrackableWrite:
+      type: object
+      required: [type]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: If omitted on create, the hub generates a UUID.
+        type:
+          type: string
+          enum: [omlox, virtual]
+        name:
+          type: string
+        geometry:
+          $ref: '#/components/schemas/Polygon'
+        extrusion:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        location_providers:
+          $ref: '#/components/schemas/StringIdList'
+        fence_timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        radius:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+        locating_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocatingRule'
+
     LocationProvider:
       type: object
       required: [id, type]
       properties:
-        id: { type: string }
-        type: { type: string }
-        name: { type: string }
-        properties: { type: object, additionalProperties: true }
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        sensors:
+          $ref: '#/components/schemas/ExtensionProperties'
+        fence_timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
+    LocationProviderWrite:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        sensors:
+          $ref: '#/components/schemas/ExtensionProperties'
+        fence_timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
     Location:
       type: object
-      required: [source, provider_type, provider_id]
+      required: [position, source, provider_type, provider_id]
       properties:
-        source: { type: string }
-        provider_type: { type: string }
-        provider_id: { type: string }
-        position: { type: object, additionalProperties: true }
-        properties: { type: object, additionalProperties: true }
+        position:
+          $ref: '#/components/schemas/Point'
+        source:
+          type: string
+        provider_type:
+          type: string
+        provider_id:
+          type: string
+        trackables:
+          $ref: '#/components/schemas/StringIdList'
+        timestamp_generated:
+          type: string
+          format: date-time
+        timestamp_sent:
+          type: string
+          format: date-time
+        crs:
+          type: string
+          description: Valid EPSG identifier or `local`. Defaults to `local`.
+        associated:
+          type: boolean
+        accuracy:
+          type: number
+        floor:
+          type: number
+        true_heading:
+          type: number
+        magnetic_heading:
+          type: number
+        heading_accuracy:
+          type: number
+        elevation_ref:
+          type: string
+          enum: [floor, wgs84]
+        speed:
+          type: number
+        course:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
     Proximity:
       type: object
       required: [source, provider_type, provider_id]
       properties:
-        source: { type: string }
-        provider_type: { type: string }
-        provider_id: { type: string }
-        properties: { type: object, additionalProperties: true }
+        source:
+          type: string
+        provider_type:
+          type: string
+        provider_id:
+          type: string
+        timestamp_generated:
+          type: string
+          format: date-time
+        timestamp_sent:
+          type: string
+          format: date-time
+        accuracy:
+          type: number
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
     Fence:
       type: object
-      required: [id]
+      required: [id, region]
       properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        foreign_id: { type: string }
-        properties: { type: object, additionalProperties: true }
+        id:
+          type: string
+          format: uuid
+        region:
+          oneOf:
+            - $ref: '#/components/schemas/Polygon'
+            - $ref: '#/components/schemas/Point'
+        radius:
+          type: number
+        extrusion:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        floor:
+          type: number
+        foreign_id:
+          type: string
+        name:
+          type: string
+        timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        crs:
+          type: string
+          description: Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
+        zone_id:
+          type: string
+          description: Required when `crs` is `local`.
+        elevation_ref:
+          type: string
+          enum: [floor, wgs84]
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
+    FenceWrite:
+      type: object
+      required: [region]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: If omitted on create, the hub generates a UUID.
+        region:
+          oneOf:
+            - $ref: '#/components/schemas/Polygon'
+            - $ref: '#/components/schemas/Point'
+        radius:
+          type: number
+        extrusion:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        floor:
+          type: number
+        foreign_id:
+          type: string
+        name:
+          type: string
+        timeout:
+          type: number
+        exit_tolerance:
+          type: number
+        tolerance_timeout:
+          type: number
+        exit_delay:
+          type: number
+        crs:
+          type: string
+        zone_id:
+          type: string
+        elevation_ref:
+          type: string
+          enum: [floor, wgs84]
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
+    FenceEvent:
+      type: object
+      required: [id, fence_id, event_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fence_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          enum: [region_entry, region_exit]
+        provider_id:
+          type: string
+        trackable_id:
+          type: string
+        trackables:
+          $ref: '#/components/schemas/StringIdList'
+        foreign_id:
+          type: string
+        entry_time:
+          type: string
+          format: date-time
+        exit_time:
+          type: string
+          format: date-time
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
+    Collision:
+      type: object
+      required: [id, object_type, position, geometry]
+      properties:
+        id:
+          type: string
+          format: uuid
+        object_type:
+          type: string
+        position:
+          $ref: '#/components/schemas/Point'
+        geometry:
+          $ref: '#/components/schemas/Polygon'
+        floor:
+          type: number
+
+    CollisionEvent:
+      type: object
+      required: [id, collision_type, collisions]
+      properties:
+        id:
+          type: string
+          format: uuid
+        collision_type:
+          type: string
+          enum: [collision_start, colliding, collision_end]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        collision_time:
+          type: string
+          format: date-time
+        collisions:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/Collision'
+        collision_area:
+          oneOf:
+            - $ref: '#/components/schemas/LineString'
+            - $ref: '#/components/schemas/Point'
+        center_distance:
+          type: number
+
+    TrackableMotion:
+      type: object
+      required: [id, location]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        extrusion:
+          type: number
+        geometry:
+          $ref: '#/components/schemas/Polygon'
+        location:
+          $ref: '#/components/schemas/Location'
+        properties:
+          $ref: '#/components/schemas/ExtensionProperties'
+
+    RpcAvailableMethodsEntry:
+      type: object
+      required: [handler_id]
+      properties:
+        handler_id:
+          type: array
+          items:
+            type: string
+    RpcAvailableMethods:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/RpcAvailableMethodsEntry'
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: number
+        method:
+          type: string
+        params:
+          type: object
+          additionalProperties: true
+          properties:
+            _timeout:
+              type: number
+            _aggregation:
+              type: string
+              enum:
+                - _all_within_timeout
+                - _return_first_success
+                - _return_first_error
+            _handler_id:
+              type: string
+            _caller_id:
+              type: string
+
+    JsonRpcErrorObject:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          additionalProperties: true
+
+    JsonRpcSuccessResponse:
+      type: object
+      required: [jsonrpc, id, result]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: number
+        result:
+          additionalProperties: true
+
+    JsonRpcErrorResponse:
+      type: object
+      required: [jsonrpc, id, error]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+            - type: number
+        error:
+          $ref: '#/components/schemas/JsonRpcErrorObject'
