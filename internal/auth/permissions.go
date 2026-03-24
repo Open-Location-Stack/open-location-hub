@@ -10,28 +10,40 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Permission is a route-level authorization capability granted to a role.
 type Permission string
 
 const (
+	// CreateAny grants create access without ownership constraints.
 	CreateAny Permission = "CREATE_ANY"
-	ReadAny   Permission = "READ_ANY"
+	// ReadAny grants read access without ownership constraints.
+	ReadAny Permission = "READ_ANY"
+	// UpdateAny grants update access without ownership constraints.
 	UpdateAny Permission = "UPDATE_ANY"
+	// DeleteAny grants delete access without ownership constraints.
 	DeleteAny Permission = "DELETE_ANY"
+	// CreateOwn grants create access for resources owned by the principal.
 	CreateOwn Permission = "CREATE_OWN"
-	ReadOwn   Permission = "READ_OWN"
+	// ReadOwn grants read access for resources owned by the principal.
+	ReadOwn Permission = "READ_OWN"
+	// UpdateOwn grants update access for resources owned by the principal.
 	UpdateOwn Permission = "UPDATE_OWN"
+	// DeleteOwn grants delete access for resources owned by the principal.
 	DeleteOwn Permission = "DELETE_OWN"
 )
 
+// Rule binds a route pattern to the permissions granted for that pattern.
 type Rule struct {
 	Pattern     string
 	Permissions map[Permission]struct{}
 }
 
+// Registry holds the role-to-route authorization rules loaded from YAML.
 type Registry struct {
 	roles map[string][]Rule
 }
 
+// LoadRegistry reads the authorization registry from the configured YAML file.
 func LoadRegistry(path string) (*Registry, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -98,6 +110,8 @@ func validateRule(pattern string, perms map[Permission]struct{}) error {
 	return nil
 }
 
+// Authorize checks whether the principal attached to the request is allowed to
+// access the requested route and HTTP method.
 func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 	requiredAny, requiredOwn, err := permissionsForMethod(req.Method)
 	if err != nil {

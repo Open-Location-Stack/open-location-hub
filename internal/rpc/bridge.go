@@ -14,11 +14,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// Publisher defines the MQTT operations required by the RPC bridge.
 type Publisher interface {
 	PublishJSON(ctx context.Context, topic string, payload any, retained bool) error
 	Subscribe(filter string, handler mqtt.MessageHandler) error
 }
 
+// Bridge tracks available RPC handlers and forwards JSON-RPC traffic over
+// MQTT.
 type Bridge struct {
 	logger    *zap.Logger
 	mqtt      Publisher
@@ -28,6 +31,8 @@ type Bridge struct {
 	pending   map[string]chan json.RawMessage
 }
 
+// NewBridge constructs an RPC bridge and subscribes it to method availability
+// and response topics when MQTT is configured.
 func NewBridge(logger *zap.Logger, mqttClient Publisher, timeout time.Duration) (*Bridge, error) {
 	b := &Bridge{
 		logger:    logger,
@@ -47,6 +52,7 @@ func NewBridge(logger *zap.Logger, mqttClient Publisher, timeout time.Duration) 
 	return b, nil
 }
 
+// AvailableMethods returns the retained method registry discovered from MQTT.
 func (b *Bridge) AvailableMethods() gen.RpcAvailableMethods {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -61,6 +67,8 @@ func (b *Bridge) AvailableMethods() gen.RpcAvailableMethods {
 	return out
 }
 
+// Invoke publishes a JSON-RPC request over MQTT and optionally waits for a
+// response according to the requested aggregation mode.
 func (b *Bridge) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.RawMessage, bool, error) {
 	if b.mqtt == nil {
 		return nil, false, fmt.Errorf("mqtt bridge is not configured")

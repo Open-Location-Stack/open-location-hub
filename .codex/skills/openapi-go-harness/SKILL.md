@@ -15,17 +15,24 @@ Use for requests to scaffold or evolve this Go service harness.
 4. Regenerate API code with `just generate`.
 5. Keep generated outputs under `internal/httpapi/gen`.
 6. If generation changes interface types or operations, update handler signatures in `internal/httpapi/handlers/handlers.go`.
-7. Update implementation-facing docs in the same change when behavior, config, or workflows changed:
+7. Update documentation in the same change. Treat documentation as required implementation work, not polish:
+   - add or refresh Go doc comments for exported non-generated packages, types, functions, methods, constants, and variables that changed
+   - keep package-level `doc.go` files present when a package exposes non-trivial public surface area
+   - improve OpenAPI summaries, descriptions, parameter docs, response docs, and schema/property descriptions when the REST surface changed or when existing spec docs are stale or too thin
+8. Update implementation-facing docs in the same change when behavior, config, or workflows changed:
    - `docs/implementation-plan.md` for current status, remaining work, and follow-ups
    - `docs/configuration.md` for new or changed env vars
    - `docs/architecture.md` when runtime flow or component boundaries changed
    - `README.md` when native build/runtime prerequisites, local setup steps, or platform-specific package dependencies changed
-8. Finish with `just test` and `just check`.
+9. If the change is documentation-heavy or spans multiple doc surfaces, use the sibling `project-documentation-standards` skill.
+10. Finish with `just test` and `just check`.
 
 ## Guardrails
 - Do not hand-edit generated files unless explicitly bootstrapping placeholders.
 - Prefer environment variables over hardcoded config.
 - Keep docs and scaffolding aligned with actual `just` workflows.
+- Do not leave exported Go surface changes undocumented.
+- Do not leave REST contract changes with bare or ambiguous descriptions when the intent can be documented clearly.
 - When native dependencies change, keep the README's build dependency section accurate for both macOS/Homebrew and Debian/Ubuntu-style Linux.
 - When adding endpoints from a spec expansion, prefer temporary scaffold stubs over partial implementations that break the generated interface.
 - Do not treat `docs/implementation-plan.md` as optional maintenance; revise it after each substantial implementation change.

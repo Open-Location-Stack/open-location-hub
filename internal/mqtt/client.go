@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// MessageHandler handles a single inbound MQTT message.
 type MessageHandler func(ctx context.Context, topic string, payload []byte) error
 
 type subscription struct {
@@ -18,6 +19,8 @@ type subscription struct {
 	handler MessageHandler
 }
 
+// Client manages MQTT connectivity, subscriptions, and publication for the
+// hub.
 type Client struct {
 	logger        *zap.Logger
 	BrokerURL     string
@@ -26,6 +29,8 @@ type Client struct {
 	subscriptions []subscription
 }
 
+// NewClient connects to the configured MQTT broker and prepares automatic
+// resubscription behavior.
 func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 	c := &Client{
 		logger:    logger,
@@ -56,6 +61,7 @@ func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 	return c, nil
 }
 
+// Close disconnects from the broker.
 func (c *Client) Close() error {
 	if c.inner != nil && c.inner.IsConnected() {
 		c.inner.Disconnect(250)
@@ -63,6 +69,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Subscribe registers a handler for the supplied topic filter.
 func (c *Client) Subscribe(filter string, handler MessageHandler) error {
 	c.mu.Lock()
 	c.subscriptions = append(c.subscriptions, subscription{filter: filter, handler: handler})
@@ -73,6 +80,7 @@ func (c *Client) Subscribe(filter string, handler MessageHandler) error {
 	return c.subscribe(c.inner, filter, handler)
 }
 
+// PublishJSON marshals payload as JSON and publishes it with QoS 1.
 func (c *Client) PublishJSON(ctx context.Context, topic string, payload any, retained bool) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -81,6 +89,7 @@ func (c *Client) PublishJSON(ctx context.Context, topic string, payload any, ret
 	return c.PublishRaw(ctx, topic, raw, retained)
 }
 
+// PublishRaw publishes the provided byte payload with QoS 1.
 func (c *Client) PublishRaw(_ context.Context, topic string, payload []byte, retained bool) error {
 	token := c.inner.Publish(topic, 1, retained, payload)
 	if !token.WaitTimeout(10 * time.Second) {
@@ -111,70 +120,101 @@ func (c *Client) subscribe(client pahomqtt.Client, filter string, handler Messag
 	return token.Error()
 }
 
+// TopicLocationPub returns the OMLOX MQTT topic for provider-supplied
+// published locations.
 func TopicLocationPub(providerID string) string {
 	return fmt.Sprintf("/omlox/json/location_updates/pub/%s", providerID)
 }
 
+// TopicLocationLocal returns the OMLOX MQTT topic for local-coordinate
+// location publication.
 func TopicLocationLocal(providerID string) string {
 	return fmt.Sprintf("/omlox/json/location_updates/local/%s", providerID)
 }
 
+// TopicLocationEPSG4326 returns the OMLOX MQTT topic for WGS84 location
+// publication.
 func TopicLocationEPSG4326(providerID string) string {
 	return fmt.Sprintf("/omlox/json/location_updates/epsg4326/%s", providerID)
 }
 
+// TopicProximity returns the OMLOX MQTT topic for proximity updates.
 func TopicProximity(source, providerID string) string {
 	return fmt.Sprintf("/omlox/json/proximity_updates/%s/%s", source, providerID)
 }
 
+// TopicLocationPubWildcard returns the wildcard subscription topic for
+// provider-supplied published locations.
 func TopicLocationPubWildcard() string {
 	return "/omlox/json/location_updates/pub/+"
 }
 
+// TopicProximityWildcard returns the wildcard subscription topic for proximity
+// updates.
 func TopicProximityWildcard() string {
 	return "/omlox/json/proximity_updates/+/#"
 }
 
+// TopicFenceEvent returns the OMLOX MQTT topic for a fence event stream.
 func TopicFenceEvent(fenceID string) string {
 	return fmt.Sprintf("/omlox/json/fence_events/%s", fenceID)
 }
 
+// TopicFenceEventTrackable returns the OMLOX MQTT topic for fence events keyed
+// by trackable.
 func TopicFenceEventTrackable(trackableID string) string {
 	return fmt.Sprintf("/omlox/json/fence_events/trackables/%s", trackableID)
 }
 
+// TopicFenceEventProvider returns the OMLOX MQTT topic for fence events keyed
+// by provider.
 func TopicFenceEventProvider(providerID string) string {
 	return fmt.Sprintf("/omlox/json/fence_events/providers/%s", providerID)
 }
 
+// TopicTrackableMotionLocal returns the OMLOX MQTT topic for local-coordinate
+// trackable motion updates.
 func TopicTrackableMotionLocal(trackableID string) string {
 	return fmt.Sprintf("/omlox/json/trackable_motions/local/%s", trackableID)
 }
 
+// TopicTrackableMotionEPSG4326 returns the OMLOX MQTT topic for WGS84
+// trackable motion updates.
 func TopicTrackableMotionEPSG4326(trackableID string) string {
 	return fmt.Sprintf("/omlox/json/trackable_motions/epsg4326/%s", trackableID)
 }
 
+// TopicRPCAvailable returns the retained OMLOX MQTT topic for RPC method
+// availability.
 func TopicRPCAvailable(method string) string {
 	return fmt.Sprintf("/omlox/jsonrpc/rpc/available/%s", method)
 }
 
+// TopicRPCAvailableWildcard returns the wildcard subscription topic for RPC
+// method availability announcements.
 func TopicRPCAvailableWildcard() string {
 	return "/omlox/jsonrpc/rpc/available/+"
 }
 
+// TopicRPCRequest returns the OMLOX MQTT topic for RPC requests for a method.
 func TopicRPCRequest(method string) string {
 	return fmt.Sprintf("/omlox/jsonrpc/rpc/%s/request", method)
 }
 
+// TopicRPCRequestHandler returns the OMLOX MQTT topic for RPC requests routed
+// to a specific handler.
 func TopicRPCRequestHandler(method, handlerID string) string {
 	return fmt.Sprintf("/omlox/jsonrpc/rpc/%s/request/%s", method, handlerID)
 }
 
+// TopicRPCResponse returns the OMLOX MQTT topic for RPC responses addressed to
+// a caller.
 func TopicRPCResponse(method, callerID string) string {
 	return fmt.Sprintf("/omlox/jsonrpc/rpc/%s/response/%s", method, callerID)
 }
 
+// TopicRPCResponseWildcard returns the wildcard subscription topic for RPC
+// responses.
 func TopicRPCResponseWildcard() string {
 	return "/omlox/jsonrpc/rpc/+/response/+"
 }

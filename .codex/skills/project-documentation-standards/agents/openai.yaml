@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Documentation Standards"
+  short_description: "Keep Go docs, OpenAPI docs, and implementation-facing repository docs aligned"
+  default_prompt: "Update the repository documentation for this change, including Go doc comments, OpenAPI descriptions, and the relevant implementation-facing docs, then finish with the required validation workflow."

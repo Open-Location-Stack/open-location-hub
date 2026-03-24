@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// NewLogger constructs the repository's structured production logger.
 func NewLogger(level string) (*zap.Logger, func(), error) {
 	cfg := zap.NewProductionConfig()
 	if err := cfg.Level.UnmarshalText([]byte(level)); err != nil {
@@ -20,6 +21,8 @@ func NewLogger(level string) (*zap.Logger, func(), error) {
 	return l, func() { _ = l.Sync() }, nil
 }
 
+// RequestLogger returns middleware that logs method, path, status, and
+// latency for each HTTP request.
 func RequestLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +39,14 @@ func RequestLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func String(k, v string) zap.Field                 { return zap.String(k, v) }
-func Int(k string, v int) zap.Field                { return zap.Int(k, v) }
+// String creates a string field for structured logging.
+func String(k, v string) zap.Field { return zap.String(k, v) }
+
+// Int creates an integer field for structured logging.
+func Int(k string, v int) zap.Field { return zap.Int(k, v) }
+
+// Duration creates a duration field for structured logging.
 func Duration(k string, v time.Duration) zap.Field { return zap.Duration(k, v) }
-func Error(err error) zap.Field                    { return zap.Error(err) }
+
+// Error creates an error field for structured logging.
+func Error(err error) zap.Field { return zap.Error(err) }

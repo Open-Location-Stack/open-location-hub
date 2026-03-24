@@ -11,16 +11,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// Dependencies groups the runtime collaborators required by Handler.
 type Dependencies struct {
 	Logger  *zap.Logger
 	Service *hub.Service
 	RPC     *rpc.Bridge
 }
 
+// Handler implements the generated OpenAPI server interface.
 type Handler struct {
 	deps Dependencies
 }
 
+// New constructs a Handler from the supplied dependencies.
 func New(deps Dependencies) *Handler {
 	return &Handler{deps: deps}
 }

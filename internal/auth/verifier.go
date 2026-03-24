@@ -19,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Authenticator verifies bearer tokens and returns the resulting principal.
 type Authenticator interface {
 	Authenticate(ctx context.Context, token string) (*Principal, error)
 }
@@ -48,6 +49,7 @@ type hybridAuthenticator struct {
 	authenticators []Authenticator
 }
 
+// NewAuthenticator builds the configured authentication strategy.
 func NewAuthenticator(ctx context.Context, cfg config.AuthConfig) (Authenticator, error) {
 	if !cfg.Enabled || cfg.Mode == "none" {
 		return noneAuthenticator{}, nil
@@ -296,6 +298,8 @@ func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
 	return rsaPub, nil
 }
 
+// Middleware authenticates bearer tokens and enforces the configured route
+// authorization registry on incoming HTTP requests.
 func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

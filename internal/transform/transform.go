@@ -22,20 +22,25 @@ var (
 	errDegenerateTransform             = errors.New("zone ground control points produce a degenerate transform")
 )
 
+// Point2D represents a planar point in meters.
 type Point2D struct {
 	X float64
 	Y float64
 }
 
+// CRSTransformer converts points between WGS84 and projected EPSG coordinate
+// reference systems.
 type CRSTransformer struct {
 	mu      sync.Mutex
 	forward map[string]*proj.PJ
 }
 
+// NewCRSTransformer constructs a reusable CRS transformer cache.
 func NewCRSTransformer() *CRSTransformer {
 	return &CRSTransformer{forward: map[string]*proj.PJ{}}
 }
 
+// ToWGS84 converts a point from the supplied CRS into WGS84.
 func (t *CRSTransformer) ToWGS84(crs string, point gen.Point) (gen.Point, error) {
 	source := strings.TrimSpace(crs)
 	if source == "" || source == wgs84 {
@@ -48,6 +53,7 @@ func (t *CRSTransformer) ToWGS84(crs string, point gen.Point) (gen.Point, error)
 	return applyPJ(pj, point)
 }
 
+// FromWGS84 converts a WGS84 point into the supplied CRS.
 func (t *CRSTransformer) FromWGS84(crs string, point gen.Point) (gen.Point, error) {
 	target := strings.TrimSpace(crs)
 	if target == "" || target == wgs84 {
@@ -79,6 +85,8 @@ func (t *CRSTransformer) transformer(source, target string) (*proj.PJ, error) {
 	return pj, nil
 }
 
+// LocalTransformer converts between OMLOX local zone coordinates and WGS84
+// using zone ground control points.
 type LocalTransformer struct {
 	projectedCRS string
 	toWGS84      *proj.PJ
@@ -89,10 +97,14 @@ type LocalTransformer struct {
 	ty           float64
 }
 
+// ProjectedCRS returns the intermediate projected CRS used for local
+// georeferencing.
 func (t *LocalTransformer) ProjectedCRS() string {
 	return t.projectedCRS
 }
 
+// NewLocalTransformer fits a local-to-WGS84 transform from the zone's ground
+// control points.
 func NewLocalTransformer(zone gen.Zone) (*LocalTransformer, error) {
 	if zone.GroundControlPoints == nil || len(*zone.GroundControlPoints) < 2 {
 		return nil, errInsufficientGroundControlPoints
@@ -136,6 +148,7 @@ func NewLocalTransformer(zone gen.Zone) (*LocalTransformer, error) {
 	}, nil
 }
 
+// LocalToWGS84 converts a local zone point to WGS84.
 func (t *LocalTransformer) LocalToWGS84(point gen.Point) (gen.Point, error) {
 	local, z, hasZ, err := pointTo2D(point)
 	if err != nil {
@@ -148,6 +161,7 @@ func (t *LocalTransformer) LocalToWGS84(point gen.Point) (gen.Point, error) {
 	return projectToPoint(t.toWGS84, projected, z, hasZ)
 }
 
+// WGS84ToLocal converts a WGS84 point to the zone's local coordinate space.
 func (t *LocalTransformer) WGS84ToLocal(point gen.Point) (gen.Point, error) {
 	projectedPoint, z, hasZ, err := pointToProjected(t.fromWGS84, point)
 	if err != nil {
@@ -166,6 +180,8 @@ func (t *LocalTransformer) WGS84ToLocal(point gen.Point) (gen.Point, error) {
 	return pointFrom2D(local, z, hasZ)
 }
 
+// Cache memoizes LocalTransformer instances by zone identifier and ground
+// control point signature.
 type Cache struct {
 	mu      sync.RWMutex
 	entries map[string]cachedTransformer
@@ -176,10 +192,13 @@ type cachedTransformer struct {
 	value     *LocalTransformer
 }
 
+// NewCache constructs an empty LocalTransformer cache.
 func NewCache() *Cache {
 	return &Cache{entries: map[string]cachedTransformer{}}
 }
 
+// Get returns a cached LocalTransformer for the zone or rebuilds it when the
+// zone geometry has changed.
 func (c *Cache) Get(zone gen.Zone) (*LocalTransformer, error) {
 	signature, err := zoneSignature(zone)
 	if err != nil {
@@ -205,12 +224,14 @@ func (c *Cache) Get(zone gen.Zone) (*LocalTransformer, error) {
 	return value, nil
 }
 
+// Invalidate removes the cached transformer for the supplied zone identifier.
 func (c *Cache) Invalidate(zoneID string) {
 	c.mu.Lock()
 	delete(c.entries, zoneID)
 	c.mu.Unlock()
 }
 
+// ClonePoint deep-copies a generated point value.
 func ClonePoint(point gen.Point) (gen.Point, error) {
 	return clonePoint(point)
 }

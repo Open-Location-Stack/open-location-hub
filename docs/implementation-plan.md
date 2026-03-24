@@ -7,6 +7,8 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 ### Completed and verified
 - Project harness is in place: `justfile`, `Dockerfile`, `docker-compose.yml`, and runtime bootstrap in `cmd/hub/main.go`.
 - The normative OpenAPI contract exists in `specifications/openapi/omlox-hub.v0.yaml`, and generated server/types are present under `internal/httpapi/gen`.
+- Public Go packages now include package-level and exported-symbol doc comments so `go doc` renders the operational API surface more usefully for maintainers.
+- Repository-local Codex skills now explicitly require documentation updates during implementation work and provide a dedicated documentation skill for Go doc, OpenAPI, and implementation-facing docs.
 - The HTTP server is wired with Chi routing, request logging, auth middleware, generated route registration, and a health endpoint.
 - Auth foundations are implemented for `none`, `oidc`, `static`, and `hybrid` modes, including JWT validation, OIDC discovery/JWKS refresh, permissions loading, and ownership-aware authorization.
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
@@ -15,6 +17,7 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, and trackable-motion publication.
 - RPC is implemented as REST-to-MQTT bridging with retained method discovery tracking and support for `_all_within_timeout`, `_return_first_success`, and `_return_first_error`.
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
+- The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.

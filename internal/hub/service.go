@@ -24,10 +24,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// Publisher emits derived OMLOX events and updates to MQTT.
 type Publisher interface {
 	PublishJSON(ctx context.Context, topic string, payload any, retained bool) error
 }
 
+// Cache provides the transient storage operations used by the service layer.
 type Cache interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
@@ -35,6 +37,8 @@ type Cache interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// Config controls ingest deduplication, TTLs, and proximity resolution
+// behavior.
 type Config struct {
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
@@ -48,6 +52,8 @@ type Config struct {
 	ProximityResolutionStaleStateTTL      time.Duration
 }
 
+// Service implements the hub's CRUD and ingest behavior over storage, cache,
+// and publish dependencies.
 type Service struct {
 	logger         *zap.Logger
 	queries        sqlcgen.Querier
@@ -59,6 +65,8 @@ type Service struct {
 	transformCache *transform.Cache
 }
 
+// HTTPError represents an API error that should be rendered with a specific
+// status code and error body.
 type HTTPError struct {
 	Status  int
 	Type    string
@@ -69,6 +77,7 @@ func (e *HTTPError) Error() string {
 	return e.Message
 }
 
+// New constructs a Service with the configured dependencies.
 func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, publisher Publisher, cfg Config) *Service {
 	return &Service{
 		logger:         logger,
@@ -119,6 +128,7 @@ type resolvedProximity struct {
 	Sticky bool
 }
 
+// ListZones returns all zones known to the hub.
 func (s *Service) ListZones(ctx context.Context) ([]gen.Zone, error) {
 	items, err := s.queries.ListZones(ctx)
 	if err != nil {
@@ -135,6 +145,7 @@ func (s *Service) ListZones(ctx context.Context) ([]gen.Zone, error) {
 	return out, nil
 }
 
+// CreateZone validates and stores a new zone document.
 func (s *Service) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zone, error) {
 	zone, payload, err := normalizeZone(body, uuid.Nil)
 	if err != nil {
@@ -156,6 +167,7 @@ func (s *Service) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zon
 	return zone, err
 }
 
+// GetZone returns a single zone by identifier.
 func (s *Service) GetZone(ctx context.Context, id openapi_types.UUID) (gen.Zone, error) {
 	row, err := s.queries.GetZone(ctx, uuidParam(id))
 	if err != nil {
@@ -164,6 +176,7 @@ func (s *Service) GetZone(ctx context.Context, id openapi_types.UUID) (gen.Zone,
 	return decodePayload[gen.Zone](row.Payload)
 }
 
+// UpdateZone validates and replaces an existing zone document.
 func (s *Service) UpdateZone(ctx context.Context, id openapi_types.UUID, body json.RawMessage) (gen.Zone, error) {
 	zone, payload, err := normalizeZone(body, uuid.UUID(id))
 	if err != nil {
@@ -185,6 +198,7 @@ func (s *Service) UpdateZone(ctx context.Context, id openapi_types.UUID, body js
 	return zone, err
 }
 
+// DeleteZone removes a zone by identifier.
 func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
 	rows, err := s.queries.DeleteZone(ctx, uuidParam(id))
 	if err != nil {
@@ -197,6 +211,7 @@ func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
 	return nil
 }
 
+// ListProviders returns all location providers known to the hub.
 func (s *Service) ListProviders(ctx context.Context) ([]gen.LocationProvider, error) {
 	items, err := s.queries.ListProviders(ctx)
 	if err != nil {
@@ -213,6 +228,7 @@ func (s *Service) ListProviders(ctx context.Context) ([]gen.LocationProvider, er
 	return out, nil
 }
 
+// CreateProvider validates and stores a new location provider.
 func (s *Service) CreateProvider(ctx context.Context, body gen.LocationProviderWrite) (gen.LocationProvider, error) {
 	provider, payload, err := normalizeProvider(body, "")
 	if err != nil {
@@ -230,6 +246,7 @@ func (s *Service) CreateProvider(ctx context.Context, body gen.LocationProviderW
 	return decodePayload[gen.LocationProvider](row.Payload)
 }
 
+// GetProvider returns a location provider by identifier.
 func (s *Service) GetProvider(ctx context.Context, id string) (gen.LocationProvider, error) {
 	row, err := s.queries.GetProvider(ctx, id)
 	if err != nil {
@@ -238,6 +255,7 @@ func (s *Service) GetProvider(ctx context.Context, id string) (gen.LocationProvi
 	return decodePayload[gen.LocationProvider](row.Payload)
 }
 
+// UpdateProvider validates and replaces an existing location provider.
 func (s *Service) UpdateProvider(ctx context.Context, id string, body gen.LocationProviderWrite) (gen.LocationProvider, error) {
 	provider, payload, err := normalizeProvider(body, id)
 	if err != nil {
@@ -255,6 +273,7 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, body gen.Locati
 	return decodePayload[gen.LocationProvider](row.Payload)
 }
 
+// DeleteProvider removes a location provider by identifier.
 func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	rows, err := s.queries.DeleteProvider(ctx, id)
 	if err != nil {
@@ -266,6 +285,7 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListTrackables returns all trackables known to the hub.
 func (s *Service) ListTrackables(ctx context.Context) ([]gen.Trackable, error) {
 	items, err := s.queries.ListTrackables(ctx)
 	if err != nil {
@@ -282,6 +302,7 @@ func (s *Service) ListTrackables(ctx context.Context) ([]gen.Trackable, error) {
 	return out, nil
 }
 
+// CreateTrackable validates and stores a new trackable.
 func (s *Service) CreateTrackable(ctx context.Context, body gen.TrackableWrite) (gen.Trackable, error) {
 	trackable, payload, err := normalizeTrackable(body, uuid.Nil)
 	if err != nil {
@@ -299,6 +320,7 @@ func (s *Service) CreateTrackable(ctx context.Context, body gen.TrackableWrite) 
 	return decodePayload[gen.Trackable](row.Payload)
 }
 
+// GetTrackable returns a trackable by identifier.
 func (s *Service) GetTrackable(ctx context.Context, id openapi_types.UUID) (gen.Trackable, error) {
 	row, err := s.queries.GetTrackable(ctx, uuidParam(id))
 	if err != nil {
@@ -307,6 +329,7 @@ func (s *Service) GetTrackable(ctx context.Context, id openapi_types.UUID) (gen.
 	return decodePayload[gen.Trackable](row.Payload)
 }
 
+// UpdateTrackable validates and replaces an existing trackable.
 func (s *Service) UpdateTrackable(ctx context.Context, id openapi_types.UUID, body gen.TrackableWrite) (gen.Trackable, error) {
 	trackable, payload, err := normalizeTrackable(body, uuid.UUID(id))
 	if err != nil {
@@ -324,6 +347,7 @@ func (s *Service) UpdateTrackable(ctx context.Context, id openapi_types.UUID, bo
 	return decodePayload[gen.Trackable](row.Payload)
 }
 
+// DeleteTrackable removes a trackable by identifier.
 func (s *Service) DeleteTrackable(ctx context.Context, id openapi_types.UUID) error {
 	rows, err := s.queries.DeleteTrackable(ctx, uuidParam(id))
 	if err != nil {
@@ -335,6 +359,7 @@ func (s *Service) DeleteTrackable(ctx context.Context, id openapi_types.UUID) er
 	return nil
 }
 
+// ListFences returns all fences known to the hub.
 func (s *Service) ListFences(ctx context.Context) ([]gen.Fence, error) {
 	items, err := s.queries.ListFences(ctx)
 	if err != nil {
@@ -351,6 +376,7 @@ func (s *Service) ListFences(ctx context.Context) ([]gen.Fence, error) {
 	return out, nil
 }
 
+// CreateFence validates and stores a new fence document.
 func (s *Service) CreateFence(ctx context.Context, body json.RawMessage) (gen.Fence, error) {
 	fence, payload, err := normalizeFence(body, uuid.Nil)
 	if err != nil {
@@ -368,6 +394,7 @@ func (s *Service) CreateFence(ctx context.Context, body json.RawMessage) (gen.Fe
 	return decodePayload[gen.Fence](row.Payload)
 }
 
+// GetFence returns a fence by identifier.
 func (s *Service) GetFence(ctx context.Context, id openapi_types.UUID) (gen.Fence, error) {
 	row, err := s.queries.GetFence(ctx, uuidParam(id))
 	if err != nil {
@@ -376,6 +403,7 @@ func (s *Service) GetFence(ctx context.Context, id openapi_types.UUID) (gen.Fenc
 	return decodePayload[gen.Fence](row.Payload)
 }
 
+// UpdateFence validates and replaces an existing fence document.
 func (s *Service) UpdateFence(ctx context.Context, id openapi_types.UUID, body json.RawMessage) (gen.Fence, error) {
 	fence, payload, err := normalizeFence(body, uuid.UUID(id))
 	if err != nil {
@@ -393,6 +421,7 @@ func (s *Service) UpdateFence(ctx context.Context, id openapi_types.UUID, body j
 	return decodePayload[gen.Fence](row.Payload)
 }
 
+// DeleteFence removes a fence by identifier.
 func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error {
 	rows, err := s.queries.DeleteFence(ctx, uuidParam(id))
 	if err != nil {
@@ -404,6 +433,8 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 	return nil
 }
 
+// ProcessLocations validates, stores, and republishes provider location
+// updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
 	for _, location := range locations {
 		if err := validateLocation(location); err != nil {
@@ -416,6 +447,8 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 	return nil
 }
 
+// ProcessProximities validates, resolves, and republishes provider proximity
+// updates.
 func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
 	for _, proximity := range proximities {
 		if strings.TrimSpace(proximity.ProviderId) == "" || strings.TrimSpace(proximity.ProviderType) == "" || strings.TrimSpace(proximity.Source) == "" {

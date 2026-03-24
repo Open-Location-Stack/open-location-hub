@@ -167,16 +167,20 @@ func (e TrackableWriteType) Valid() bool {
 	}
 }
 
-// Collision defines model for Collision.
+// Collision Collision participant snapshot used by future collision-event modeling.
 type Collision struct {
-	Floor      *float32           `json:"floor,omitempty"`
+	Floor *float32 `json:"floor,omitempty"`
+
+	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
 	Geometry   Polygon            `json:"geometry"`
 	Id         openapi_types.UUID `json:"id"`
 	ObjectType string             `json:"object_type"`
-	Position   Point              `json:"position"`
+
+	// Position GeoJSON point geometry.
+	Position Point `json:"position"`
 }
 
-// CollisionEvent defines model for CollisionEvent.
+// CollisionEvent Collision event model reserved for future collision processing support.
 type CollisionEvent struct {
 	CenterDistance *float32                      `json:"center_distance,omitempty"`
 	CollisionArea  *CollisionEvent_CollisionArea `json:"collision_area,omitempty"`
@@ -196,33 +200,54 @@ type CollisionEvent_CollisionArea struct {
 // CollisionEventCollisionType defines model for CollisionEvent.CollisionType.
 type CollisionEventCollisionType string
 
-// ErrorResponse defines model for ErrorResponse.
+// ErrorResponse Standard error envelope returned by the REST API.
 type ErrorResponse struct {
-	Code    int     `json:"code"`
+	// Code HTTP status code associated with the error.
+	Code int `json:"code"`
+
+	// Message Human-readable error message.
 	Message *string `json:"message,omitempty"`
-	Type    string  `json:"type"`
+
+	// Type Stable machine-readable error type.
+	Type string `json:"type"`
 }
 
-// ExtensionProperties defines model for ExtensionProperties.
+// ExtensionProperties Free-form extension object preserved as-is by the hub.
 type ExtensionProperties map[string]interface{}
 
-// Fence defines model for Fence.
+// Fence Stored fence resource returned by the REST API.
 type Fence struct {
-	// Crs Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
-	Crs              *string              `json:"crs,omitempty"`
-	ElevationRef     *FenceElevationRef   `json:"elevation_ref,omitempty"`
-	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
-	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
-	Extrusion        *float32             `json:"extrusion,omitempty"`
-	Floor            *float32             `json:"floor,omitempty"`
-	ForeignId        *string              `json:"foreign_id,omitempty"`
-	Id               openapi_types.UUID   `json:"id"`
-	Name             *string              `json:"name,omitempty"`
-	Properties       *ExtensionProperties `json:"properties,omitempty"`
-	Radius           *float32             `json:"radius,omitempty"`
-	Region           Fence_Region         `json:"region"`
-	Timeout          *PositiveOrMinusOne  `json:"timeout,omitempty"`
-	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
+	// Crs Valid EPSG identifier or `local`. Omitted values are treated as `EPSG:4326`.
+	Crs          *string            `json:"crs,omitempty"`
+	ElevationRef *FenceElevationRef `json:"elevation_ref,omitempty"`
+
+	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+
+	// ExitTolerance Positive numeric value greater than zero.
+	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32        `json:"extrusion,omitempty"`
+
+	// Floor Optional floor number or level indicator.
+	Floor     *float32           `json:"floor,omitempty"`
+	ForeignId *string            `json:"foreign_id,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      *string            `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// Radius Radius in meters when `region` is a point.
+	Radius *float32 `json:"radius,omitempty"`
+
+	// Region Fence geometry expressed as either a polygon or a point-plus-radius.
+	Region Fence_Region `json:"region"`
+
+	// Timeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	Timeout *PositiveOrMinusOne `json:"timeout,omitempty"`
+
+	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 
 	// ZoneId Required when `crs` is `local`.
 	ZoneId *string `json:"zone_id,omitempty"`
@@ -231,23 +256,27 @@ type Fence struct {
 // FenceElevationRef defines model for Fence.ElevationRef.
 type FenceElevationRef string
 
-// Fence_Region defines model for Fence.Region.
+// Fence_Region Fence geometry expressed as either a polygon or a point-plus-radius.
 type Fence_Region struct {
 	union json.RawMessage
 }
 
-// FenceEvent defines model for FenceEvent.
+// FenceEvent Derived fence membership event published by the hub.
 type FenceEvent struct {
-	EntryTime   *time.Time           `json:"entry_time,omitempty"`
-	EventType   FenceEventEventType  `json:"event_type"`
-	ExitTime    *time.Time           `json:"exit_time,omitempty"`
-	FenceId     openapi_types.UUID   `json:"fence_id"`
-	ForeignId   *string              `json:"foreign_id,omitempty"`
-	Id          openapi_types.UUID   `json:"id"`
+	EntryTime *time.Time          `json:"entry_time,omitempty"`
+	EventType FenceEventEventType `json:"event_type"`
+	ExitTime  *time.Time          `json:"exit_time,omitempty"`
+	FenceId   openapi_types.UUID  `json:"fence_id"`
+	ForeignId *string             `json:"foreign_id,omitempty"`
+	Id        openapi_types.UUID  `json:"id"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
 	Properties  *ExtensionProperties `json:"properties,omitempty"`
 	ProviderId  *string              `json:"provider_id,omitempty"`
 	TrackableId *string              `json:"trackable_id,omitempty"`
-	Trackables  *StringIdList        `json:"trackables,omitempty"`
+
+	// Trackables List of opaque string identifiers.
+	Trackables *StringIdList `json:"trackables,omitempty"`
 }
 
 // FenceEventEventType defines model for FenceEvent.EventType.
@@ -256,34 +285,38 @@ type FenceEventEventType string
 // FenceWrite defines model for FenceWrite.
 type FenceWrite = interface{}
 
-// GeoJsonPosition defines model for GeoJsonPosition.
+// GeoJsonPosition GeoJSON coordinate tuple used by `Point`, `LineString`, and `Polygon`.
 type GeoJsonPosition struct {
 	union json.RawMessage
 }
 
-// GeoJsonPosition2D defines model for GeoJsonPosition2D.
+// GeoJsonPosition2D GeoJSON 2D coordinate tuple in `[x, y]` order.
 type GeoJsonPosition2D = []float32
 
-// GeoJsonPosition3D defines model for GeoJsonPosition3D.
+// GeoJsonPosition3D GeoJSON 3D coordinate tuple in `[x, y, z]` order.
 type GeoJsonPosition3D = []float32
 
 // GroundControlPoint Inferred companion schema for section 6.7.19. The PDF requires each
 // item to map WGS84 coordinates to local zone coordinates but does not
 // name the child properties.
 type GroundControlPoint struct {
+	// Local GeoJSON point geometry.
 	Local Point `json:"local"`
+
+	// Wgs84 GeoJSON point geometry.
 	Wgs84 Point `json:"wgs84"`
 }
 
-// JsonRpcErrorObject defines model for JsonRpcErrorObject.
+// JsonRpcErrorObject Standard JSON-RPC error object.
 type JsonRpcErrorObject struct {
 	Code    int                     `json:"code"`
 	Data    *map[string]interface{} `json:"data,omitempty"`
 	Message string                  `json:"message"`
 }
 
-// JsonRpcErrorResponse defines model for JsonRpcErrorResponse.
+// JsonRpcErrorResponse JSON-RPC error envelope returned by the bridge.
 type JsonRpcErrorResponse struct {
+	// Error Standard JSON-RPC error object.
 	Error   JsonRpcErrorObject      `json:"error"`
 	Id      JsonRpcErrorResponse_Id `json:"id"`
 	Jsonrpc string                  `json:"jsonrpc"`
@@ -303,12 +336,19 @@ type JsonRpcErrorResponse_Id struct {
 	union json.RawMessage
 }
 
-// JsonRpcRequest defines model for JsonRpcRequest.
+// JsonRpcRequest JSON-RPC 2.0 request accepted by the REST-to-MQTT bridge.
 type JsonRpcRequest struct {
-	Id      *JsonRpcRequest_Id     `json:"id,omitempty"`
-	Jsonrpc string                 `json:"jsonrpc"`
-	Method  string                 `json:"method"`
-	Params  *JsonRpcRequest_Params `json:"params,omitempty"`
+	// Id Request identifier. Omit together with `_caller_id` to send a notification.
+	Id *JsonRpcRequest_Id `json:"id,omitempty"`
+
+	// Jsonrpc JSON-RPC protocol version.
+	Jsonrpc string `json:"jsonrpc"`
+
+	// Method JSON-RPC method name.
+	Method string `json:"method"`
+
+	// Params Method-specific parameters plus supported OMLOX bridge extensions.
+	Params *JsonRpcRequest_Params `json:"params,omitempty"`
 }
 
 // JsonRpcRequestId0 defines model for .
@@ -320,24 +360,31 @@ type JsonRpcRequestId1 = int
 // JsonRpcRequestId2 defines model for .
 type JsonRpcRequestId2 = float32
 
-// JsonRpcRequest_Id defines model for JsonRpcRequest.Id.
+// JsonRpcRequest_Id Request identifier. Omit together with `_caller_id` to send a notification.
 type JsonRpcRequest_Id struct {
 	union json.RawMessage
 }
 
-// JsonRpcRequestParamsAggregation defines model for JsonRpcRequest.Params.Aggregation.
+// JsonRpcRequestParamsAggregation Response aggregation mode used by the hub while waiting for MQTT responses.
 type JsonRpcRequestParamsAggregation string
 
-// JsonRpcRequest_Params defines model for JsonRpcRequest.Params.
+// JsonRpcRequest_Params Method-specific parameters plus supported OMLOX bridge extensions.
 type JsonRpcRequest_Params struct {
+	// UnderscoreAggregation Response aggregation mode used by the hub while waiting for MQTT responses.
 	UnderscoreAggregation *JsonRpcRequestParamsAggregation `json:"_aggregation,omitempty"`
-	UnderscoreCallerId    *string                          `json:"_caller_id,omitempty"`
-	UnderscoreHandlerId   *string                          `json:"_handler_id,omitempty"`
-	UnderscoreTimeout     *float32                         `json:"_timeout,omitempty"`
-	AdditionalProperties  map[string]interface{}           `json:"-"`
+
+	// UnderscoreCallerId Caller identifier used to correlate MQTT responses.
+	UnderscoreCallerId *string `json:"_caller_id,omitempty"`
+
+	// UnderscoreHandlerId Optional explicit handler identifier for directed invocation.
+	UnderscoreHandlerId *string `json:"_handler_id,omitempty"`
+
+	// UnderscoreTimeout Maximum time in milliseconds to wait for responses.
+	UnderscoreTimeout    *float32               `json:"_timeout,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
-// JsonRpcSuccessResponse defines model for JsonRpcSuccessResponse.
+// JsonRpcSuccessResponse JSON-RPC success envelope returned by the bridge.
 type JsonRpcSuccessResponse struct {
 	Id      JsonRpcSuccessResponse_Id `json:"id"`
 	Jsonrpc string                    `json:"jsonrpc"`
@@ -358,88 +405,148 @@ type JsonRpcSuccessResponse_Id struct {
 	union json.RawMessage
 }
 
-// LineString defines model for LineString.
+// LineString GeoJSON line geometry.
 type LineString struct {
 	Coordinates []GeoJsonPosition `json:"coordinates"`
 	Type        string            `json:"type"`
 }
 
-// LocatingRule defines model for LocatingRule.
+// LocatingRule Trackable locating rule used to prioritize candidate locations from providers.
 type LocatingRule struct {
 	// Expression Rule expression. Supported properties named in the PDF are `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and `timestamp_diff`.
-	Expression string  `json:"expression"`
-	Priority   float32 `json:"priority"`
+	Expression string `json:"expression"`
+
+	// Priority Lower values indicate higher precedence.
+	Priority float32 `json:"priority"`
 }
 
-// Location defines model for Location.
+// Location Provider location observation accepted by ingest and reused in derived outputs.
 type Location struct {
-	Accuracy   *float32 `json:"accuracy,omitempty"`
-	Associated *bool    `json:"associated,omitempty"`
-	Course     *float32 `json:"course,omitempty"`
+	// Accuracy Estimated positional accuracy in meters.
+	Accuracy *float32 `json:"accuracy,omitempty"`
 
-	// Crs Valid EPSG identifier or `local`. Defaults to `local`.
-	Crs                *string               `json:"crs,omitempty"`
-	ElevationRef       *LocationElevationRef `json:"elevation_ref,omitempty"`
-	Floor              *float32              `json:"floor,omitempty"`
-	HeadingAccuracy    *float32              `json:"heading_accuracy,omitempty"`
-	MagneticHeading    *float32              `json:"magnetic_heading,omitempty"`
-	Position           Point                 `json:"position"`
-	Properties         *ExtensionProperties  `json:"properties,omitempty"`
-	ProviderId         string                `json:"provider_id"`
-	ProviderType       string                `json:"provider_type"`
-	Source             string                `json:"source"`
-	Speed              *float32              `json:"speed,omitempty"`
-	TimestampGenerated *time.Time            `json:"timestamp_generated,omitempty"`
-	TimestampSent      *time.Time            `json:"timestamp_sent,omitempty"`
-	Trackables         *StringIdList         `json:"trackables,omitempty"`
-	TrueHeading        *float32              `json:"true_heading,omitempty"`
+	// Associated Indicates whether the location has already been associated with a trackable.
+	Associated *bool `json:"associated,omitempty"`
+
+	// Course Travel course in degrees.
+	Course *float32 `json:"course,omitempty"`
+
+	// Crs Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current implementation.
+	Crs *string `json:"crs,omitempty"`
+
+	// ElevationRef Reference system for altitude-like values carried in the geometry.
+	ElevationRef *LocationElevationRef `json:"elevation_ref,omitempty"`
+
+	// Floor Optional floor number or level indicator.
+	Floor *float32 `json:"floor,omitempty"`
+
+	// HeadingAccuracy Estimated heading accuracy in degrees.
+	HeadingAccuracy *float32 `json:"heading_accuracy,omitempty"`
+
+	// MagneticHeading Heading in degrees relative to magnetic north.
+	MagneticHeading *float32 `json:"magnetic_heading,omitempty"`
+
+	// Position GeoJSON point geometry.
+	Position Point `json:"position"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// ProviderId Stable provider identifier.
+	ProviderId string `json:"provider_id"`
+
+	// ProviderType Provider technology or implementation type.
+	ProviderType string `json:"provider_type"`
+
+	// Source Source locator or sensor identifier that produced the observation.
+	Source string `json:"source"`
+
+	// Speed Estimated speed in meters per second.
+	Speed *float32 `json:"speed,omitempty"`
+
+	// TimestampGenerated Timestamp when the provider generated the observation.
+	TimestampGenerated *time.Time `json:"timestamp_generated,omitempty"`
+
+	// TimestampSent Timestamp when the provider sent the observation to the hub.
+	TimestampSent *time.Time `json:"timestamp_sent,omitempty"`
+
+	// Trackables List of opaque string identifiers.
+	Trackables *StringIdList `json:"trackables,omitempty"`
+
+	// TrueHeading Heading in degrees relative to true north.
+	TrueHeading *float32 `json:"true_heading,omitempty"`
 }
 
-// LocationElevationRef defines model for Location.ElevationRef.
+// LocationElevationRef Reference system for altitude-like values carried in the geometry.
 type LocationElevationRef string
 
-// LocationProvider defines model for LocationProvider.
+// LocationProvider Stored location-provider resource returned by the REST API.
 type LocationProvider struct {
-	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
-	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
-	FenceTimeout     *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
-	Id               string               `json:"id"`
-	Name             *string              `json:"name,omitempty"`
-	Properties       *ExtensionProperties `json:"properties,omitempty"`
-	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
-	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
-	Type             string               `json:"type"`
+	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+
+	// ExitTolerance Positive numeric value greater than zero.
+	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
+
+	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
+	Id           string              `json:"id"`
+	Name         *string             `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// Sensors Free-form extension object preserved as-is by the hub.
+	Sensors *ExtensionProperties `json:"sensors,omitempty"`
+
+	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
+	Type             string              `json:"type"`
 }
 
-// LocationProviderWrite defines model for LocationProviderWrite.
+// LocationProviderWrite Mutable fields used to create or replace a location-provider resource.
 type LocationProviderWrite struct {
-	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
-	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
-	FenceTimeout     *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
-	Id               string               `json:"id"`
-	Name             *string              `json:"name,omitempty"`
-	Properties       *ExtensionProperties `json:"properties,omitempty"`
-	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
-	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
-	Type             string               `json:"type"`
+	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+
+	// ExitTolerance Positive numeric value greater than zero.
+	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
+
+	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
+	Id           string              `json:"id"`
+	Name         *string             `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// Sensors Free-form extension object preserved as-is by the hub.
+	Sensors *ExtensionProperties `json:"sensors,omitempty"`
+
+	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
+	Type             string              `json:"type"`
 }
 
-// Point defines model for Point.
+// Point GeoJSON point geometry.
 type Point struct {
+	// Coordinates GeoJSON coordinate tuple used by `Point`, `LineString`, and `Polygon`.
 	Coordinates GeoJsonPosition `json:"coordinates"`
-	Type        string          `json:"type"`
+
+	// Type GeoJSON type discriminator.
+	Type string `json:"type"`
 }
 
-// Polygon defines model for Polygon.
+// Polygon GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
 type Polygon struct {
 	Coordinates [][]GeoJsonPosition `json:"coordinates"`
 	Type        string              `json:"type"`
 }
 
-// PositiveNumber defines model for PositiveNumber.
+// PositiveNumber Positive numeric value greater than zero.
 type PositiveNumber = float32
 
-// PositiveOrMinusOne defines model for PositiveOrMinusOne.
+// PositiveOrMinusOne Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
 type PositiveOrMinusOne struct {
 	union json.RawMessage
 }
@@ -447,99 +554,177 @@ type PositiveOrMinusOne struct {
 // PositiveOrMinusOne0 defines model for PositiveOrMinusOne.0.
 type PositiveOrMinusOne0 float32
 
-// Proximity defines model for Proximity.
+// Proximity Provider proximity observation used for zone-based position derivation.
 type Proximity struct {
-	Accuracy           *float32             `json:"accuracy,omitempty"`
-	Properties         *ExtensionProperties `json:"properties,omitempty"`
-	ProviderId         string               `json:"provider_id"`
-	ProviderType       string               `json:"provider_type"`
-	Source             string               `json:"source"`
-	TimestampGenerated *time.Time           `json:"timestamp_generated,omitempty"`
-	TimestampSent      *time.Time           `json:"timestamp_sent,omitempty"`
+	// Accuracy Estimated confidence or accuracy value supplied by the provider.
+	Accuracy *float32 `json:"accuracy,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// ProviderId Stable provider identifier.
+	ProviderId string `json:"provider_id"`
+
+	// ProviderType Provider technology or implementation type.
+	ProviderType string `json:"provider_type"`
+
+	// Source Source locator or sensor identifier that produced the observation.
+	Source string `json:"source"`
+
+	// TimestampGenerated Timestamp when the provider generated the observation.
+	TimestampGenerated *time.Time `json:"timestamp_generated,omitempty"`
+
+	// TimestampSent Timestamp when the provider sent the observation to the hub.
+	TimestampSent *time.Time `json:"timestamp_sent,omitempty"`
 }
 
-// RpcAvailableMethods defines model for RpcAvailableMethods.
+// RpcAvailableMethods Mapping of JSON-RPC method name to discovered handler IDs.
 type RpcAvailableMethods map[string]RpcAvailableMethodsEntry
 
-// RpcAvailableMethodsEntry defines model for RpcAvailableMethodsEntry.
+// RpcAvailableMethodsEntry MQTT-discovered handler IDs for a single JSON-RPC method name.
 type RpcAvailableMethodsEntry struct {
 	HandlerId []string `json:"handler_id"`
 }
 
-// StringIdList defines model for StringIdList.
+// StringIdList List of opaque string identifiers.
 type StringIdList = []string
 
-// Trackable defines model for Trackable.
+// Trackable Stored trackable resource returned by the REST API.
 type Trackable struct {
-	ExitDelay         *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
-	ExitTolerance     *PositiveNumber      `json:"exit_tolerance,omitempty"`
-	Extrusion         *float32             `json:"extrusion,omitempty"`
-	FenceTimeout      *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
-	Geometry          *Polygon             `json:"geometry,omitempty"`
-	Id                openapi_types.UUID   `json:"id"`
-	LocatingRules     *[]LocatingRule      `json:"locating_rules,omitempty"`
-	LocationProviders *StringIdList        `json:"location_providers,omitempty"`
-	Name              *string              `json:"name,omitempty"`
-	Properties        *ExtensionProperties `json:"properties,omitempty"`
-	Radius            *float32             `json:"radius,omitempty"`
-	ToleranceTimeout  *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
-	Type              TrackableType        `json:"type"`
+	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+
+	// ExitTolerance Positive numeric value greater than zero.
+	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32        `json:"extrusion,omitempty"`
+
+	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
+
+	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
+	Geometry *Polygon           `json:"geometry,omitempty"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// LocatingRules Ordered locating rules applied when multiple candidate locations exist.
+	LocatingRules *[]LocatingRule `json:"locating_rules,omitempty"`
+
+	// LocationProviders List of opaque string identifiers.
+	LocationProviders *StringIdList `json:"location_providers,omitempty"`
+	Name              *string       `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+	Radius     *float32             `json:"radius,omitempty"`
+
+	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
+	Type             TrackableType       `json:"type"`
 }
 
 // TrackableType defines model for Trackable.Type.
 type TrackableType string
 
-// TrackableMotion defines model for TrackableMotion.
+// TrackableMotion Derived trackable motion payload published by the hub.
 type TrackableMotion struct {
-	Extrusion  *float32             `json:"extrusion,omitempty"`
-	Geometry   *Polygon             `json:"geometry,omitempty"`
-	Id         string               `json:"id"`
-	Location   Location             `json:"location"`
-	Name       *string              `json:"name,omitempty"`
+	Extrusion *float32 `json:"extrusion,omitempty"`
+
+	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
+	Geometry *Polygon `json:"geometry,omitempty"`
+	Id       string   `json:"id"`
+
+	// Location Provider location observation accepted by ingest and reused in derived outputs.
+	Location Location `json:"location"`
+	Name     *string  `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 }
 
-// TrackableWrite defines model for TrackableWrite.
+// TrackableWrite Mutable fields used to create or replace a trackable resource.
 type TrackableWrite struct {
-	ExitDelay     *PositiveOrMinusOne `json:"exit_delay,omitempty"`
-	ExitTolerance *PositiveNumber     `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32            `json:"extrusion,omitempty"`
-	FenceTimeout  *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
-	Geometry      *Polygon            `json:"geometry,omitempty"`
+	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+
+	// ExitTolerance Positive numeric value greater than zero.
+	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32        `json:"extrusion,omitempty"`
+
+	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
+
+	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
+	Geometry *Polygon `json:"geometry,omitempty"`
 
 	// Id If omitted on create, the hub generates a UUID.
-	Id                *openapi_types.UUID  `json:"id,omitempty"`
-	LocatingRules     *[]LocatingRule      `json:"locating_rules,omitempty"`
-	LocationProviders *StringIdList        `json:"location_providers,omitempty"`
-	Name              *string              `json:"name,omitempty"`
-	Properties        *ExtensionProperties `json:"properties,omitempty"`
-	Radius            *float32             `json:"radius,omitempty"`
-	ToleranceTimeout  *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
-	Type              TrackableWriteType   `json:"type"`
+	Id *openapi_types.UUID `json:"id,omitempty"`
+
+	// LocatingRules Ordered locating rules applied when multiple candidate locations exist.
+	LocatingRules *[]LocatingRule `json:"locating_rules,omitempty"`
+
+	// LocationProviders List of opaque string identifiers.
+	LocationProviders *StringIdList `json:"location_providers,omitempty"`
+	Name              *string       `json:"name,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+	Radius     *float32             `json:"radius,omitempty"`
+
+	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
+	Type             TrackableWriteType  `json:"type"`
 }
 
 // TrackableWriteType defines model for TrackableWrite.Type.
 type TrackableWriteType string
 
-// Zone defines model for Zone.
+// Zone Stored zone resource returned by the REST API.
 type Zone struct {
-	Address                 *string               `json:"address,omitempty"`
-	Building                *string               `json:"building,omitempty"`
-	Description             *string               `json:"description,omitempty"`
-	Floor                   *float32              `json:"floor,omitempty"`
-	ForeignId               *string               `json:"foreign_id,omitempty"`
-	GroundControlPoints     *[]GroundControlPoint `json:"ground_control_points,omitempty"`
-	Id                      openapi_types.UUID    `json:"id"`
-	IncompleteConfiguration *bool                 `json:"incomplete_configuration,omitempty"`
-	MeasurementTimestamp    *time.Time            `json:"measurement_timestamp,omitempty"`
-	Name                    *string               `json:"name,omitempty"`
-	Position                *Point                `json:"position,omitempty"`
-	Properties              *ExtensionProperties  `json:"properties,omitempty"`
-	Radius                  *float32              `json:"radius,omitempty"`
-	Site                    *string               `json:"site,omitempty"`
+	// Address Optional postal-style address or location hint.
+	Address *string `json:"address,omitempty"`
+
+	// Building Optional building identifier.
+	Building *string `json:"building,omitempty"`
+
+	// Description Human-readable zone description.
+	Description *string `json:"description,omitempty"`
+
+	// Floor Optional floor number or level indicator.
+	Floor *float32 `json:"floor,omitempty"`
+
+	// ForeignId External identifier from an upstream system.
+	ForeignId *string `json:"foreign_id,omitempty"`
+
+	// GroundControlPoints Local-to-WGS84 reference pairs used for georeferencing local coordinates.
+	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
+
+	// Id Hub-assigned or client-supplied UUID.
+	Id openapi_types.UUID `json:"id"`
+
+	// IncompleteConfiguration When true, the zone may omit fields required for a fully configured zone.
+	IncompleteConfiguration *bool `json:"incomplete_configuration,omitempty"`
+
+	// MeasurementTimestamp Timestamp describing when the zone definition was measured or last updated.
+	MeasurementTimestamp *time.Time `json:"measurement_timestamp,omitempty"`
+
+	// Name Human-readable zone name.
+	Name *string `json:"name,omitempty"`
+
+	// Position GeoJSON point geometry.
+	Position *Point `json:"position,omitempty"`
+
+	// Properties Free-form extension object preserved as-is by the hub.
+	Properties *ExtensionProperties `json:"properties,omitempty"`
+
+	// Radius Radius in meters when the zone is modeled as a point with extent.
+	Radius *float32 `json:"radius,omitempty"`
+
+	// Site Optional site identifier.
+	Site *string `json:"site,omitempty"`
 
 	// Type Positioning system type. OMLOX behavior chapters require support for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
-	Type        string   `json:"type"`
+	Type string `json:"type"`
+
+	// Wgs84Height Optional zone altitude in meters relative to WGS84.
 	Wgs84Height *float32 `json:"wgs84_height,omitempty"`
 }
 
@@ -558,16 +743,16 @@ type TrackableId = openapi_types.UUID
 // ZoneId defines model for ZoneId.
 type ZoneId = openapi_types.UUID
 
-// BadRequest defines model for BadRequest.
+// BadRequest Standard error envelope returned by the REST API.
 type BadRequest = ErrorResponse
 
-// Forbidden defines model for Forbidden.
+// Forbidden Standard error envelope returned by the REST API.
 type Forbidden = ErrorResponse
 
-// NotFound defines model for NotFound.
+// NotFound Standard error envelope returned by the REST API.
 type NotFound = ErrorResponse
 
-// Unauthorized defines model for Unauthorized.
+// Unauthorized Standard error envelope returned by the REST API.
 type Unauthorized = ErrorResponse
 
 // PostProviderLocationsJSONBody defines parameters for PostProviderLocations.
@@ -1236,76 +1421,76 @@ func (t *PositiveOrMinusOne) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
+	// List fences
 	// (GET /v2/fences)
 	ListFences(w http.ResponseWriter, r *http.Request)
-
+	// Create a fence
 	// (POST /v2/fences)
 	CreateFence(w http.ResponseWriter, r *http.Request)
-
+	// Delete a fence
 	// (DELETE /v2/fences/{fenceId})
 	DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
-
+	// Get a fence
 	// (GET /v2/fences/{fenceId})
 	GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
-
+	// Update a fence
 	// (PUT /v2/fences/{fenceId})
 	UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
-
+	// List providers
 	// (GET /v2/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
-
+	// Create a provider
 	// (POST /v2/providers)
 	CreateProvider(w http.ResponseWriter, r *http.Request)
-
+	// Ingest locations
 	// (POST /v2/providers/locations)
 	PostProviderLocations(w http.ResponseWriter, r *http.Request)
-
+	// Ingest proximities
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(w http.ResponseWriter, r *http.Request)
-
+	// Delete a provider
 	// (DELETE /v2/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
-
+	// Get a provider
 	// (GET /v2/providers/{providerId})
 	GetProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
-
+	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
-
+	// Invoke JSON-RPC over MQTT
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
-
+	// List available RPC methods
 	// (GET /v2/rpc/available)
 	GetRPCAvailable(w http.ResponseWriter, r *http.Request)
-
+	// List trackables
 	// (GET /v2/trackables)
 	ListTrackables(w http.ResponseWriter, r *http.Request)
-
+	// Create a trackable
 	// (POST /v2/trackables)
 	CreateTrackable(w http.ResponseWriter, r *http.Request)
-
+	// Delete a trackable
 	// (DELETE /v2/trackables/{trackableId})
 	DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
-
+	// Get a trackable
 	// (GET /v2/trackables/{trackableId})
 	GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
-
+	// Update a trackable
 	// (PUT /v2/trackables/{trackableId})
 	UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
-
+	// List zones
 	// (GET /v2/zones)
 	ListZones(w http.ResponseWriter, r *http.Request)
-
+	// Create a zone
 	// (POST /v2/zones)
 	CreateZone(w http.ResponseWriter, r *http.Request)
-
+	// Delete a zone
 	// (DELETE /v2/zones/{zoneId})
 	DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
-
+	// Get a zone
 	// (GET /v2/zones/{zoneId})
 	GetZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
-
+	// Update a zone
 	// (PUT /v2/zones/{zoneId})
 	UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
 }
@@ -1314,121 +1499,145 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// List fences
 // (GET /v2/fences)
 func (_ Unimplemented) ListFences(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create a fence
 // (POST /v2/fences)
 func (_ Unimplemented) CreateFence(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete a fence
 // (DELETE /v2/fences/{fenceId})
 func (_ Unimplemented) DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get a fence
 // (GET /v2/fences/{fenceId})
 func (_ Unimplemented) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Update a fence
 // (PUT /v2/fences/{fenceId})
 func (_ Unimplemented) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List providers
 // (GET /v2/providers)
 func (_ Unimplemented) ListProviders(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create a provider
 // (POST /v2/providers)
 func (_ Unimplemented) CreateProvider(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Ingest locations
 // (POST /v2/providers/locations)
 func (_ Unimplemented) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Ingest proximities
 // (POST /v2/providers/proximities)
 func (_ Unimplemented) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete a provider
 // (DELETE /v2/providers/{providerId})
 func (_ Unimplemented) DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get a provider
 // (GET /v2/providers/{providerId})
 func (_ Unimplemented) GetProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Update a provider
 // (PUT /v2/providers/{providerId})
 func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Invoke JSON-RPC over MQTT
 // (PUT /v2/rpc)
 func (_ Unimplemented) PutRPC(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List available RPC methods
 // (GET /v2/rpc/available)
 func (_ Unimplemented) GetRPCAvailable(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List trackables
 // (GET /v2/trackables)
 func (_ Unimplemented) ListTrackables(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create a trackable
 // (POST /v2/trackables)
 func (_ Unimplemented) CreateTrackable(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete a trackable
 // (DELETE /v2/trackables/{trackableId})
 func (_ Unimplemented) DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get a trackable
 // (GET /v2/trackables/{trackableId})
 func (_ Unimplemented) GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Update a trackable
 // (PUT /v2/trackables/{trackableId})
 func (_ Unimplemented) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List zones
 // (GET /v2/zones)
 func (_ Unimplemented) ListZones(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create a zone
 // (POST /v2/zones)
 func (_ Unimplemented) CreateZone(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete a zone
 // (DELETE /v2/zones/{zoneId})
 func (_ Unimplemented) DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get a zone
 // (GET /v2/zones/{zoneId})
 func (_ Unimplemented) GetZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Update a zone
 // (PUT /v2/zones/{zoneId})
 func (_ Unimplemented) UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -3304,76 +3513,76 @@ func (response UpdateZone404JSONResponse) VisitUpdateZoneResponse(w http.Respons
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-
+	// List fences
 	// (GET /v2/fences)
 	ListFences(ctx context.Context, request ListFencesRequestObject) (ListFencesResponseObject, error)
-
+	// Create a fence
 	// (POST /v2/fences)
 	CreateFence(ctx context.Context, request CreateFenceRequestObject) (CreateFenceResponseObject, error)
-
+	// Delete a fence
 	// (DELETE /v2/fences/{fenceId})
 	DeleteFence(ctx context.Context, request DeleteFenceRequestObject) (DeleteFenceResponseObject, error)
-
+	// Get a fence
 	// (GET /v2/fences/{fenceId})
 	GetFence(ctx context.Context, request GetFenceRequestObject) (GetFenceResponseObject, error)
-
+	// Update a fence
 	// (PUT /v2/fences/{fenceId})
 	UpdateFence(ctx context.Context, request UpdateFenceRequestObject) (UpdateFenceResponseObject, error)
-
+	// List providers
 	// (GET /v2/providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
-
+	// Create a provider
 	// (POST /v2/providers)
 	CreateProvider(ctx context.Context, request CreateProviderRequestObject) (CreateProviderResponseObject, error)
-
+	// Ingest locations
 	// (POST /v2/providers/locations)
 	PostProviderLocations(ctx context.Context, request PostProviderLocationsRequestObject) (PostProviderLocationsResponseObject, error)
-
+	// Ingest proximities
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(ctx context.Context, request PostProviderProximitiesRequestObject) (PostProviderProximitiesResponseObject, error)
-
+	// Delete a provider
 	// (DELETE /v2/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
-
+	// Get a provider
 	// (GET /v2/providers/{providerId})
 	GetProvider(ctx context.Context, request GetProviderRequestObject) (GetProviderResponseObject, error)
-
+	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(ctx context.Context, request UpdateProviderRequestObject) (UpdateProviderResponseObject, error)
-
+	// Invoke JSON-RPC over MQTT
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
-
+	// List available RPC methods
 	// (GET /v2/rpc/available)
 	GetRPCAvailable(ctx context.Context, request GetRPCAvailableRequestObject) (GetRPCAvailableResponseObject, error)
-
+	// List trackables
 	// (GET /v2/trackables)
 	ListTrackables(ctx context.Context, request ListTrackablesRequestObject) (ListTrackablesResponseObject, error)
-
+	// Create a trackable
 	// (POST /v2/trackables)
 	CreateTrackable(ctx context.Context, request CreateTrackableRequestObject) (CreateTrackableResponseObject, error)
-
+	// Delete a trackable
 	// (DELETE /v2/trackables/{trackableId})
 	DeleteTrackable(ctx context.Context, request DeleteTrackableRequestObject) (DeleteTrackableResponseObject, error)
-
+	// Get a trackable
 	// (GET /v2/trackables/{trackableId})
 	GetTrackable(ctx context.Context, request GetTrackableRequestObject) (GetTrackableResponseObject, error)
-
+	// Update a trackable
 	// (PUT /v2/trackables/{trackableId})
 	UpdateTrackable(ctx context.Context, request UpdateTrackableRequestObject) (UpdateTrackableResponseObject, error)
-
+	// List zones
 	// (GET /v2/zones)
 	ListZones(ctx context.Context, request ListZonesRequestObject) (ListZonesResponseObject, error)
-
+	// Create a zone
 	// (POST /v2/zones)
 	CreateZone(ctx context.Context, request CreateZoneRequestObject) (CreateZoneResponseObject, error)
-
+	// Delete a zone
 	// (DELETE /v2/zones/{zoneId})
 	DeleteZone(ctx context.Context, request DeleteZoneRequestObject) (DeleteZoneResponseObject, error)
-
+	// Get a zone
 	// (GET /v2/zones/{zoneId})
 	GetZone(ctx context.Context, request GetZoneRequestObject) (GetZoneResponseObject, error)
-
+	// Update a zone
 	// (PUT /v2/zones/{zoneId})
 	UpdateZone(ctx context.Context, request UpdateZoneRequestObject) (UpdateZoneResponseObject, error)
 }

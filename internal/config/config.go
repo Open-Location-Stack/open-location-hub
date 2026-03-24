@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// Config contains the hub runtime configuration loaded from environment
+// variables.
 type Config struct {
 	HTTPListenAddr                        string
 	LogLevel                              string
@@ -28,6 +30,7 @@ type Config struct {
 	Auth                                  AuthConfig
 }
 
+// AuthConfig contains authentication and authorization configuration.
 type AuthConfig struct {
 	Mode                string
 	Audience            []string
@@ -43,6 +46,7 @@ type AuthConfig struct {
 	Enabled             bool
 }
 
+// FromEnv loads Config from environment variables and validates the result.
 func FromEnv() (Config, error) {
 	cfg := Config{
 		HTTPListenAddr:                        env("HTTP_LISTEN_ADDR", ":8080"),
@@ -116,6 +120,7 @@ func FromEnv() (Config, error) {
 	return cfg, nil
 }
 
+// Validate checks that the authentication settings are internally consistent.
 func (a AuthConfig) Validate() error {
 	if !a.Enabled {
 		return nil

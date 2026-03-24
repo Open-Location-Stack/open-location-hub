@@ -22,16 +22,22 @@ security:
   - bearerAuth: []
 tags:
   - name: zones
+    description: Manage OMLOX zones, including georeferenced and proximity-capable zone definitions.
   - name: trackables
+    description: Manage trackable definitions and locating preferences used by ingest and eventing flows.
   - name: providers
+    description: Manage location providers and receive location or proximity ingest payloads.
   - name: fences
+    description: Manage fence definitions used for derived fence-event publication.
   - name: rpc
+    description: Inspect available JSON-RPC methods and bridge JSON-RPC traffic onto MQTT.
 paths:
   /v2/zones:
     get:
       tags: [zones]
       operationId: listZones
-      description: Inferred management collection endpoint for OMLOX Zone API.
+      summary: List zones
+      description: Returns the complete zone registry known to the hub.
       responses:
         '200':
           description: Zones
@@ -48,6 +54,7 @@ paths:
     post:
       tags: [zones]
       operationId: createZone
+      summary: Create a zone
       description: |
         Explicit zone announcement endpoint from OMLOX chapter 7.12. Supports
         both incomplete and fully configured zones.
@@ -76,7 +83,8 @@ paths:
     get:
       tags: [zones]
       operationId: getZone
-      description: Explicit example lookup from OMLOX chapter 7.12.
+      summary: Get a zone
+      description: Returns a single zone by UUID.
       responses:
         '200':
           description: Zone
@@ -93,7 +101,8 @@ paths:
     put:
       tags: [zones]
       operationId: updateZone
-      description: Inferred management update endpoint for OMLOX Zone API.
+      summary: Update a zone
+      description: Replaces the stored zone document for the supplied UUID.
       requestBody:
         required: true
         content:
@@ -118,7 +127,8 @@ paths:
     delete:
       tags: [zones]
       operationId: deleteZone
-      description: Inferred management delete endpoint for OMLOX Zone API.
+      summary: Delete a zone
+      description: Removes a zone and any cached local georeferencing transform derived from it.
       responses:
         '204':
           description: Deleted
@@ -132,7 +142,8 @@ paths:
     get:
       tags: [trackables]
       operationId: listTrackables
-      description: Inferred management collection endpoint for OMLOX Trackable API.
+      summary: List trackables
+      description: Returns the complete trackable registry known to the hub.
       responses:
         '200':
           description: Trackables
@@ -149,7 +160,8 @@ paths:
     post:
       tags: [trackables]
       operationId: createTrackable
-      description: Inferred management create endpoint for OMLOX Trackable API.
+      summary: Create a trackable
+      description: Creates a trackable definition used by locating and fence processing.
       requestBody:
         required: true
         content:
@@ -175,7 +187,8 @@ paths:
     get:
       tags: [trackables]
       operationId: getTrackable
-      description: Inferred management read endpoint for OMLOX Trackable API.
+      summary: Get a trackable
+      description: Returns a single trackable by UUID.
       responses:
         '200':
           description: Trackable
@@ -192,7 +205,8 @@ paths:
     put:
       tags: [trackables]
       operationId: updateTrackable
-      description: Inferred management update endpoint for OMLOX Trackable API.
+      summary: Update a trackable
+      description: Replaces the stored trackable document for the supplied UUID.
       requestBody:
         required: true
         content:
@@ -217,7 +231,8 @@ paths:
     delete:
       tags: [trackables]
       operationId: deleteTrackable
-      description: Inferred management delete endpoint for OMLOX Trackable API.
+      summary: Delete a trackable
+      description: Removes a trackable definition from the hub.
       responses:
         '204':
           description: Deleted
@@ -231,7 +246,8 @@ paths:
     get:
       tags: [providers]
       operationId: listProviders
-      description: Inferred management collection endpoint for OMLOX Location Provider API.
+      summary: List providers
+      description: Returns the complete location-provider registry known to the hub.
       responses:
         '200':
           description: Providers
@@ -248,7 +264,8 @@ paths:
     post:
       tags: [providers]
       operationId: createProvider
-      description: Inferred management create endpoint for OMLOX Location Provider API.
+      summary: Create a provider
+      description: Creates a location-provider definition used by ingest and downstream publication.
       requestBody:
         required: true
         content:
@@ -274,7 +291,8 @@ paths:
     get:
       tags: [providers]
       operationId: getProvider
-      description: Inferred management read endpoint for OMLOX Location Provider API.
+      summary: Get a provider
+      description: Returns a single location provider by identifier.
       responses:
         '200':
           description: Provider
@@ -291,7 +309,8 @@ paths:
     put:
       tags: [providers]
       operationId: updateProvider
-      description: Inferred management update endpoint for OMLOX Location Provider API.
+      summary: Update a provider
+      description: Replaces the stored location-provider document for the supplied identifier.
       requestBody:
         required: true
         content:
@@ -316,7 +335,8 @@ paths:
     delete:
       tags: [providers]
       operationId: deleteProvider
-      description: Inferred management delete endpoint for OMLOX Location Provider API.
+      summary: Delete a provider
+      description: Removes a location-provider definition from the hub.
       responses:
         '204':
           description: Deleted
@@ -330,7 +350,8 @@ paths:
     post:
       tags: [providers]
       operationId: postProviderLocations
-      description: Explicit OMLOX ingest endpoint for Location updates.
+      summary: Ingest locations
+      description: Accepts provider location updates, validates them, stores latest state, and republishes derived variants.
       requestBody:
         required: true
         content:
@@ -352,7 +373,8 @@ paths:
     post:
       tags: [providers]
       operationId: postProviderProximities
-      description: Explicit OMLOX ingest endpoint for Proximity updates.
+      summary: Ingest proximities
+      description: Accepts proximity observations, resolves them to zones where possible, and emits derived locations.
       requestBody:
         required: true
         content:
@@ -374,7 +396,8 @@ paths:
     get:
       tags: [fences]
       operationId: listFences
-      description: Inferred collection endpoint for OMLOX Fence API.
+      summary: List fences
+      description: Returns the complete fence registry known to the hub.
       responses:
         '200':
           description: Fences
@@ -391,7 +414,8 @@ paths:
     post:
       tags: [fences]
       operationId: createFence
-      description: Explicit create endpoint implied by OMLOX Fence API lifecycle.
+      summary: Create a fence
+      description: Creates a fence used for derived region-entry and region-exit processing.
       requestBody:
         required: true
         content:
@@ -417,7 +441,8 @@ paths:
     get:
       tags: [fences]
       operationId: getFence
-      description: Inferred read endpoint for OMLOX Fence API.
+      summary: Get a fence
+      description: Returns a single fence by UUID.
       responses:
         '200':
           description: Fence
@@ -434,7 +459,8 @@ paths:
     put:
       tags: [fences]
       operationId: updateFence
-      description: Explicit update endpoint implied by OMLOX Fence API lifecycle.
+      summary: Update a fence
+      description: Replaces the stored fence document for the supplied UUID.
       requestBody:
         required: true
         content:
@@ -459,7 +485,8 @@ paths:
     delete:
       tags: [fences]
       operationId: deleteFence
-      description: Explicit delete endpoint implied by OMLOX Fence API lifecycle.
+      summary: Delete a fence
+      description: Removes a fence from the hub.
       responses:
         '204':
           description: Deleted
@@ -473,7 +500,8 @@ paths:
     get:
       tags: [rpc]
       operationId: getRPCAvailable
-      description: Explicit OMLOX RPC method availability endpoint.
+      summary: List available RPC methods
+      description: Returns the MQTT-discovered registry of RPC methods and handler IDs currently announced to the hub.
       responses:
         '200':
           description: Available methods grouped by method name.
@@ -489,7 +517,8 @@ paths:
     put:
       tags: [rpc]
       operationId: putRPC
-      description: Explicit OMLOX RPC bridge endpoint for JSON-RPC 2.0 messages.
+      summary: Invoke JSON-RPC over MQTT
+      description: Sends a JSON-RPC 2.0 request to MQTT and optionally waits for responses according to the requested aggregation mode.
       requestBody:
         required: true
         content:
@@ -528,6 +557,7 @@ components:
       in: path
       name: zoneId
       required: true
+      description: UUID of the zone resource.
       schema:
         type: string
         format: uuid
@@ -535,6 +565,7 @@ components:
       in: path
       name: trackableId
       required: true
+      description: UUID of the trackable resource.
       schema:
         type: string
         format: uuid
@@ -542,36 +573,38 @@ components:
       in: path
       name: providerId
       required: true
+      description: Stable provider identifier chosen by the client.
       schema:
         type: string
     FenceId:
       in: path
       name: fenceId
       required: true
+      description: UUID of the fence resource.
       schema:
         type: string
         format: uuid
   responses:
     BadRequest:
-      description: Invalid request
+      description: The request body or path parameters were invalid for the targeted operation.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Authentication failed
+      description: The request did not include a valid bearer token.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Authenticated but not authorized
+      description: The bearer token was valid but does not grant access to the targeted resource.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
-      description: Resource not found
+      description: The requested resource identifier does not exist.
       content:
         application/json:
           schema:
@@ -579,47 +612,58 @@ components:
   schemas:
     ErrorResponse:
       type: object
+      description: Standard error envelope returned by the REST API.
       required: [type, code]
       properties:
         type:
           type: string
+          description: Stable machine-readable error type.
         code:
           type: integer
+          description: HTTP status code associated with the error.
         message:
           type: string
+          description: Human-readable error message.
 
     ExtensionProperties:
       type: object
+      description: Free-form extension object preserved as-is by the hub.
       additionalProperties: true
 
     StringIdList:
       type: array
+      description: List of opaque string identifiers.
       items:
         type: string
 
     GeoJsonPosition2D:
       type: array
+      description: GeoJSON 2D coordinate tuple in `[x, y]` order.
       minItems: 2
       maxItems: 2
       items:
         type: number
     GeoJsonPosition3D:
       type: array
+      description: GeoJSON 3D coordinate tuple in `[x, y, z]` order.
       minItems: 3
       maxItems: 3
       items:
         type: number
     GeoJsonPosition:
+      description: GeoJSON coordinate tuple used by `Point`, `LineString`, and `Polygon`.
       oneOf:
         - $ref: '#/components/schemas/GeoJsonPosition2D'
         - $ref: '#/components/schemas/GeoJsonPosition3D'
 
     PositiveNumber:
       type: number
+      description: Positive numeric value greater than zero.
       minimum: 0
       exclusiveMinimum: true
 
     PositiveOrMinusOne:
+      description: Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
       anyOf:
         - type: number
           enum: [-1]
@@ -627,16 +671,19 @@ components:
 
     Point:
       type: object
+      description: GeoJSON point geometry.
       required: [type, coordinates]
       properties:
         type:
           type: string
           const: Point
+          description: GeoJSON type discriminator.
         coordinates:
           $ref: '#/components/schemas/GeoJsonPosition'
 
     LineString:
       type: object
+      description: GeoJSON line geometry.
       required: [type, coordinates]
       properties:
         type:
@@ -650,6 +697,7 @@ components:
 
     Polygon:
       type: object
+      description: GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
       required: [type, coordinates]
       properties:
         type:
@@ -679,6 +727,7 @@ components:
 
     LocatingRule:
       type: object
+      description: Trackable locating rule used to prioritize candidate locations from providers.
       required: [expression, priority]
       properties:
         expression:
@@ -689,29 +738,37 @@ components:
             `timestamp_diff`.
         priority:
           type: number
+          description: Lower values indicate higher precedence.
 
     Zone:
       type: object
+      description: Stored zone resource returned by the REST API.
       required: [id, type]
       properties:
         id:
           type: string
           format: uuid
+          description: Hub-assigned or client-supplied UUID.
         foreign_id:
           type: string
+          description: External identifier from an upstream system.
         position:
           $ref: '#/components/schemas/Point'
         radius:
           type: number
+          description: Radius in meters when the zone is modeled as a point with extent.
         ground_control_points:
           type: array
+          description: Local-to-WGS84 reference pairs used for georeferencing local coordinates.
           items:
             $ref: '#/components/schemas/GroundControlPoint'
         incomplete_configuration:
           type: boolean
+          description: When true, the zone may omit fields required for a fully configured zone.
         measurement_timestamp:
           type: string
           format: date-time
+          description: Timestamp describing when the zone definition was measured or last updated.
         type:
           type: string
           description: >
@@ -719,23 +776,31 @@ components:
             for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
         site:
           type: string
+          description: Optional site identifier.
         building:
           type: string
+          description: Optional building identifier.
         floor:
           type: number
+          description: Optional floor number or level indicator.
         name:
           type: string
+          description: Human-readable zone name.
         description:
           type: string
+          description: Human-readable zone description.
         address:
           type: string
+          description: Optional postal-style address or location hint.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
         wgs84_height:
           type: number
+          description: Optional zone altitude in meters relative to WGS84.
 
     ZoneWrite:
       type: object
+      description: Mutable fields used to create or replace a zone resource.
       required: [type]
       allOf:
         - if:
@@ -774,12 +839,15 @@ components:
           description: If omitted on create, the hub generates a UUID.
         foreign_id:
           type: string
+          description: External identifier from an upstream system.
         position:
           $ref: '#/components/schemas/Point'
         radius:
           type: number
+          description: Radius in meters when the zone is modeled as a point with extent.
         ground_control_points:
           type: array
+          description: Local-to-WGS84 reference pairs required for fully configured non-proximity zones.
           items:
             $ref: '#/components/schemas/GroundControlPoint'
         incomplete_configuration:
@@ -787,8 +855,10 @@ components:
         measurement_timestamp:
           type: string
           format: date-time
+          description: Timestamp describing when the zone definition was measured or last updated.
         type:
           type: string
+          description: OMLOX positioning technology or zone type such as `uwb`, `wifi`, `rfid`, or `ibeacon`.
         site:
           type: string
         building:
@@ -808,6 +878,7 @@ components:
 
     Trackable:
       type: object
+      description: Stored trackable resource returned by the REST API.
       required: [id, type]
       properties:
         id:
@@ -826,6 +897,7 @@ components:
           exclusiveMinimum: true
         location_providers:
           $ref: '#/components/schemas/StringIdList'
+          description: Preferred providers considered when deriving trackable locations.
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -840,11 +912,13 @@ components:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
           type: array
+          description: Ordered locating rules applied when multiple candidate locations exist.
           items:
             $ref: '#/components/schemas/LocatingRule'
 
     TrackableWrite:
       type: object
+      description: Mutable fields used to create or replace a trackable resource.
       required: [type]
       properties:
         id:
@@ -864,6 +938,7 @@ components:
           exclusiveMinimum: true
         location_providers:
           $ref: '#/components/schemas/StringIdList'
+          description: Preferred providers considered when deriving trackable locations.
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -878,11 +953,13 @@ components:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
           type: array
+          description: Ordered locating rules applied when multiple candidate locations exist.
           items:
             $ref: '#/components/schemas/LocatingRule'
 
     LocationProvider:
       type: object
+      description: Stored location-provider resource returned by the REST API.
       required: [id, type]
       properties:
         id:
@@ -893,6 +970,7 @@ components:
           type: string
         sensors:
           $ref: '#/components/schemas/ExtensionProperties'
+          description: Provider-specific sensor metadata preserved by the hub.
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -906,6 +984,7 @@ components:
 
     LocationProviderWrite:
       type: object
+      description: Mutable fields used to create or replace a location-provider resource.
       required: [id, type]
       properties:
         id:
@@ -916,6 +995,7 @@ components:
           type: string
         sensors:
           $ref: '#/components/schemas/ExtensionProperties'
+          description: Provider-specific sensor metadata preserved by the hub.
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -929,72 +1009,96 @@ components:
 
     Location:
       type: object
+      description: Provider location observation accepted by ingest and reused in derived outputs.
       required: [position, source, provider_type, provider_id]
       properties:
         position:
           $ref: '#/components/schemas/Point'
         source:
           type: string
+          description: Source locator or sensor identifier that produced the observation.
         provider_type:
           type: string
+          description: Provider technology or implementation type.
         provider_id:
           type: string
+          description: Stable provider identifier.
         trackables:
           $ref: '#/components/schemas/StringIdList'
+          description: Trackables associated with the observation, when already known.
         timestamp_generated:
           type: string
           format: date-time
+          description: Timestamp when the provider generated the observation.
         timestamp_sent:
           type: string
           format: date-time
+          description: Timestamp when the provider sent the observation to the hub.
         crs:
           type: string
-          description: Valid EPSG identifier or `local`. Defaults to `local`.
+          description: Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current implementation.
         associated:
           type: boolean
+          description: Indicates whether the location has already been associated with a trackable.
         accuracy:
           type: number
+          description: Estimated positional accuracy in meters.
         floor:
           type: number
+          description: Optional floor number or level indicator.
         true_heading:
           type: number
+          description: Heading in degrees relative to true north.
         magnetic_heading:
           type: number
+          description: Heading in degrees relative to magnetic north.
         heading_accuracy:
           type: number
+          description: Estimated heading accuracy in degrees.
         elevation_ref:
           type: string
           enum: [floor, wgs84]
+          description: Reference system for altitude-like values carried in the geometry.
         speed:
           type: number
+          description: Estimated speed in meters per second.
         course:
           type: number
+          description: Travel course in degrees.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
     Proximity:
       type: object
+      description: Provider proximity observation used for zone-based position derivation.
       required: [source, provider_type, provider_id]
       properties:
         source:
           type: string
+          description: Source locator or sensor identifier that produced the observation.
         provider_type:
           type: string
+          description: Provider technology or implementation type.
         provider_id:
           type: string
+          description: Stable provider identifier.
         timestamp_generated:
           type: string
           format: date-time
+          description: Timestamp when the provider generated the observation.
         timestamp_sent:
           type: string
           format: date-time
+          description: Timestamp when the provider sent the observation to the hub.
         accuracy:
           type: number
+          description: Estimated confidence or accuracy value supplied by the provider.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
     Fence:
       type: object
+      description: Stored fence resource returned by the REST API.
       required: [id, region]
       properties:
         id:
@@ -1004,14 +1108,17 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Polygon'
             - $ref: '#/components/schemas/Point'
+          description: Fence geometry expressed as either a polygon or a point-plus-radius.
         radius:
           type: number
+          description: Radius in meters when `region` is a point.
         extrusion:
           type: number
           minimum: 0
           exclusiveMinimum: true
         floor:
           type: number
+          description: Optional floor number or level indicator.
         foreign_id:
           type: string
         name:
@@ -1026,7 +1133,7 @@ components:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         crs:
           type: string
-          description: Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
+          description: Valid EPSG identifier or `local`. Omitted values are treated as `EPSG:4326`.
         zone_id:
           type: string
           description: Required when `crs` is `local`.
@@ -1038,6 +1145,7 @@ components:
 
     FenceWrite:
       type: object
+      description: Mutable fields used to create or replace a fence resource.
       required: [region]
       allOf:
         - if:
@@ -1056,6 +1164,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Polygon'
             - $ref: '#/components/schemas/Point'
+          description: Fence geometry expressed as either a polygon or a point-plus-radius.
         radius:
           type: number
         extrusion:
@@ -1078,8 +1187,10 @@ components:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         crs:
           type: string
+          description: Valid EPSG identifier or `local`. Omitted values are treated as `EPSG:4326`.
         zone_id:
           type: string
+          description: Required when `crs` is `local`.
         elevation_ref:
           type: string
           enum: [floor, wgs84]
@@ -1088,6 +1199,7 @@ components:
 
     FenceEvent:
       type: object
+      description: Derived fence membership event published by the hub.
       required: [id, fence_id, event_type]
       properties:
         id:
@@ -1118,6 +1230,7 @@ components:
 
     Collision:
       type: object
+      description: Collision participant snapshot used by future collision-event modeling.
       required: [id, object_type, position, geometry]
       properties:
         id:
@@ -1134,6 +1247,7 @@ components:
 
     CollisionEvent:
       type: object
+      description: Collision event model reserved for future collision processing support.
       required: [id, collision_type, collisions]
       properties:
         id:
@@ -1165,6 +1279,7 @@ components:
 
     TrackableMotion:
       type: object
+      description: Derived trackable motion payload published by the hub.
       required: [id, location]
       properties:
         id:
@@ -1182,6 +1297,7 @@ components:
 
     RpcAvailableMethodsEntry:
       type: object
+      description: MQTT-discovered handler IDs for a single JSON-RPC method name.
       required: [handler_id]
       properties:
         handler_id:
@@ -1190,42 +1306,53 @@ components:
             type: string
     RpcAvailableMethods:
       type: object
+      description: Mapping of JSON-RPC method name to discovered handler IDs.
       additionalProperties:
         $ref: '#/components/schemas/RpcAvailableMethodsEntry'
 
     JsonRpcRequest:
       type: object
+      description: JSON-RPC 2.0 request accepted by the REST-to-MQTT bridge.
       required: [jsonrpc, method]
       properties:
         jsonrpc:
           type: string
           const: '2.0'
+          description: JSON-RPC protocol version.
         id:
           oneOf:
             - type: string
             - type: integer
             - type: number
+          description: Request identifier. Omit together with `_caller_id` to send a notification.
         method:
           type: string
+          description: JSON-RPC method name.
         params:
           type: object
+          description: Method-specific parameters plus supported OMLOX bridge extensions.
           additionalProperties: true
           properties:
             _timeout:
               type: number
+              description: Maximum time in milliseconds to wait for responses.
             _aggregation:
               type: string
+              description: Response aggregation mode used by the hub while waiting for MQTT responses.
               enum:
                 - _all_within_timeout
                 - _return_first_success
                 - _return_first_error
             _handler_id:
               type: string
+              description: Optional explicit handler identifier for directed invocation.
             _caller_id:
               type: string
+              description: Caller identifier used to correlate MQTT responses.
 
     JsonRpcErrorObject:
       type: object
+      description: Standard JSON-RPC error object.
       required: [code, message]
       properties:
         code:
@@ -1237,6 +1364,7 @@ components:
 
     JsonRpcSuccessResponse:
       type: object
+      description: JSON-RPC success envelope returned by the bridge.
       required: [jsonrpc, id, result]
       properties:
         jsonrpc:
@@ -1252,6 +1380,7 @@ components:
 
     JsonRpcErrorResponse:
       type: object
+      description: JSON-RPC error envelope returned by the bridge.
       required: [jsonrpc, id, error]
       properties:
         jsonrpc:
