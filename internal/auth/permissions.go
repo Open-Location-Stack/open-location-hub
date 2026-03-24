@@ -52,10 +52,13 @@ func LoadRegistry(path string) (*Registry, error) {
 			if err != nil {
 				return nil, fmt.Errorf("role %q pattern %q: %w", role, pattern, err)
 			}
+			if err := validateRule(pattern, perms); err != nil {
+				return nil, fmt.Errorf("role %q pattern %q: %w", role, pattern, err)
+			}
 			rules = append(rules, Rule{Pattern: pattern, Permissions: perms})
 		}
-		sort.Slice(rules, func(i, j int) bool {
-			return rules[i].Pattern < rules[j].Pattern
+		sort.SliceStable(rules, func(i, j int) bool {
+			return compareSpecificity(rules[i].Pattern, rules[j].Pattern) > 0
 		})
 		registry.roles[role] = rules
 	}
@@ -84,6 +87,17 @@ func parsePermissions(v any) (map[Permission]struct{}, error) {
 	return out, nil
 }
 
+func validateRule(pattern string, perms map[Permission]struct{}) error {
+	if !supportsOwnPermissions(pattern) {
+		for perm := range perms {
+			if strings.HasSuffix(string(perm), "_OWN") {
+				return fmt.Errorf("%s requires at least one path parameter in the route pattern", perm)
+			}
+		}
+	}
+	return nil
+}
+
 func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 	requiredAny, requiredOwn, err := permissionsForMethod(req.Method)
 	if err != nil {
@@ -93,23 +107,23 @@ func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 		return unauthorized("missing authenticated principal")
 	}
 
+	matched := false
 	for _, role := range principal.Roles {
-		for _, rule := range r.roles[role] {
-			params, ok := matchPattern(rule.Pattern, req.URL.Path)
-			if !ok {
-				continue
-			}
-			if _, ok := rule.Permissions[requiredAny]; ok {
-				return nil
-			}
-			if _, ok := rule.Permissions[requiredOwn]; ok {
-				if ownsAll(principal, params) {
-					return nil
-				}
-			}
+		rule, params, ok := bestMatchingRule(r.roles[role], req.URL.Path)
+		if !ok {
+			continue
+		}
+		matched = true
+		if _, ok := rule.Permissions[requiredAny]; ok {
+			return nil
+		}
+		if _, ok := rule.Permissions[requiredOwn]; ok && ownsAll(principal, params) {
+			return nil
 		}
 	}
-
+	if !matched {
+		return forbidden("token does not grant access to this endpoint")
+	}
 	return forbidden("token does not grant access to this endpoint")
 }
 
@@ -149,12 +163,69 @@ func matchPattern(pattern, path string) (map[string]string, bool) {
 	return params, len(patternParts) == len(pathParts)
 }
 
+func bestMatchingRule(rules []Rule, path string) (Rule, map[string]string, bool) {
+	var (
+		bestRule   Rule
+		bestParams map[string]string
+		found      bool
+	)
+	for _, rule := range rules {
+		params, ok := matchPattern(rule.Pattern, path)
+		if !ok {
+			continue
+		}
+		if !found || compareSpecificity(rule.Pattern, bestRule.Pattern) > 0 {
+			bestRule = rule
+			bestParams = params
+			found = true
+		}
+	}
+	return bestRule, bestParams, found
+}
+
 func splitPath(path string) []string {
 	trimmed := strings.Trim(path, "/")
 	if trimmed == "" {
 		return nil
 	}
 	return strings.Split(trimmed, "/")
+}
+
+func supportsOwnPermissions(pattern string) bool {
+	for _, part := range splitPath(pattern) {
+		if strings.HasPrefix(part, ":") {
+			return true
+		}
+	}
+	return false
+}
+
+func compareSpecificity(left, right string) int {
+	leftScore := specificityScore(left)
+	rightScore := specificityScore(right)
+	switch {
+	case leftScore > rightScore:
+		return 1
+	case leftScore < rightScore:
+		return -1
+	default:
+		return strings.Compare(left, right)
+	}
+}
+
+func specificityScore(pattern string) int {
+	score := 0
+	for _, part := range splitPath(pattern) {
+		switch {
+		case part == "*":
+			score += 1
+		case strings.HasPrefix(part, ":"):
+			score += 10
+		default:
+			score += 100
+		}
+	}
+	return score
 }
 
 func ownsAll(principal *Principal, params map[string]string) bool {

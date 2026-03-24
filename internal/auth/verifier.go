@@ -33,8 +33,9 @@ type oidcAuthenticator struct {
 	cfg          config.AuthConfig
 	httpClient   *http.Client
 	mu           sync.RWMutex
-	verifier     *oidc.IDTokenVerifier
+	keyfunc      jwt.Keyfunc
 	lastRefresh  time.Time
+	jwksURL      string
 	refreshError error
 }
 
@@ -101,38 +102,57 @@ func (a *oidcAuthenticator) Authenticate(ctx context.Context, token string) (*Pr
 	}
 
 	a.mu.RLock()
-	verifier := a.verifier
+	keyfn := a.keyfunc
 	a.mu.RUnlock()
+	if keyfn == nil {
+		return nil, unauthorized("missing OIDC verifier")
+	}
 
-	idToken, err := verifier.Verify(withHTTPClient(ctx, a.httpClient), token)
+	claims := jwt.MapClaims{}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods(cleanStrings(a.cfg.AllowedAlgs)),
+		jwt.WithLeeway(a.cfg.ClockSkew),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(a.cfg.Issuer),
+	)
+	parsed, err := parser.ParseWithClaims(token, claims, keyfn)
 	if err != nil {
 		return nil, unauthorized("invalid bearer token")
 	}
-	if !audienceAllowed(idToken.Audience, a.cfg.Audience) {
+	if !parsed.Valid {
+		return nil, unauthorized("invalid bearer token")
+	}
+	rawClaims := map[string]any{}
+	for k, v := range claims {
+		rawClaims[k] = v
+	}
+	if !audienceAllowed(extractAudience(rawClaims), a.cfg.Audience) {
 		return nil, unauthorized("token audience is not accepted")
 	}
-
-	claims := map[string]any{}
-	if err := idToken.Claims(&claims); err != nil {
-		return nil, unauthorized("unable to decode token claims")
-	}
-	return principalFromClaims(claims, a.cfg), nil
+	return principalFromClaims(rawClaims, a.cfg), nil
 }
 
 func (a *oidcAuthenticator) ensureFresh(ctx context.Context) error {
 	a.mu.RLock()
-	needsRefresh := a.verifier == nil || time.Since(a.lastRefresh) > a.cfg.OIDCJWKSRefreshTTL
+	needsRefresh := a.keyfunc == nil || time.Since(a.lastRefresh) > a.cfg.OIDCJWKSRefreshTTL
+	hasVerifier := a.keyfunc != nil
 	a.mu.RUnlock()
 	if !needsRefresh {
 		return nil
 	}
-	return a.refreshVerifier(ctx)
+	if err := a.refreshVerifier(ctx); err != nil {
+		if hasVerifier {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *oidcAuthenticator) refreshVerifier(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.verifier != nil && time.Since(a.lastRefresh) <= a.cfg.OIDCJWKSRefreshTTL {
+	if a.keyfunc != nil && time.Since(a.lastRefresh) <= a.cfg.OIDCJWKSRefreshTTL {
 		return nil
 	}
 
@@ -142,12 +162,25 @@ func (a *oidcAuthenticator) refreshVerifier(ctx context.Context) error {
 		return err
 	}
 
-	oidcCfg := &oidc.Config{
-		ClientID:             "",
-		SkipClientIDCheck:    true,
-		SupportedSigningAlgs: cleanStrings(a.cfg.AllowedAlgs),
+	var metadata struct {
+		JWKSURI string `json:"jwks_uri"`
 	}
-	a.verifier = provider.Verifier(oidcCfg)
+	if err := provider.Claims(&metadata); err != nil {
+		a.refreshError = err
+		return err
+	}
+	if strings.TrimSpace(metadata.JWKSURI) == "" {
+		err := errors.New("OIDC metadata missing jwks_uri")
+		a.refreshError = err
+		return err
+	}
+	jwks, err := keyfunc.NewDefaultCtx(context.Background(), []string{metadata.JWKSURI})
+	if err != nil {
+		a.refreshError = err
+		return err
+	}
+	a.keyfunc = jwks.Keyfunc
+	a.jwksURL = metadata.JWKSURI
 	a.lastRefresh = time.Now()
 	a.refreshError = nil
 	return nil
@@ -287,6 +320,10 @@ func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Re
 			principal, err := authenticator.Authenticate(ctx, token)
 			if err != nil {
 				writeAuthError(w, err)
+				return
+			}
+			if registry == nil {
+				writeAuthError(w, forbidden("authorization registry is not configured"))
 				return
 			}
 			if err := registry.Authorize(r, principal); err != nil {

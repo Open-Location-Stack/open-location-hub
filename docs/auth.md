@@ -49,9 +49,11 @@ Method mapping:
 - `PUT` and `PATCH` require `UPDATE_*`
 - `DELETE` requires `DELETE_*`
 
+`*_OWN` permissions are only supported for routes that include explicit path identifiers, such as `/v2/providers/:providerId`. Collection routes like `/v2/zones` cannot currently enforce `*_OWN` semantics.
+
 ## Permissions File
 
-The permissions file is YAML. Top-level keys are values from the configured role claim. In production this would usually be a role or group claim. For the included Dex development fixture, the role claim is set to `email` because Dex's local password database produces deterministic user identity claims without extra role mapping.
+The permissions file is YAML. Top-level keys are values from the configured role claim. In production this would usually be a role or group claim. For the included Dex development fixture, the role claim is set to `email` because Dex's local password database produces deterministic user identity claims without extra role mapping. That is a development convenience, not a production recommendation.
 
 Example:
 
@@ -127,7 +129,7 @@ curl -sS -X POST http://localhost:5556/dex/token \
   --data 'grant_type=password&scope=openid%20email%20profile&username=admin@example.com&password=testpass123'
 ```
 
-Use the returned `id_token` as the bearer token when calling the hub.
+Use the returned `access_token` as the bearer token when calling the hub.
 
 ## Other Providers
 
@@ -138,7 +140,7 @@ Keycloak and similar OIDC providers fit the same model if they expose:
 - a stable audience for the hub
 - a claim that can be mapped via `AUTH_ROLES_CLAIM`
 
-For production deployments, prefer a real role or group claim instead of the Dex development fixture's email-based mapping.
+For production deployments, prefer a real role or group claim instead of the Dex development fixture's email-based mapping. The hub is intended to verify JWT access tokens from the production IdP, not development-specific token handling.
 
 ## End-to-End Coverage
 

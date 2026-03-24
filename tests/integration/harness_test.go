@@ -218,15 +218,15 @@ func fetchDexIDToken(t *testing.T, ctx context.Context, container testcontainers
 	}
 
 	var payload struct {
-		IDToken string `json:"id_token"`
+		AccessToken string `json:"access_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode token response failed: %v", err)
 	}
-	if payload.IDToken == "" {
-		t.Fatal("dex token response did not include id_token")
+	if payload.AccessToken == "" {
+		t.Fatal("dex token response did not include access_token")
 	}
-	return payload.IDToken
+	return payload.AccessToken
 }
 
 func mappedHTTPURL(t *testing.T, ctx context.Context, container testcontainers.Container, port string) string {
