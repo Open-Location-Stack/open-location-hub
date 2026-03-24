@@ -3,12 +3,16 @@ info:
   title: Open RTLS Hub API
   version: 0.2.0
   description: |
-    Normative REST contract for the Open RTLS Hub OMLOX v2-compatible API.
+    Normative REST contract for the Open RTLS Hub API targeting the omlox hub specification.
 
     This contract is aligned to `omlox-hub-spec_20112_V200_Aug23.pdf`.
     Where the PDF defines setup or lifecycle behavior but does not enumerate a
     verb/path pair, companion REST lifecycle endpoints are included here and
     marked as inferred.
+
+    This contract is independently authored and is not an official PI/PNO
+    publication or certification artifact. `omlox` is a trademark of
+    PROFIBUS Nutzerorganisation e.V.
 externalDocs:
   description: Companion OMLOX protocol notes for WebSocket, MQTT, and RPC mapping details.
   url: ./README.md
