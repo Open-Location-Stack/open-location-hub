@@ -9,16 +9,23 @@ import (
 )
 
 type Config struct {
-	HTTPListenAddr    string
-	LogLevel          string
-	PostgresURL       string
-	ValkeyURL         string
-	MQTTBrokerURL     string
-	StateLocationTTL  time.Duration
-	StateProximityTTL time.Duration
-	StateDedupTTL     time.Duration
-	RPCTimeout        time.Duration
-	Auth              AuthConfig
+	HTTPListenAddr                        string
+	LogLevel                              string
+	PostgresURL                           string
+	ValkeyURL                             string
+	MQTTBrokerURL                         string
+	StateLocationTTL                      time.Duration
+	StateProximityTTL                     time.Duration
+	StateDedupTTL                         time.Duration
+	RPCTimeout                            time.Duration
+	ProximityResolutionEntryConfidenceMin float64
+	ProximityResolutionExitGraceDuration  time.Duration
+	ProximityResolutionBoundaryGrace      float64
+	ProximityResolutionMinDwellDuration   time.Duration
+	ProximityResolutionPositionMode       string
+	ProximityResolutionFallbackRadius     float64
+	ProximityResolutionStaleStateTTL      time.Duration
+	Auth                                  AuthConfig
 }
 
 type AuthConfig struct {
@@ -38,15 +45,22 @@ type AuthConfig struct {
 
 func FromEnv() (Config, error) {
 	cfg := Config{
-		HTTPListenAddr:    env("HTTP_LISTEN_ADDR", ":8080"),
-		LogLevel:          env("LOG_LEVEL", "info"),
-		PostgresURL:       env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
-		ValkeyURL:         env("VALKEY_URL", "redis://localhost:6379/0"),
-		MQTTBrokerURL:     env("MQTT_BROKER_URL", "tcp://localhost:1883"),
-		StateLocationTTL:  durationEnv("STATE_LOCATION_TTL", 10*time.Minute),
-		StateProximityTTL: durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
-		StateDedupTTL:     durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
-		RPCTimeout:        durationEnv("RPC_TIMEOUT", 5*time.Second),
+		HTTPListenAddr:                        env("HTTP_LISTEN_ADDR", ":8080"),
+		LogLevel:                              env("LOG_LEVEL", "info"),
+		PostgresURL:                           env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
+		ValkeyURL:                             env("VALKEY_URL", "redis://localhost:6379/0"),
+		MQTTBrokerURL:                         env("MQTT_BROKER_URL", "tcp://localhost:1883"),
+		StateLocationTTL:                      durationEnv("STATE_LOCATION_TTL", 10*time.Minute),
+		StateProximityTTL:                     durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
+		StateDedupTTL:                         durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
+		RPCTimeout:                            durationEnv("RPC_TIMEOUT", 5*time.Second),
+		ProximityResolutionEntryConfidenceMin: floatEnv("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
+		ProximityResolutionExitGraceDuration:  durationEnv("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
+		ProximityResolutionBoundaryGrace:      floatEnv("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
+		ProximityResolutionMinDwellDuration:   durationEnv("PROXIMITY_RESOLUTION_MIN_DWELL_DURATION", 5*time.Second),
+		ProximityResolutionPositionMode:       env("PROXIMITY_RESOLUTION_POSITION_MODE", "zone_position"),
+		ProximityResolutionFallbackRadius:     floatEnv("PROXIMITY_RESOLUTION_FALLBACK_RADIUS", 0),
+		ProximityResolutionStaleStateTTL:      durationEnv("PROXIMITY_RESOLUTION_STALE_STATE_TTL", 10*time.Minute),
 		Auth: AuthConfig{
 			Mode:                env("AUTH_MODE", "none"),
 			Audience:            csvEnv("AUTH_AUDIENCE", "open-rtls-hub"),
@@ -77,6 +91,27 @@ func FromEnv() (Config, error) {
 	}
 	if cfg.RPCTimeout <= 0 {
 		return Config{}, fmt.Errorf("RPC_TIMEOUT must be > 0")
+	}
+	if cfg.ProximityResolutionEntryConfidenceMin < 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN must be >= 0")
+	}
+	if cfg.ProximityResolutionExitGraceDuration <= 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION must be > 0")
+	}
+	if cfg.ProximityResolutionBoundaryGrace < 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE must be >= 0")
+	}
+	if cfg.ProximityResolutionMinDwellDuration < 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_MIN_DWELL_DURATION must be >= 0")
+	}
+	if cfg.ProximityResolutionPositionMode != "zone_position" {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_POSITION_MODE must be zone_position")
+	}
+	if cfg.ProximityResolutionFallbackRadius < 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_FALLBACK_RADIUS must be >= 0")
+	}
+	if cfg.ProximityResolutionStaleStateTTL <= 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_STALE_STATE_TTL must be > 0")
 	}
 	return cfg, nil
 }
@@ -163,6 +198,18 @@ func boolEnv(k string, d bool) bool {
 		return d
 	}
 	x, err := strconv.ParseBool(v)
+	if err != nil {
+		return d
+	}
+	return x
+}
+
+func floatEnv(k string, d float64) float64 {
+	v := env(k, "")
+	if v == "" {
+		return d
+	}
+	x, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return d
 	}

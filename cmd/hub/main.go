@@ -67,9 +67,16 @@ func main() {
 
 	queries := sqlcgen.New(pg)
 	service := hub.New(logger, queries, cache, mq, hub.Config{
-		LocationTTL:  cfg.StateLocationTTL,
-		ProximityTTL: cfg.StateProximityTTL,
-		DedupTTL:     cfg.StateDedupTTL,
+		LocationTTL:                           cfg.StateLocationTTL,
+		ProximityTTL:                          cfg.StateProximityTTL,
+		DedupTTL:                              cfg.StateDedupTTL,
+		ProximityResolutionEntryConfidenceMin: cfg.ProximityResolutionEntryConfidenceMin,
+		ProximityResolutionExitGraceDuration:  cfg.ProximityResolutionExitGraceDuration,
+		ProximityResolutionBoundaryGrace:      cfg.ProximityResolutionBoundaryGrace,
+		ProximityResolutionMinDwellDuration:   cfg.ProximityResolutionMinDwellDuration,
+		ProximityResolutionPositionMode:       cfg.ProximityResolutionPositionMode,
+		ProximityResolutionFallbackRadius:     cfg.ProximityResolutionFallbackRadius,
+		ProximityResolutionStaleStateTTL:      cfg.ProximityResolutionStaleStateTTL,
 	})
 	rpcBridge, err := rpc.NewBridge(logger, mq, cfg.RPCTimeout)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -26,18 +27,33 @@ type Publisher interface {
 	PublishJSON(ctx context.Context, topic string, payload any, retained bool) error
 }
 
+type Cache interface {
+	Get(ctx context.Context, key string) ([]byte, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
+	Delete(ctx context.Context, key string) error
+}
+
 type Config struct {
-	LocationTTL  time.Duration
-	ProximityTTL time.Duration
-	DedupTTL     time.Duration
+	LocationTTL                           time.Duration
+	ProximityTTL                          time.Duration
+	DedupTTL                              time.Duration
+	ProximityResolutionEntryConfidenceMin float64
+	ProximityResolutionExitGraceDuration  time.Duration
+	ProximityResolutionBoundaryGrace      float64
+	ProximityResolutionMinDwellDuration   time.Duration
+	ProximityResolutionPositionMode       string
+	ProximityResolutionFallbackRadius     float64
+	ProximityResolutionStaleStateTTL      time.Duration
 }
 
 type Service struct {
 	logger    *zap.Logger
 	queries   sqlcgen.Querier
-	cache     *valkey.Client
+	cache     Cache
 	publisher Publisher
 	cfg       Config
+	now       func() time.Time
 }
 
 type HTTPError struct {
@@ -57,7 +73,45 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, publ
 		cache:     cache,
 		publisher: publisher,
 		cfg:       cfg,
+		now:       time.Now,
 	}
+}
+
+type proximityResolutionPolicy struct {
+	EntryConfidenceMin float64
+	ExitGraceDuration  time.Duration
+	BoundaryGrace      float64
+	MinDwellDuration   time.Duration
+	PositionMode       string
+	FallbackRadius     float64
+	StaleStateTTL      time.Duration
+}
+
+type proximityResolutionOverrides struct {
+	EntryConfidenceMin *float64
+	ExitGraceDuration  *time.Duration
+	BoundaryGrace      *float64
+	MinDwellDuration   *time.Duration
+	PositionMode       *string
+	FallbackRadius     *float64
+	StaleStateTTL      *time.Duration
+}
+
+type proximityResolutionState struct {
+	ResolvedZoneID   string    `json:"resolved_zone_id"`
+	EnteredAt        time.Time `json:"entered_at"`
+	LastConfirmedAt  time.Time `json:"last_confirmed_at"`
+	LastEmittedAt    time.Time `json:"last_emitted_at"`
+	LastCandidateID  string    `json:"last_candidate_id,omitempty"`
+	LastCandidateAt  time.Time `json:"last_candidate_at,omitempty"`
+	ResolutionMethod string    `json:"resolution_method,omitempty"`
+}
+
+type resolvedProximity struct {
+	Zone   gen.Zone
+	Policy proximityResolutionPolicy
+	State  proximityResolutionState
+	Sticky bool
 }
 
 func (s *Service) ListZones(ctx context.Context) ([]gen.Zone, error) {
@@ -369,27 +423,167 @@ func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proxi
 	if err != nil {
 		return gen.Location{}, err
 	}
+	now := s.now()
+	policyDefaults := s.defaultProximityResolutionPolicy()
+	candidate, err := resolveProximityCandidate(proximity, zones, policyDefaults)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	stateKey := proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId)
+	state, err := s.loadProximityState(ctx, stateKey)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	currentZone := findZoneByID(zones, state.ResolvedZoneID)
+	resolution, clearState, err := resolveProximity(proximity, candidate, currentZone, state, policyDefaults, now)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	if clearState {
+		if err := s.cache.Delete(ctx, stateKey); err != nil {
+			return gen.Location{}, err
+		}
+	} else if err := s.storeProximityState(ctx, stateKey, resolution.State, resolution.Policy.StaleStateTTL); err != nil {
+		return gen.Location{}, err
+	}
+	return deriveLocationFromProximity(proximity, resolution.Zone, resolution.Sticky), nil
+}
+
+func (s *Service) defaultProximityResolutionPolicy() proximityResolutionPolicy {
+	positionMode := strings.TrimSpace(s.cfg.ProximityResolutionPositionMode)
+	if positionMode == "" {
+		positionMode = "zone_position"
+	}
+	return proximityResolutionPolicy{
+		EntryConfidenceMin: s.cfg.ProximityResolutionEntryConfidenceMin,
+		ExitGraceDuration:  s.cfg.ProximityResolutionExitGraceDuration,
+		BoundaryGrace:      s.cfg.ProximityResolutionBoundaryGrace,
+		MinDwellDuration:   s.cfg.ProximityResolutionMinDwellDuration,
+		PositionMode:       positionMode,
+		FallbackRadius:     s.cfg.ProximityResolutionFallbackRadius,
+		StaleStateTTL:      s.cfg.ProximityResolutionStaleStateTTL,
+	}
+}
+
+func (s *Service) loadProximityState(ctx context.Context, key string) (proximityResolutionState, error) {
+	payload, err := s.cache.Get(ctx, key)
+	if err != nil || len(payload) == 0 {
+		return proximityResolutionState{}, err
+	}
+	var state proximityResolutionState
+	if err := json.Unmarshal(payload, &state); err != nil {
+		return proximityResolutionState{}, err
+	}
+	return state, nil
+}
+
+func (s *Service) storeProximityState(ctx context.Context, key string, state proximityResolutionState, ttl time.Duration) error {
+	payload, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return s.cache.Set(ctx, key, payload, ttl)
+}
+
+func resolveProximityCandidate(proximity gen.Proximity, zones []gen.Zone, defaults proximityResolutionPolicy) (resolvedProximity, error) {
 	for _, zone := range zones {
 		if zone.Id.String() != proximity.Source && (zone.ForeignId == nil || *zone.ForeignId != proximity.Source) {
 			continue
 		}
-		if zone.Position == nil {
-			return gen.Location{}, badRequest("proximity source zone does not expose a position")
+		if !isProximityZoneType(zone.Type) {
+			return resolvedProximity{}, badRequest("proximity source zone must be an rfid or ibeacon zone")
 		}
-		crs := "local"
-		return gen.Location{
-			Accuracy:           proximity.Accuracy,
-			Crs:                &crs,
-			Position:           *zone.Position,
-			Properties:         proximity.Properties,
-			ProviderId:         proximity.ProviderId,
-			ProviderType:       proximity.ProviderType,
-			Source:             proximity.Source,
-			TimestampGenerated: proximity.TimestampGenerated,
-			TimestampSent:      proximity.TimestampSent,
-		}, nil
+		if zone.Position == nil {
+			return resolvedProximity{}, badRequest("proximity source zone does not expose a position")
+		}
+		policy, err := proximityPolicyForZone(zone, defaults)
+		if err != nil {
+			return resolvedProximity{}, err
+		}
+		return resolvedProximity{Zone: zone, Policy: policy}, nil
 	}
-	return gen.Location{}, badRequest("proximity source did not match a known zone id or foreign_id")
+	return resolvedProximity{}, badRequest("proximity source did not match a known zone id or foreign_id")
+}
+
+func resolveProximity(proximity gen.Proximity, candidate resolvedProximity, currentZone *gen.Zone, state proximityResolutionState, defaults proximityResolutionPolicy, now time.Time) (resolvedProximity, bool, error) {
+	if candidate.Policy.EntryConfidenceMin > 0 {
+		confidence, ok := proximityConfidence(proximity.Properties)
+		if !ok || confidence < candidate.Policy.EntryConfidenceMin {
+			return resolvedProximity{}, false, badRequest("proximity confidence below configured minimum")
+		}
+	}
+	if currentZone == nil || strings.TrimSpace(state.ResolvedZoneID) == "" {
+		return enterResolvedZone(candidate, proximity, now), false, nil
+	}
+	current, err := resolvedZoneFromCurrent(*currentZone, defaults)
+	if err != nil {
+		return resolvedProximity{}, false, err
+	}
+	if proximityStateExpired(state, current.Policy, now) {
+		return enterResolvedZone(candidate, proximity, now), false, nil
+	}
+	current.State = state
+	current.State.LastCandidateID = candidate.Zone.Id.String()
+	current.State.LastCandidateAt = now
+	current.State.ResolutionMethod = "proximity_zone"
+	if current.Zone.Id == candidate.Zone.Id {
+		current.State.LastConfirmedAt = now
+		current.State.LastEmittedAt = now
+		return current, false, nil
+	}
+	if now.Sub(state.EnteredAt) < current.Policy.MinDwellDuration {
+		current.Sticky = true
+		current.State.LastEmittedAt = now
+		return current, false, nil
+	}
+	if zonesWithinBoundaryGrace(current.Zone, current.Policy, candidate.Zone, candidate.Policy) && now.Sub(state.LastConfirmedAt) <= current.Policy.ExitGraceDuration {
+		current.Sticky = true
+		current.State.LastEmittedAt = now
+		return current, false, nil
+	}
+	return enterResolvedZone(candidate, proximity, now), false, nil
+}
+
+func enterResolvedZone(candidate resolvedProximity, proximity gen.Proximity, now time.Time) resolvedProximity {
+	state := proximityResolutionState{
+		ResolvedZoneID:   candidate.Zone.Id.String(),
+		EnteredAt:        now,
+		LastConfirmedAt:  now,
+		LastEmittedAt:    now,
+		LastCandidateID:  proximity.Source,
+		LastCandidateAt:  now,
+		ResolutionMethod: "proximity_zone",
+	}
+	candidate.State = state
+	candidate.Sticky = false
+	return candidate
+}
+
+func resolvedZoneFromCurrent(zone gen.Zone, defaults proximityResolutionPolicy) (resolvedProximity, error) {
+	if zone.Position == nil {
+		return resolvedProximity{}, badRequest("resolved proximity zone no longer exposes a position")
+	}
+	policy, err := proximityPolicyForZone(zone, defaults)
+	if err != nil {
+		return resolvedProximity{}, err
+	}
+	return resolvedProximity{Zone: zone, Policy: policy}, nil
+}
+
+func deriveLocationFromProximity(proximity gen.Proximity, zone gen.Zone, sticky bool) gen.Location {
+	crs := "local"
+	properties := mergeProximityResolutionProperties(proximity.Properties, zone.Id.String(), sticky)
+	return gen.Location{
+		Accuracy:           proximity.Accuracy,
+		Crs:                &crs,
+		Position:           *zone.Position,
+		Properties:         properties,
+		ProviderId:         proximity.ProviderId,
+		ProviderType:       proximity.ProviderType,
+		Source:             zone.Id.String(),
+		TimestampGenerated: proximity.TimestampGenerated,
+		TimestampSent:      proximity.TimestampSent,
+	}
 }
 
 func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl time.Duration) error {
@@ -561,6 +755,9 @@ func normalizeZone(body json.RawMessage, forcedID uuid.UUID) (gen.Zone, []byte, 
 	if t != "rfid" && t != "ibeacon" && !incomplete && doc["ground_control_points"] == nil {
 		return gen.Zone{}, nil, badRequest("ground_control_points are required unless incomplete_configuration=true")
 	}
+	if err := validateZoneProperties(doc["properties"]); err != nil {
+		return gen.Zone{}, nil, err
+	}
 	if forcedID == uuid.Nil {
 		if _, ok := doc["id"]; !ok {
 			doc["id"] = uuid.New().String()
@@ -606,6 +803,18 @@ func normalizeFence(body json.RawMessage, forcedID uuid.UUID) (gen.Fence, []byte
 		return gen.Fence{}, nil, badRequest("invalid fence payload")
 	}
 	return fence, payload, nil
+}
+
+func validateZoneProperties(raw any) error {
+	if raw == nil {
+		return nil
+	}
+	props, ok := raw.(map[string]any)
+	if !ok {
+		return badRequest("zone properties must be an object")
+	}
+	_, err := parseProximityResolutionOverrides(props)
+	return err
 }
 
 func normalizeProvider(body gen.LocationProviderWrite, forcedID string) (gen.LocationProvider, []byte, error) {
@@ -724,6 +933,10 @@ func latestTrackableLocationKey(trackableID string) string {
 	return fmt.Sprintf("hub:trackable:%s:location", trackableID)
 }
 
+func proximityResolutionStateKey(providerType, providerID string) string {
+	return fmt.Sprintf("hub:proximity:%s:%s", providerType, providerID)
+}
+
 func dedupKey(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return "hub:dedup:" + hex.EncodeToString(sum[:])
@@ -803,4 +1016,256 @@ func geoPoint(pos gen.GeoJsonPosition) ([2]float64, error) {
 		return [2]float64{float64(coords3d[0]), float64(coords3d[1])}, nil
 	}
 	return [2]float64{}, errors.New("invalid geojson position")
+}
+
+func proximityPolicyForZone(zone gen.Zone, defaults proximityResolutionPolicy) (proximityResolutionPolicy, error) {
+	policy := defaults
+	if zone.Properties == nil {
+		return validateProximityResolutionPolicy(policy)
+	}
+	overrides, err := parseProximityResolutionOverrides(map[string]any(*zone.Properties))
+	if err != nil {
+		return proximityResolutionPolicy{}, err
+	}
+	if overrides.EntryConfidenceMin != nil {
+		policy.EntryConfidenceMin = *overrides.EntryConfidenceMin
+	}
+	if overrides.ExitGraceDuration != nil {
+		policy.ExitGraceDuration = *overrides.ExitGraceDuration
+	}
+	if overrides.BoundaryGrace != nil {
+		policy.BoundaryGrace = *overrides.BoundaryGrace
+	}
+	if overrides.MinDwellDuration != nil {
+		policy.MinDwellDuration = *overrides.MinDwellDuration
+	}
+	if overrides.PositionMode != nil {
+		policy.PositionMode = *overrides.PositionMode
+	}
+	if overrides.FallbackRadius != nil {
+		policy.FallbackRadius = *overrides.FallbackRadius
+	}
+	if overrides.StaleStateTTL != nil {
+		policy.StaleStateTTL = *overrides.StaleStateTTL
+	}
+	return validateProximityResolutionPolicy(policy)
+}
+
+func parseProximityResolutionOverrides(props map[string]any) (proximityResolutionOverrides, error) {
+	raw, ok := props["proximity_resolution"]
+	if !ok || raw == nil {
+		return proximityResolutionOverrides{}, nil
+	}
+	doc, ok := raw.(map[string]any)
+	if !ok {
+		return proximityResolutionOverrides{}, badRequest("zone properties.proximity_resolution must be an object")
+	}
+	var out proximityResolutionOverrides
+	for key, value := range doc {
+		switch key {
+		case "entry_confidence_min":
+			n, err := parseFloatValue(value, "entry_confidence_min")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.EntryConfidenceMin = &n
+		case "exit_grace_duration":
+			d, err := parseDurationValue(value, "exit_grace_duration")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.ExitGraceDuration = &d
+		case "boundary_grace_distance":
+			n, err := parseFloatValue(value, "boundary_grace_distance")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.BoundaryGrace = &n
+		case "min_dwell_duration":
+			d, err := parseDurationValue(value, "min_dwell_duration")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.MinDwellDuration = &d
+		case "position_mode":
+			s, ok := value.(string)
+			if !ok {
+				return proximityResolutionOverrides{}, badRequest("zone properties.proximity_resolution.position_mode must be a string")
+			}
+			out.PositionMode = &s
+		case "fallback_radius":
+			n, err := parseFloatValue(value, "fallback_radius")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.FallbackRadius = &n
+		case "stale_state_ttl":
+			d, err := parseDurationValue(value, "stale_state_ttl")
+			if err != nil {
+				return proximityResolutionOverrides{}, err
+			}
+			out.StaleStateTTL = &d
+		}
+	}
+	return out, nil
+}
+
+func validateProximityResolutionPolicy(policy proximityResolutionPolicy) (proximityResolutionPolicy, error) {
+	if policy.EntryConfidenceMin < 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution entry_confidence_min must be >= 0")
+	}
+	if policy.ExitGraceDuration <= 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution exit_grace_duration must be > 0")
+	}
+	if policy.BoundaryGrace < 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution boundary_grace_distance must be >= 0")
+	}
+	if policy.MinDwellDuration < 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution min_dwell_duration must be >= 0")
+	}
+	if strings.TrimSpace(policy.PositionMode) == "" {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution position_mode is required")
+	}
+	if policy.PositionMode != "zone_position" {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution position_mode must be zone_position")
+	}
+	if policy.FallbackRadius < 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution fallback_radius must be >= 0")
+	}
+	if policy.StaleStateTTL <= 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution stale_state_ttl must be > 0")
+	}
+	return policy, nil
+}
+
+func parseFloatValue(raw any, key string) (float64, error) {
+	switch value := raw.(type) {
+	case float64:
+		return value, nil
+	case float32:
+		return float64(value), nil
+	case int:
+		return float64(value), nil
+	case int32:
+		return float64(value), nil
+	case int64:
+		return float64(value), nil
+	case json.Number:
+		n, err := value.Float64()
+		if err != nil {
+			return 0, badRequest(fmt.Sprintf("zone properties.proximity_resolution.%s must be numeric", key))
+		}
+		return n, nil
+	default:
+		return 0, badRequest(fmt.Sprintf("zone properties.proximity_resolution.%s must be numeric", key))
+	}
+}
+
+func parseDurationValue(raw any, key string) (time.Duration, error) {
+	switch value := raw.(type) {
+	case string:
+		d, err := time.ParseDuration(value)
+		if err != nil {
+			return 0, badRequest(fmt.Sprintf("zone properties.proximity_resolution.%s must be a valid duration string", key))
+		}
+		return d, nil
+	case float64:
+		return time.Duration(value * float64(time.Second)), nil
+	case int:
+		return time.Duration(value) * time.Second, nil
+	case int64:
+		return time.Duration(value) * time.Second, nil
+	case json.Number:
+		n, err := value.Float64()
+		if err != nil {
+			return 0, badRequest(fmt.Sprintf("zone properties.proximity_resolution.%s must be a duration string or seconds", key))
+		}
+		return time.Duration(n * float64(time.Second)), nil
+	default:
+		return 0, badRequest(fmt.Sprintf("zone properties.proximity_resolution.%s must be a duration string or seconds", key))
+	}
+}
+
+func isProximityZoneType(zoneType string) bool {
+	switch strings.ToLower(strings.TrimSpace(zoneType)) {
+	case "rfid", "ibeacon":
+		return true
+	default:
+		return false
+	}
+}
+
+func findZoneByID(zones []gen.Zone, id string) *gen.Zone {
+	for _, zone := range zones {
+		if zone.Id.String() == id {
+			z := zone
+			return &z
+		}
+	}
+	return nil
+}
+
+func proximityConfidence(props *gen.ExtensionProperties) (float64, bool) {
+	if props == nil {
+		return 0, false
+	}
+	raw, ok := (*props)["confidence"]
+	if !ok {
+		return 0, false
+	}
+	n, err := parseFloatValue(raw, "confidence")
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func proximityStateExpired(state proximityResolutionState, policy proximityResolutionPolicy, now time.Time) bool {
+	if state.LastConfirmedAt.IsZero() {
+		return true
+	}
+	if now.Sub(state.LastConfirmedAt) > policy.ExitGraceDuration {
+		return true
+	}
+	return now.Sub(state.LastConfirmedAt) > policy.StaleStateTTL
+}
+
+func zonesWithinBoundaryGrace(current gen.Zone, currentPolicy proximityResolutionPolicy, candidate gen.Zone, candidatePolicy proximityResolutionPolicy) bool {
+	if current.Position == nil || candidate.Position == nil {
+		return false
+	}
+	currentPoint, err := point2D(*current.Position)
+	if err != nil {
+		return false
+	}
+	candidatePoint, err := point2D(*candidate.Position)
+	if err != nil {
+		return false
+	}
+	dx := candidatePoint[0] - currentPoint[0]
+	dy := candidatePoint[1] - currentPoint[1]
+	distance := math.Sqrt(dx*dx + dy*dy)
+	margin := math.Max(currentPolicy.BoundaryGrace, candidatePolicy.BoundaryGrace)
+	return distance <= zoneRadius(current, currentPolicy)+zoneRadius(candidate, candidatePolicy)+margin
+}
+
+func zoneRadius(zone gen.Zone, policy proximityResolutionPolicy) float64 {
+	if zone.Radius != nil {
+		return float64(*zone.Radius)
+	}
+	return policy.FallbackRadius
+}
+
+func mergeProximityResolutionProperties(props *gen.ExtensionProperties, resolvedZoneID string, sticky bool) *gen.ExtensionProperties {
+	out := gen.ExtensionProperties{}
+	if props != nil {
+		for key, value := range *props {
+			out[key] = value
+		}
+	}
+	out["resolution_method"] = "proximity_zone"
+	out["resolved_zone_id"] = resolvedZoneID
+	out["resolution_policy_version"] = "v1"
+	out["sticky"] = sticky
+	return &out
 }

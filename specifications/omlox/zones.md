@@ -43,3 +43,21 @@ The Zone API is defined as setup/management API. In the companion OpenAPI this t
 - For non-proximity zones, GCP mapping is required for complete config.
 - Hub MUST support CRS handling for EPSG:4326, UTM/UPS projections listed in chapter 7.
 - Uninitialized zones are normative and MUST be supported.
+
+## Hub Extension: `properties.proximity_resolution`
+
+This repository reserves `Zone.properties.proximity_resolution` for hub-specific proximity resolver tuning.
+
+Supported keys:
+- `entry_confidence_min` (number, optional)
+- `exit_grace_duration` (duration string like `15s` or numeric seconds)
+- `boundary_grace_distance` (number, local coordinate units)
+- `min_dwell_duration` (duration string or numeric seconds)
+- `position_mode` (currently only `zone_position`)
+- `fallback_radius` (number, used when `zone.radius` is unset)
+- `stale_state_ttl` (duration string or numeric seconds)
+
+Behavior:
+- Hub-wide defaults come from environment configuration.
+- Zone-level values override hub defaults for that zone only.
+- Unknown keys are preserved for forward compatibility but ignored by the current resolver.

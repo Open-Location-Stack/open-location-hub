@@ -17,7 +17,12 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
-- Proximity ingestion currently resolves a synthetic location from the matching zone position; there is no richer proximity triangulation or provider-specific inference.
+- Proximity ingestion now uses a stateful resolver that maps proximity updates to proximity-capable zones, applies anti-flap stickiness, and emits derived locations from the resolved zone position.
+- Proximity resolution is still intentionally simple:
+  - it uses the resolved zone's declared position rather than triangulation or sensor fusion
+  - it does not support moving zones tied to a provider or trackable
+  - it does not combine multiple simultaneous proximity observations into a richer confidence model
+  - it does not yet share logic with trackable locating rules or fence tolerance behavior
 - Location ingest currently republishes the received coordinates as-is; there is no CRS transformation pipeline to produce a true derived WGS84/local dual output.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
@@ -41,8 +46,12 @@ Delivered:
 
 Residual work:
 - Add explicit expiry-focused tests rather than only behavioral coverage through the current service layer.
-- Replace the current proximity-to-zone-position fallback with richer OMLOX-aligned proximity resolution.
 - Introduce explicit CRS transformation and validation behavior for local versus `EPSG:4326` flows.
+- Low-hanging proximity follow-up ideas inspired by DeepHub-style extensions:
+  - add a mobile-zone style extension so an RFID or iBeacon zone can inherit position from a referenced provider or trackable instead of a static point
+  - allow proximity confidence or RSSI-like values in `Proximity.properties` to influence switching decisions without overriding persisted zone policy
+  - align future proximity stickiness and dwell semantics with the same tolerance concepts used for fences and trackable location selection
+  - add observability counters for resolver enter, stay, switch, and expiry decisions to make tuning practical in production
 
 ### Phase 3: MQTT bridge baseline
 Delivered:

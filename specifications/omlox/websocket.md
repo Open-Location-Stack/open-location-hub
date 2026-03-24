@@ -308,6 +308,7 @@ Inbound payload:
 
 Hub behavior:
 - inbound payload is processed like chapter 7.13 proximity processing
+- for this repository, that includes stateful zone resolution with short-lived stickiness to reduce rapid zone flapping
 
 Client publish allowed:
 - yes

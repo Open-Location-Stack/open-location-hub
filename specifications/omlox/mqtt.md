@@ -108,6 +108,7 @@ Inbound only, consumed by the hub.
 
 Behavior:
 - the hub processes the proximity update
+- in this repository, proximity processing includes stateful zone resolution and anti-flap stickiness before deriving a `Location`
 - the resulting location must be published to:
   - `/omlox/json/location_updates/local/{provider_id}`
   - `/omlox/json/location_updates/epsg4326/{provider_id}`

@@ -29,3 +29,10 @@ Optional:
 
 - Hub MUST map proximity data to a zone and derive `Location` for normal processing.
 - Zone type validation MUST ensure proximity zone types (RFID/iBeacon).
+- The hub may apply stateful proximity resolution before emitting the derived `Location`.
+- Default hub behavior should:
+  - enter the first confirmed proximity zone immediately
+  - keep the current zone briefly during competing nearby-zone observations to reduce flapping
+  - expire stale zone membership after a configurable grace interval
+- This repository implements hub-specific resolver tuning via zone extension properties, not new OMLOX top-level fields.
+- `Proximity.properties` remains informational in this phase and does not override configured zone resolution policy.

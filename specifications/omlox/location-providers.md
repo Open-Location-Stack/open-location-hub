@@ -29,5 +29,11 @@ Advertise/push location updates (`Location` objects) to the hub.
 ### `POST /v2/providers/proximities`
 Advertise proximity updates (`Proximity` objects), which the hub converts into `Location` processing flow.
 
+Current repository behavior for proximity ingestion:
+- the hub resolves the referenced source to a proximity-capable zone by `zone.id` or `zone.foreign_id`
+- the hub may keep the currently resolved zone briefly to reduce flapping between nearby zones
+- the derived `Location` uses the resolved zone position in local coordinates
+- per-zone tuning comes from `Zone.properties.proximity_resolution`
+
 ### Inferred resource lifecycle operations
 The Location Provider API is defined as setup + update advertisement API; companion OpenAPI is expected to define provider management endpoints under `/v2/providers` and `/v2/providers/{providerId}`.

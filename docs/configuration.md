@@ -9,6 +9,28 @@ All runtime configuration is environment-driven.
 - `VALKEY_URL` (default `redis://localhost:6379/0`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 
+## Stateful Processing
+- `STATE_LOCATION_TTL` (duration, default `10m`)
+- `STATE_PROXIMITY_TTL` (duration, default `5m`)
+- `STATE_DEDUP_TTL` (duration, default `2m`)
+- `RPC_TIMEOUT` (duration, default `5s`)
+
+## Proximity Resolution
+- `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
+- `PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION` (duration, default `15s`)
+- `PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE` (number, default `2`)
+- `PROXIMITY_RESOLUTION_MIN_DWELL_DURATION` (duration, default `5s`)
+- `PROXIMITY_RESOLUTION_POSITION_MODE` (default `zone_position`; the only supported value today)
+- `PROXIMITY_RESOLUTION_FALLBACK_RADIUS` (number, default `0`)
+- `PROXIMITY_RESOLUTION_STALE_STATE_TTL` (duration, default `10m`)
+
+Proximity resolution behavior:
+- proximity updates are resolved to a zone before the hub emits a derived `Location`
+- the first valid proximity observation enters immediately
+- the hub keeps the current zone for a short grace period to reduce flapping between nearby zones
+- zone-specific overrides may be supplied through `Zone.properties.proximity_resolution`
+- `Proximity.properties` is preserved into derived location metadata but does not override configured policy
+
 ## Auth
 - `AUTH_ENABLED` (`true`/`false`, default `true`)
 - `AUTH_MODE` (`none|oidc|static|hybrid`, default `none`)
