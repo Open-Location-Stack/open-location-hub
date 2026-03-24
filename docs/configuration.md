@@ -15,6 +15,10 @@ All runtime configuration is environment-driven.
 - `STATE_DEDUP_TTL` (duration, default `2m`)
 - `RPC_TIMEOUT` (duration, default `5s`)
 
+Stateful ingest behavior:
+- duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed before latest-state and publish fan-out work
+- latest provider-source location state, trackable latest-location state, and fence membership state use the configured location/proximity TTLs for expiry semantics
+
 ## Proximity Resolution
 - `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
 - `PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION` (duration, default `15s`)

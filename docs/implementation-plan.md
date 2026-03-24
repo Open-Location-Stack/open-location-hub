@@ -11,9 +11,10 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 - Auth foundations are implemented for `none`, `oidc`, `static`, and `hybrid` modes, including JWT validation, OIDC discovery/JWKS refresh, permissions loading, and ownership-aware authorization.
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Provider ingestion endpoints are implemented for locations and proximities, with Valkey-backed deduplication and transient latest-state storage.
+- Ingest explicitly accepts omitted `crs`, `local`, and `EPSG:4326`, rejects other CRS values, and currently republishes the canonical payload unchanged to both local and `EPSG:4326` topics.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, and trackable-motion publication.
 - RPC is implemented as REST-to-MQTT bridging with retained method discovery tracking and support for `_all_within_timeout`, `_return_first_success`, and `_return_first_error`.
-- Unit and integration coverage exist for config validation, auth, CRUD behavior, MQTT topic mapping, RPC bridge behavior, and Dex-backed end-to-end authorization.
+- Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, MQTT topic mapping, RPC bridge behavior, and Dex-backed end-to-end authorization.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
@@ -43,15 +44,10 @@ Delivered:
 - `POST /v2/providers/locations` and `POST /v2/providers/proximities` are implemented.
 - Valkey-backed TTL configuration exists for latest state, proximity-derived state, dedup windows, and RPC timeout.
 - Ingestion uses a shared path so HTTP and MQTT inputs exercise the same core logic.
-
-Residual work:
-- Add explicit expiry-focused tests rather than only behavioral coverage through the current service layer.
-- Introduce explicit CRS transformation and validation behavior for local versus `EPSG:4326` flows.
-- Low-hanging proximity follow-up ideas inspired by DeepHub-style extensions:
-  - add a mobile-zone style extension so an RFID or iBeacon zone can inherit position from a referenced provider or trackable instead of a static point
-  - allow proximity confidence or RSSI-like values in `Proximity.properties` to influence switching decisions without overriding persisted zone policy
-  - align future proximity stickiness and dwell semantics with the same tolerance concepts used for fences and trackable location selection
-  - add observability counters for resolver enter, stay, switch, and expiry decisions to make tuning practical in production
+- Service-level tests now cover deduplication, latest-state TTLs, proximity stale-state re-entry, fence-membership TTL binding, and the current dual-topic MQTT publication behavior.
+- Location ingest validation now explicitly allows omitted `crs`, `local`, and `EPSG:4326` and rejects unsupported CRS values with `400 Bad Request`.
+- Proximity-derived locations remain local-coordinate outputs derived from the resolved zone position.
+- MQTT publication for processed locations still republishes the same canonical payload to both local and `EPSG:4326` topics; real coordinate transformation is still deferred.
 
 ### Phase 3: MQTT bridge baseline
 Delivered:
@@ -91,6 +87,8 @@ Exit criteria:
 Scope:
 - Add richer query/filter behavior for REST resources where OMLOX workflows benefit from more than list-by-created-time.
 - Add stronger event modeling for fence timeouts, motion derivation, and future collision handling.
+- Add a true CRS transformation pipeline so local and `EPSG:4326` outputs are derived rather than topic aliases over the same payload.
+- Revisit optional proximity depth such as mobile zones, richer confidence-based switching, and shared tolerance semantics with fences/trackable locating.
 - Revisit the JSON-payload-first storage model if query volume or federation requirements demand more structured persistence.
 
 Exit criteria:

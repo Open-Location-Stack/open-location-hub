@@ -1,12 +1,17 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-rtls-hub/internal/mqtt"
+	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestNormalizeZoneRequiresGroundControlPointsWhenConfigurationIsComplete(t *testing.T) {
@@ -178,6 +183,215 @@ func TestDeriveLocationFromProximityAddsResolutionMetadata(t *testing.T) {
 	if (*location.Properties)["raw"] != "value" {
 		t.Fatal("expected original proximity properties to be preserved")
 	}
+	if location.Crs == nil || *location.Crs != "local" {
+		t.Fatal("expected proximity-derived location to remain in local CRS")
+	}
+}
+
+func TestValidateLocationAllowsOmittedCRS(t *testing.T) {
+	if err := validateLocation(testLocation(t, nil)); err != nil {
+		t.Fatalf("expected omitted CRS to pass, got %v", err)
+	}
+}
+
+func TestValidateLocationAllowsLocalCRS(t *testing.T) {
+	crs := "local"
+	if err := validateLocation(testLocation(t, &crs)); err != nil {
+		t.Fatalf("expected local CRS to pass, got %v", err)
+	}
+}
+
+func TestValidateLocationAllowsEPSG4326CRS(t *testing.T) {
+	crs := "EPSG:4326"
+	if err := validateLocation(testLocation(t, &crs)); err != nil {
+		t.Fatalf("expected EPSG:4326 CRS to pass, got %v", err)
+	}
+}
+
+func TestValidateLocationRejectsUnsupportedCRS(t *testing.T) {
+	crs := "EPSG:3857"
+	err := validateLocation(testLocation(t, &crs))
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != 400 {
+		t.Fatalf("expected bad request for unsupported CRS, got %v", err)
+	}
+}
+
+func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
+	cache := newMemoryCache()
+	service := &Service{
+		cache: cache,
+		cfg: Config{
+			DedupTTL:    2 * time.Minute,
+			LocationTTL: 10 * time.Minute,
+		},
+	}
+	location := testLocation(t, nil)
+	ttl := 30 * time.Second
+
+	if err := service.recordLocation(context.Background(), location, ttl); err != nil {
+		t.Fatalf("recordLocation failed: %v", err)
+	}
+	if err := service.recordLocation(context.Background(), location, ttl); err != nil {
+		t.Fatalf("second recordLocation failed: %v", err)
+	}
+
+	if len(cache.setNXCalls) != 2 {
+		t.Fatalf("expected two dedup attempts, got %d", len(cache.setNXCalls))
+	}
+	if len(cache.setCalls) != 1 {
+		t.Fatalf("expected only one latest-state write after dedup, got %d", len(cache.setCalls))
+	}
+	if cache.setCalls[0].key != latestLocationKey(location.ProviderId, location.Source) {
+		t.Fatalf("unexpected latest-location key: %s", cache.setCalls[0].key)
+	}
+	if cache.setCalls[0].ttl != ttl {
+		t.Fatalf("expected latest-location TTL %s, got %s", ttl, cache.setCalls[0].ttl)
+	}
+	if cache.setNXCalls[0].ttl != service.cfg.DedupTTL {
+		t.Fatalf("expected dedup TTL %s, got %s", service.cfg.DedupTTL, cache.setNXCalls[0].ttl)
+	}
+}
+
+func TestRecordLocationStoresTrackableLatestStateWithTTL(t *testing.T) {
+	cache := newMemoryCache()
+	service := &Service{
+		cache: cache,
+		cfg: Config{
+			DedupTTL:    2 * time.Minute,
+			LocationTTL: 10 * time.Minute,
+		},
+	}
+	location := testLocation(t, nil)
+	trackables := []string{"trackable-a", "trackable-b"}
+	location.Trackables = &trackables
+	ttl := 45 * time.Second
+
+	if err := service.recordLocation(context.Background(), location, ttl); err != nil {
+		t.Fatalf("recordLocation failed: %v", err)
+	}
+
+	if len(cache.setCalls) != 3 {
+		t.Fatalf("expected latest location plus two trackable writes, got %d", len(cache.setCalls))
+	}
+	if cache.setCalls[1].key != latestTrackableLocationKey("trackable-a") {
+		t.Fatalf("unexpected first trackable key: %s", cache.setCalls[1].key)
+	}
+	if cache.setCalls[2].key != latestTrackableLocationKey("trackable-b") {
+		t.Fatalf("unexpected second trackable key: %s", cache.setCalls[2].key)
+	}
+	if cache.setCalls[1].ttl != ttl || cache.setCalls[2].ttl != ttl {
+		t.Fatalf("expected trackable TTL %s, got %s and %s", ttl, cache.setCalls[1].ttl, cache.setCalls[2].ttl)
+	}
+}
+
+func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
+	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
+	cache := newMemoryCache()
+	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, float32Ptr(2), nil)
+	proximity := testProximity(zone.Id.String())
+	service := &Service{
+		cache: cache,
+		queries: fakeQueries{
+			listZonesFn: func(context.Context) ([]sqlcgen.Zone, error) {
+				payload, err := json.Marshal(zone)
+				if err != nil {
+					t.Fatalf("marshal zone failed: %v", err)
+				}
+				return []sqlcgen.Zone{{Payload: payload}}, nil
+			},
+		},
+		cfg: Config{
+			DedupTTL:                              2 * time.Minute,
+			ProximityTTL:                          5 * time.Minute,
+			ProximityResolutionExitGraceDuration:  15 * time.Second,
+			ProximityResolutionBoundaryGrace:      2,
+			ProximityResolutionMinDwellDuration:   5 * time.Second,
+			ProximityResolutionPositionMode:       "zone_position",
+			ProximityResolutionStaleStateTTL:      10 * time.Minute,
+			ProximityResolutionFallbackRadius:     0,
+			ProximityResolutionEntryConfidenceMin: 0,
+		},
+		now: func() time.Time { return now },
+	}
+	cache.values[proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId)] = mustJSON(t, proximityResolutionState{
+		ResolvedZoneID:  "expired-zone",
+		EnteredAt:       now.Add(-30 * time.Minute),
+		LastConfirmedAt: now.Add(-20 * time.Minute),
+		LastEmittedAt:   now.Add(-20 * time.Minute),
+	})
+
+	if err := service.ProcessProximities(context.Background(), []gen.Proximity{proximity}); err != nil {
+		t.Fatalf("ProcessProximities failed: %v", err)
+	}
+
+	statePayload := cache.values[proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId)]
+	var state proximityResolutionState
+	if err := json.Unmarshal(statePayload, &state); err != nil {
+		t.Fatalf("unmarshal state failed: %v", err)
+	}
+	if state.ResolvedZoneID != proximity.Source {
+		t.Fatalf("expected re-entry into candidate zone %s, got %s", proximity.Source, state.ResolvedZoneID)
+	}
+	if !state.EnteredAt.Equal(now) {
+		t.Fatalf("expected re-entry timestamp %s, got %s", now, state.EnteredAt)
+	}
+}
+
+func TestPublishLocationPublishesSamePayloadToLocalAndEPSG4326Topics(t *testing.T) {
+	publisher := &recordingPublisher{}
+	service := &Service{publisher: publisher}
+	crs := "EPSG:4326"
+	location := testLocation(t, &crs)
+
+	if err := service.publishLocation(context.Background(), location); err != nil {
+		t.Fatalf("publishLocation failed: %v", err)
+	}
+	if len(publisher.calls) != 2 {
+		t.Fatalf("expected two publish calls, got %d", len(publisher.calls))
+	}
+	if publisher.calls[0].topic != mqtt.TopicLocationLocal(location.ProviderId) {
+		t.Fatalf("unexpected local topic: %s", publisher.calls[0].topic)
+	}
+	if publisher.calls[1].topic != mqtt.TopicLocationEPSG4326(location.ProviderId) {
+		t.Fatalf("unexpected epsg4326 topic: %s", publisher.calls[1].topic)
+	}
+	if string(publisher.calls[0].payload) != string(publisher.calls[1].payload) {
+		t.Fatal("expected local and epsg4326 topics to carry the same payload")
+	}
+}
+
+func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
+	cache := newMemoryCache()
+	service := &Service{
+		cache: cache,
+		queries: fakeQueries{
+			listFencesFn: func(context.Context) ([]sqlcgen.Fence, error) {
+				fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+				payload, err := json.Marshal(fence)
+				if err != nil {
+					t.Fatalf("marshal fence failed: %v", err)
+				}
+				return []sqlcgen.Fence{{Payload: payload}}, nil
+			},
+		},
+		publisher: &recordingPublisher{},
+		cfg:       Config{LocationTTL: 90 * time.Second},
+	}
+	location := testLocation(t, nil)
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	if err := service.publishFenceEvents(context.Background(), location); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+
+	if len(cache.setCalls) != 1 {
+		t.Fatalf("expected one fence membership write, got %d", len(cache.setCalls))
+	}
+	if cache.setCalls[0].ttl != service.cfg.LocationTTL {
+		t.Fatalf("expected fence membership TTL %s, got %s", service.cfg.LocationTTL, cache.setCalls[0].ttl)
+	}
 }
 
 func testPolicy() proximityResolutionPolicy {
@@ -187,6 +401,21 @@ func testPolicy() proximityResolutionPolicy {
 		MinDwellDuration:  5 * time.Second,
 		PositionMode:      "zone_position",
 		StaleStateTTL:     10 * time.Minute,
+	}
+}
+
+func testLocation(t *testing.T, crs *string) gen.Location {
+	t.Helper()
+	point := gen.Point{Type: "Point"}
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{1, 2}); err != nil {
+		t.Fatalf("coordinates setup failed: %v", err)
+	}
+	return gen.Location{
+		Crs:          crs,
+		Position:     point,
+		ProviderId:   "provider-a",
+		ProviderType: "uwb",
+		Source:       "zone-a",
 	}
 }
 
@@ -220,10 +449,185 @@ func testZoneWithForeignID(t *testing.T, id uuid.UUID, zoneType, foreignID strin
 	return zone
 }
 
+func testPointFence(t *testing.T, id uuid.UUID, coordinates [2]float32, radius float32) gen.Fence {
+	t.Helper()
+	point := gen.Point{Type: "Point"}
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
+		t.Fatalf("coordinates setup failed: %v", err)
+	}
+	var region gen.Fence_Region
+	if err := region.FromPoint(point); err != nil {
+		t.Fatalf("region setup failed: %v", err)
+	}
+	return gen.Fence{
+		Id:     uuidAsOpenAPI(id),
+		Radius: &radius,
+		Region: region,
+	}
+}
+
 func uuidAsOpenAPI(id uuid.UUID) [16]byte {
 	return [16]byte(id)
 }
 
 func float32Ptr(value float32) *float32 {
 	return &value
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json marshal failed: %v", err)
+	}
+	return payload
+}
+
+type memoryCache struct {
+	values     map[string][]byte
+	setCalls   []cacheWrite
+	setNXCalls []cacheWrite
+}
+
+type cacheWrite struct {
+	key   string
+	value []byte
+	ttl   time.Duration
+}
+
+func newMemoryCache() *memoryCache {
+	return &memoryCache{values: map[string][]byte{}}
+}
+
+func (c *memoryCache) Get(_ context.Context, key string) ([]byte, error) {
+	return c.values[key], nil
+}
+
+func (c *memoryCache) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
+	c.values[key] = append([]byte(nil), value...)
+	c.setCalls = append(c.setCalls, cacheWrite{key: key, value: append([]byte(nil), value...), ttl: ttl})
+	return nil
+}
+
+func (c *memoryCache) SetNX(_ context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	c.setNXCalls = append(c.setNXCalls, cacheWrite{key: key, value: append([]byte(nil), value...), ttl: ttl})
+	if _, exists := c.values[key]; exists {
+		return false, nil
+	}
+	c.values[key] = append([]byte(nil), value...)
+	return true, nil
+}
+
+func (c *memoryCache) Delete(_ context.Context, key string) error {
+	delete(c.values, key)
+	return nil
+}
+
+type recordingPublisher struct {
+	calls []publishCall
+}
+
+type publishCall struct {
+	topic   string
+	payload []byte
+}
+
+func (p *recordingPublisher) PublishJSON(_ context.Context, topic string, payload any, _ bool) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	p.calls = append(p.calls, publishCall{topic: topic, payload: raw})
+	return nil
+}
+
+type fakeQueries struct {
+	listFencesFn func(context.Context) ([]sqlcgen.Fence, error)
+	listZonesFn  func(context.Context) ([]sqlcgen.Zone, error)
+}
+
+func (f fakeQueries) CreateFence(context.Context, sqlcgen.CreateFenceParams) (sqlcgen.Fence, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) CreateProvider(context.Context, sqlcgen.CreateProviderParams) (sqlcgen.Provider, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) CreateTrackable(context.Context, sqlcgen.CreateTrackableParams) (sqlcgen.Trackable, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) CreateZone(context.Context, sqlcgen.CreateZoneParams) (sqlcgen.Zone, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) DeleteFence(context.Context, pgtype.UUID) (int64, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) DeleteProvider(context.Context, string) (int64, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) DeleteTrackable(context.Context, pgtype.UUID) (int64, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) DeleteZone(context.Context, pgtype.UUID) (int64, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) GetFence(context.Context, pgtype.UUID) (sqlcgen.Fence, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) GetProvider(context.Context, string) (sqlcgen.Provider, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) GetTrackable(context.Context, pgtype.UUID) (sqlcgen.Trackable, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) GetZone(context.Context, pgtype.UUID) (sqlcgen.Zone, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) ListFences(ctx context.Context) ([]sqlcgen.Fence, error) {
+	if f.listFencesFn == nil {
+		panic("unexpected call")
+	}
+	return f.listFencesFn(ctx)
+}
+
+func (f fakeQueries) ListProviders(context.Context) ([]sqlcgen.Provider, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) ListTrackables(context.Context) ([]sqlcgen.Trackable, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) ListZones(ctx context.Context) ([]sqlcgen.Zone, error) {
+	if f.listZonesFn == nil {
+		panic("unexpected call")
+	}
+	return f.listZonesFn(ctx)
+}
+
+func (f fakeQueries) UpdateFence(context.Context, sqlcgen.UpdateFenceParams) (sqlcgen.Fence, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) UpdateProvider(context.Context, sqlcgen.UpdateProviderParams) (sqlcgen.Provider, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) UpdateTrackable(context.Context, sqlcgen.UpdateTrackableParams) (sqlcgen.Trackable, error) {
+	panic("unexpected call")
+}
+
+func (f fakeQueries) UpdateZone(context.Context, sqlcgen.UpdateZoneParams) (sqlcgen.Zone, error) {
+	panic("unexpected call")
 }

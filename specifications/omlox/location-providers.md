@@ -26,6 +26,11 @@ Key fields from section 6.7.9:
 ### `POST /v2/providers/locations`
 Advertise/push location updates (`Location` objects) to the hub.
 
+Current repository behavior for location ingestion:
+- the hub accepts omitted `crs`, `local`, and `EPSG:4326`
+- other CRS values are rejected with `400 Bad Request`
+- the hub republishes the accepted canonical payload to both local and `EPSG:4326` MQTT topics without coordinate transformation in this phase
+
 ### `POST /v2/providers/proximities`
 Advertise proximity updates (`Proximity` objects), which the hub converts into `Location` processing flow.
 

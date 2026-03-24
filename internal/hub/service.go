@@ -881,7 +881,23 @@ func validateLocation(location gen.Location) error {
 	if err != nil {
 		return badRequest("location position must include 2D or 3D coordinates")
 	}
+	if err := validateLocationCRS(location.Crs); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateLocationCRS(crs *string) error {
+	if crs == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*crs)
+	switch value {
+	case "", "local", "EPSG:4326":
+		return nil
+	default:
+		return badRequest("location crs must be local or EPSG:4326")
+	}
 }
 
 func translateDBError(err error) error {
