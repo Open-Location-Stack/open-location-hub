@@ -21,7 +21,7 @@ Use for API contract work and normative alignment decisions.
 - Ensure required fields match the OMLOX PDFs and stay consistent with `specifications/omlox/`.
 - Prefer updating companion docs when a PDF clause belongs to MQTT, WebSocket, or behavior rather than REST shape.
 - For MQTT or WebSocket work, read `specifications/omlox/websocket.md` and `specifications/omlox/mqtt.md` first.
-- Treat Flowcate DeepHub public docs as a reference implementation for clarification and interoperability ideas, but do not let them override the OMLOX PDFs unless the repository explicitly adopts a DeepHub extension.
+- Treat third-party public docs as reference implementation material for clarification and interoperability ideas, but do not let them override the OMLOX PDFs unless the repository explicitly adopts an extension.
 
 ## Project Status
 - Until further notice, this project is in `alpha` status.

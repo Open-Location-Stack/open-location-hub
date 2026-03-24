@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
@@ -17,120 +19,141 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type Verifier interface {
-	Verify(ctx context.Context, token string) error
+type Authenticator interface {
+	Authenticate(ctx context.Context, token string) (*Principal, error)
 }
 
-type noneVerifier struct{}
+type noneAuthenticator struct{}
 
-func (noneVerifier) Verify(context.Context, string) error { return nil }
-
-type oidcVerifier struct {
-	verifier *oidc.IDTokenVerifier
+func (noneAuthenticator) Authenticate(context.Context, string) (*Principal, error) {
+	return &Principal{}, nil
 }
 
-func (o *oidcVerifier) Verify(ctx context.Context, token string) error {
-	_, err := o.verifier.Verify(ctx, token)
-	return err
+type oidcAuthenticator struct {
+	cfg          config.AuthConfig
+	httpClient   *http.Client
+	mu           sync.RWMutex
+	verifier     *oidc.IDTokenVerifier
+	lastRefresh  time.Time
+	refreshError error
 }
 
-type staticVerifier struct {
+type staticAuthenticator struct {
+	cfg     config.AuthConfig
 	parsers []jwt.Keyfunc
-	algs    map[string]struct{}
 }
 
-func (s *staticVerifier) Verify(_ context.Context, token string) error {
-	for _, keyfn := range s.parsers {
-		_, err := jwt.Parse(token, keyfn, jwt.WithValidMethods(s.validMethods()))
-		if err == nil {
-			return nil
-		}
-	}
-	return errors.New("token verification failed for all configured static keys")
+type hybridAuthenticator struct {
+	authenticators []Authenticator
 }
 
-func (s *staticVerifier) validMethods() []string {
-	if len(s.algs) == 0 {
-		return []string{"RS256"}
-	}
-	m := make([]string, 0, len(s.algs))
-	for k := range s.algs {
-		m = append(m, k)
-	}
-	return m
-}
-
-type hybridVerifier struct {
-	verifiers []Verifier
-}
-
-func (h *hybridVerifier) Verify(ctx context.Context, token string) error {
-	var errs []string
-	for _, v := range h.verifiers {
-		if err := v.Verify(ctx, token); err == nil {
-			return nil
-		} else {
-			errs = append(errs, err.Error())
-		}
-	}
-	return fmt.Errorf("all verifiers failed: %s", strings.Join(errs, "; "))
-}
-
-func NewVerifier(ctx context.Context, cfg config.AuthConfig) (Verifier, error) {
+func NewAuthenticator(ctx context.Context, cfg config.AuthConfig) (Authenticator, error) {
 	if !cfg.Enabled || cfg.Mode == "none" {
-		return noneVerifier{}, nil
+		return noneAuthenticator{}, nil
 	}
 
 	switch cfg.Mode {
 	case "oidc":
-		return newOIDCVerifier(ctx, cfg)
+		return newOIDCAuthenticator(ctx, cfg)
 	case "static":
-		return newStaticVerifier(cfg)
+		return newStaticAuthenticator(cfg)
 	case "hybrid":
-		var v []Verifier
+		var authenticators []Authenticator
 		if cfg.Issuer != "" {
-			o, err := newOIDCVerifier(ctx, cfg)
+			o, err := newOIDCAuthenticator(ctx, cfg)
 			if err != nil {
 				return nil, err
 			}
-			v = append(v, o)
+			authenticators = append(authenticators, o)
 		}
 		if len(cfg.StaticPublicKeys) > 0 {
-			s, err := newStaticVerifier(cfg)
+			s, err := newStaticAuthenticator(cfg)
 			if err != nil {
 				return nil, err
 			}
-			v = append(v, s)
+			authenticators = append(authenticators, s)
 		}
-		if len(v) == 0 {
-			return nil, errors.New("hybrid mode has no valid verifier configured")
+		if len(authenticators) == 0 {
+			return nil, errors.New("hybrid mode has no valid authenticator configured")
 		}
-		return &hybridVerifier{verifiers: v}, nil
+		return &hybridAuthenticator{authenticators: authenticators}, nil
 	default:
 		return nil, fmt.Errorf("unsupported auth mode: %s", cfg.Mode)
 	}
 }
 
-func newOIDCVerifier(ctx context.Context, cfg config.AuthConfig) (Verifier, error) {
-	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
-	if err != nil {
+func newOIDCAuthenticator(ctx context.Context, cfg config.AuthConfig) (Authenticator, error) {
+	a := &oidcAuthenticator{
+		cfg: cfg,
+		httpClient: &http.Client{
+			Timeout: cfg.HTTPTimeout,
+		},
+	}
+	if err := a.refreshVerifier(ctx); err != nil {
 		return nil, err
 	}
-	oidcCfg := &oidc.Config{ClientID: ""}
-	if len(cfg.Audience) > 0 {
-		oidcCfg.ClientID = cfg.Audience[0]
-	}
-	return &oidcVerifier{verifier: provider.Verifier(oidcCfg)}, nil
+	return a, nil
 }
 
-func newStaticVerifier(cfg config.AuthConfig) (Verifier, error) {
-	algs := make(map[string]struct{}, len(cfg.AllowedAlgs))
-	for _, alg := range cfg.AllowedAlgs {
-		if alg != "" {
-			algs[strings.TrimSpace(alg)] = struct{}{}
-		}
+func (a *oidcAuthenticator) Authenticate(ctx context.Context, token string) (*Principal, error) {
+	if err := a.ensureFresh(ctx); err != nil {
+		return nil, unauthorized("unable to refresh OIDC verifier")
 	}
 
+	a.mu.RLock()
+	verifier := a.verifier
+	a.mu.RUnlock()
+
+	idToken, err := verifier.Verify(withHTTPClient(ctx, a.httpClient), token)
+	if err != nil {
+		return nil, unauthorized("invalid bearer token")
+	}
+	if !audienceAllowed(idToken.Audience, a.cfg.Audience) {
+		return nil, unauthorized("token audience is not accepted")
+	}
+
+	claims := map[string]any{}
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, unauthorized("unable to decode token claims")
+	}
+	return principalFromClaims(claims, a.cfg), nil
+}
+
+func (a *oidcAuthenticator) ensureFresh(ctx context.Context) error {
+	a.mu.RLock()
+	needsRefresh := a.verifier == nil || time.Since(a.lastRefresh) > a.cfg.OIDCJWKSRefreshTTL
+	a.mu.RUnlock()
+	if !needsRefresh {
+		return nil
+	}
+	return a.refreshVerifier(ctx)
+}
+
+func (a *oidcAuthenticator) refreshVerifier(ctx context.Context) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.verifier != nil && time.Since(a.lastRefresh) <= a.cfg.OIDCJWKSRefreshTTL {
+		return nil
+	}
+
+	provider, err := oidc.NewProvider(withHTTPClient(ctx, a.httpClient), a.cfg.Issuer)
+	if err != nil {
+		a.refreshError = err
+		return err
+	}
+
+	oidcCfg := &oidc.Config{
+		ClientID:             "",
+		SkipClientIDCheck:    true,
+		SupportedSigningAlgs: cleanStrings(a.cfg.AllowedAlgs),
+	}
+	a.verifier = provider.Verifier(oidcCfg)
+	a.lastRefresh = time.Now()
+	a.refreshError = nil
+	return nil
+}
+
+func newStaticAuthenticator(cfg config.AuthConfig) (Authenticator, error) {
 	parsers := make([]jwt.Keyfunc, 0, len(cfg.StaticPublicKeys))
 	for _, raw := range cfg.StaticPublicKeys {
 		raw = strings.TrimSpace(raw)
@@ -145,6 +168,13 @@ func newStaticVerifier(cfg config.AuthConfig) (Verifier, error) {
 			parsers = append(parsers, jwks.Keyfunc)
 			continue
 		}
+		if _, err := os.Stat(raw); err == nil {
+			data, readErr := os.ReadFile(raw)
+			if readErr != nil {
+				return nil, readErr
+			}
+			raw = string(data)
+		}
 		pub, err := parseRSAPublicKey(raw)
 		if err != nil {
 			return nil, err
@@ -156,7 +186,58 @@ func newStaticVerifier(cfg config.AuthConfig) (Verifier, error) {
 	if len(parsers) == 0 {
 		return nil, errors.New("no static keys configured")
 	}
-	return &staticVerifier{parsers: parsers, algs: algs}, nil
+	return &staticAuthenticator{cfg: cfg, parsers: parsers}, nil
+}
+
+func (a *staticAuthenticator) Authenticate(_ context.Context, token string) (*Principal, error) {
+	var lastErr error
+	for _, keyfn := range a.parsers {
+		claims := jwt.MapClaims{}
+		options := []jwt.ParserOption{
+			jwt.WithValidMethods(cleanStrings(a.cfg.AllowedAlgs)),
+			jwt.WithLeeway(a.cfg.ClockSkew),
+			jwt.WithExpirationRequired(),
+		}
+		if issuer := strings.TrimSpace(a.cfg.Issuer); issuer != "" {
+			options = append(options, jwt.WithIssuer(issuer))
+		}
+		if aud := audienceOrDefault(a.cfg.Audience); aud != "" {
+			options = append(options, jwt.WithAudience(aud))
+		}
+		parser := jwt.NewParser(options...)
+		parsed, err := parser.ParseWithClaims(token, claims, keyfn)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if !parsed.Valid {
+			lastErr = errors.New("invalid token")
+			continue
+		}
+		rawClaims := map[string]any{}
+		for k, v := range claims {
+			rawClaims[k] = v
+		}
+		if !audienceAllowed(extractAudience(rawClaims), a.cfg.Audience) {
+			lastErr = errors.New("audience mismatch")
+			continue
+		}
+		return principalFromClaims(rawClaims, a.cfg), nil
+	}
+	if lastErr == nil {
+		lastErr = errors.New("token verification failed")
+	}
+	return nil, unauthorized("invalid bearer token")
+}
+
+func (a *hybridAuthenticator) Authenticate(ctx context.Context, token string) (*Principal, error) {
+	for _, authenticator := range a.authenticators {
+		principal, err := authenticator.Authenticate(ctx, token)
+		if err == nil {
+			return principal, nil
+		}
+	}
+	return nil, unauthorized("invalid bearer token")
 }
 
 func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
@@ -182,30 +263,165 @@ func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
 	return rsaPub, nil
 }
 
-func Middleware(v Verifier, cfg config.AuthConfig) func(http.Handler) http.Handler {
+func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !cfg.Enabled || cfg.Mode == "none" {
+			if !cfg.Enabled || cfg.Mode == "none" || r.URL.Path == "/healthz" {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if r.URL.Path == "/healthz" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			hdr := r.Header.Get("Authorization")
+
+			hdr := strings.TrimSpace(r.Header.Get("Authorization"))
 			if !strings.HasPrefix(strings.ToLower(hdr), "bearer ") {
-				http.Error(w, "missing bearer token", http.StatusUnauthorized)
+				writeAuthError(w, unauthorized("missing bearer token"))
 				return
 			}
 			token := strings.TrimSpace(hdr[len("Bearer "):])
-			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-			defer cancel()
-			if err := v.Verify(ctx, token); err != nil {
-				http.Error(w, "invalid token", http.StatusUnauthorized)
+			if token == "" {
+				writeAuthError(w, unauthorized("missing bearer token"))
 				return
 			}
-			next.ServeHTTP(w, r)
+
+			ctx, cancel := context.WithTimeout(r.Context(), cfg.HTTPTimeout)
+			defer cancel()
+			principal, err := authenticator.Authenticate(ctx, token)
+			if err != nil {
+				writeAuthError(w, err)
+				return
+			}
+			if err := registry.Authorize(r, principal); err != nil {
+				writeAuthError(w, err)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), principal)))
 		})
 	}
+}
+
+func principalFromClaims(claims map[string]any, cfg config.AuthConfig) *Principal {
+	return &Principal{
+		Subject:        stringClaim(claims["sub"]),
+		Roles:          extractStringValues(claims[cfg.RolesClaim]),
+		OwnedResources: extractOwnedResources(claims[cfg.OwnedResourcesClaim]),
+		Claims:         claims,
+	}
+}
+
+func extractOwnedResources(v any) map[string]map[string]struct{} {
+	if v == nil {
+		return nil
+	}
+	raw, ok := v.(map[string]any)
+	if !ok {
+		if typed, ok := v.(map[string]interface{}); ok {
+			raw = map[string]any(typed)
+		} else {
+			return nil
+		}
+	}
+	out := make(map[string]map[string]struct{}, len(raw))
+	for k, values := range raw {
+		normalizedKey := normalizeOwnedKey(k)
+		set := make(map[string]struct{})
+		for _, item := range extractStringValues(values) {
+			set[item] = struct{}{}
+		}
+		if len(set) > 0 {
+			out[normalizedKey] = set
+		}
+	}
+	return out
+}
+
+func normalizeOwnedKey(k string) string {
+	k = strings.TrimSpace(k)
+	if strings.Contains(k, ".") {
+		k = k[strings.LastIndex(k, ".")+1:]
+	}
+	k = strings.ReplaceAll(k, "-", "_")
+	if strings.Contains(k, "/") {
+		k = k[strings.LastIndex(k, "/")+1:]
+	}
+	if strings.Contains(k, ":") {
+		k = k[strings.LastIndex(k, ":")+1:]
+	}
+	return strings.ToLower(k)
+}
+
+func extractStringValues(v any) []string {
+	switch value := v.(type) {
+	case nil:
+		return nil
+	case string:
+		fields := strings.Fields(value)
+		if len(fields) > 1 {
+			return fields
+		}
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	case []string:
+		return append([]string(nil), value...)
+	case []any:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func stringClaim(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func extractAudience(claims map[string]any) []string {
+	return extractStringValues(claims["aud"])
+}
+
+func audienceAllowed(tokenAudience, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, item := range allowed {
+		allowedSet[item] = struct{}{}
+	}
+	for _, item := range tokenAudience {
+		if _, ok := allowedSet[item]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func audienceOrDefault(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func cleanStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func withHTTPClient(ctx context.Context, client *http.Client) context.Context {
+	if client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, client)
 }

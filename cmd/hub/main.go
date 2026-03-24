@@ -46,14 +46,21 @@ func main() {
 	mq := mqtt.NewClient(cfg.MQTTBrokerURL)
 	defer func() { _ = mq.Close() }()
 
-	jwtVerifier, err := auth.NewVerifier(ctx, cfg.Auth)
+	authenticator, err := auth.NewAuthenticator(ctx, cfg.Auth)
 	if err != nil {
 		logger.Fatal("auth init failed", observability.Error(err))
+	}
+	var registry *auth.Registry
+	if cfg.Auth.Enabled && cfg.Auth.Mode != "none" {
+		registry, err = auth.LoadRegistry(cfg.Auth.PermissionsFile)
+		if err != nil {
+			logger.Fatal("auth permissions init failed", observability.Error(err))
+		}
 	}
 
 	r := chi.NewRouter()
 	r.Use(observability.RequestLogger(logger))
-	r.Use(auth.Middleware(jwtVerifier, cfg.Auth))
+	r.Use(auth.Middleware(authenticator, cfg.Auth, registry))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -1,4 +1,17 @@
 services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.43.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./tools/dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "5556:5556"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5556/dex/.well-known/openid-configuration >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   postgres:
     image: postgres:17
     environment:
@@ -46,9 +59,18 @@ services:
       POSTGRES_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable"
       VALKEY_URL: "redis://valkey:6379/0"
       MQTT_BROKER_URL: "tcp://mosquitto:1883"
+      AUTH_MODE: "oidc"
+      AUTH_ISSUER: "http://dex:5556/dex"
+      AUTH_AUDIENCE: "open-rtls-cli"
+      AUTH_ROLES_CLAIM: "email"
+      AUTH_PERMISSIONS_FILE: "/app/config/auth/permissions.yaml"
     ports:
       - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
     depends_on:
+      dex:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       valkey:

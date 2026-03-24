@@ -1,0 +1,150 @@
+# Authentication and Authorization
+
+This project supports standards-based JWT bearer authentication for the REST API and an authorization model built around JWT claims plus a server-side permissions file.
+
+## Modes
+
+- `none`: disable auth checks
+- `oidc`: verify bearer tokens through OIDC discovery and JWKS
+- `static`: verify bearer tokens against static PEM keys or JWKS URLs
+- `hybrid`: accept either OIDC-verified or static-key tokens
+
+## OIDC and JWKS
+
+For `oidc` mode, the hub loads issuer metadata from `AUTH_ISSUER`, discovers the provider JWKS endpoint, and verifies JWT signatures and standard claims. Provider metadata and verifier state are cached and refreshed according to `AUTH_OIDC_REFRESH_TTL` instead of being reloaded on every request.
+
+Relevant settings:
+
+- `AUTH_ISSUER`
+- `AUTH_AUDIENCE`
+- `AUTH_ALLOWED_ALGS`
+- `AUTH_CLOCK_SKEW`
+- `AUTH_HTTP_TIMEOUT`
+- `AUTH_OIDC_REFRESH_TTL`
+
+## Authorization Model
+
+Authorization uses a role and ownership based model:
+
+- authenticate the bearer token first
+- extract a role-like claim from the JWT via `AUTH_ROLES_CLAIM`
+- load path permissions from `AUTH_PERMISSIONS_FILE`
+- optionally enforce ownership checks with the claim configured by `AUTH_OWNED_RESOURCES_CLAIM`
+
+Supported permission values:
+
+- `CREATE_ANY`
+- `READ_ANY`
+- `UPDATE_ANY`
+- `DELETE_ANY`
+- `CREATE_OWN`
+- `READ_OWN`
+- `UPDATE_OWN`
+- `DELETE_OWN`
+
+Method mapping:
+
+- `GET` and `HEAD` require `READ_*`
+- `POST` requires `CREATE_*`
+- `PUT` and `PATCH` require `UPDATE_*`
+- `DELETE` requires `DELETE_*`
+
+## Permissions File
+
+The permissions file is YAML. Top-level keys are values from the configured role claim. In production this would usually be a role or group claim. For the included Dex development fixture, the role claim is set to `email` because Dex's local password database produces deterministic user identity claims without extra role mapping.
+
+Example:
+
+```yaml
+admin@example.com:
+  description: Full access
+  /v2/*:
+    - CREATE_ANY
+    - READ_ANY
+    - UPDATE_ANY
+    - DELETE_ANY
+
+reader@example.com:
+  description: Read-only access
+  /v2/zones:
+    - READ_ANY
+  /v2/zones/:zoneId:
+    - READ_ANY
+```
+
+Path placeholders are used for ownership checks. The hub derives claim keys from route parameter names. For example `:providerId` maps to `provider_ids`.
+
+## Ownership Claims
+
+Ownership-aware rules use the claim configured by `AUTH_OWNED_RESOURCES_CLAIM`.
+
+Expected shape:
+
+```json
+{
+  "<owned_resources_claim>": {
+    "provider_ids": ["provider-1"],
+    "trackable_ids": ["trackable-1"],
+    "zone_ids": ["zone-1"],
+    "fence_ids": ["fence-1"],
+    "source_ids": ["source-1"]
+  }
+}
+```
+
+For `*_OWN` permissions, the request path parameter must be present in the matching owned-resource list.
+
+## Error Handling
+
+- `401 Unauthorized`: missing bearer header, malformed token, invalid signature, bad issuer, bad audience, expired token, or other authentication failure
+- `403 Forbidden`: authenticated token lacks a matching permission or ownership claim
+
+Authentication failures return a `WWW-Authenticate: Bearer` header and the API error body.
+
+## Dex Development Setup
+
+This repository includes a Dex fixture at [tools/dex/config.yaml](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/tools/dex/config.yaml) and a matching permissions file at [config/auth/permissions.yaml](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/config/auth/permissions.yaml).
+
+`docker compose` starts Dex on port `5556` and configures the app container to verify Dex-issued tokens with:
+
+- `AUTH_MODE=oidc`
+- `AUTH_ISSUER=http://dex:5556/dex`
+- `AUTH_AUDIENCE=open-rtls-cli`
+- `AUTH_ROLES_CLAIM=email`
+
+Included test users:
+
+- `admin@example.com` / `testpass123`
+- `reader@example.com` / `testpass123`
+- `owner@example.com` / `testpass123`
+
+Fetch a token:
+
+```bash
+curl -sS -X POST http://localhost:5556/dex/token \
+  -u open-rtls-cli:cli-secret \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data 'grant_type=password&scope=openid%20email%20profile&username=admin@example.com&password=testpass123'
+```
+
+Use the returned `id_token` as the bearer token when calling the hub.
+
+## Other Providers
+
+Keycloak and similar OIDC providers fit the same model if they expose:
+
+- issuer discovery
+- JWKS
+- a stable audience for the hub
+- a claim that can be mapped via `AUTH_ROLES_CLAIM`
+
+For production deployments, prefer a real role or group claim instead of the Dex development fixture's email-based mapping.
+
+## End-to-End Coverage
+
+The integration suite boots Dex and the hub, obtains a bearer token from Dex, and proves:
+
+- authenticated requests reach protected endpoints
+- missing or invalid tokens return `401`
+- insufficient permissions return `403`
+- ownership-restricted routes reject tokens that lack owned-resource claims

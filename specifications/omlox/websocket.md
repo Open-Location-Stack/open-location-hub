@@ -360,41 +360,41 @@ The hub should implement all of the following:
 - error responses with the mandated WebSocket error codes
 - JWT-in-`params.token` handling when authorization is enabled
 
-## Flowcate DeepHub reference notes
+## Reference implementation notes
 
-The following notes come from Flowcate's public DeepHub documentation. They are useful implementation guidance because DeepHub is a reference implementation, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.
+The following notes come from a public reference implementation. They are useful implementation guidance, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.
 
 Sources:
-- [DeepHub WebSocket API](https://docs.deephub.io/docs/deephub/the-apis/WebsocketAPI/)
-- [DeepHub Security & Authorization](https://docs.deephub.io/docs/deephub/configuration/SecurityAuthorization/)
-- [DeepHub Quuppa Connector](https://docs.deephub.io/docs/deephub/configuration/quuppaConnector/)
+- Public WebSocket API reference
+- Public security and authorization reference
+- Public connector reference
 
 ### Confirmed useful details
 
-- DeepHub documents the same topic set and core wrapper shape as the OMLOX PDF.
-- DeepHub shows concrete examples of publishing inbound `location_updates` and `proximity_updates` over WebSocket.
-- DeepHub's Quuppa connector example confirms a practical message shape for raw location publication to `location_updates`.
+- The reference implementation documents the same topic set and core wrapper shape as the OMLOX PDF.
+- The reference implementation shows concrete examples of publishing inbound `location_updates` and `proximity_updates` over WebSocket.
+- A public connector example confirms a practical message shape for raw location publication to `location_updates`.
 
-### DeepHub-specific behavior worth knowing
+### Product-specific behavior worth knowing
 
-- DeepHub documents additional WebSocket topics for object change events:
+- The reference implementation documents additional WebSocket topics for object change events:
   - `provider_changes`
   - `trackable_changes`
   - `fence_changes`
   - `zone_changes`
   - `anchor_changes`
-- DeepHub adds extra error codes beyond the OMLOX PDF:
+- The reference implementation adds extra error codes beyond the OMLOX PDF:
   - `10006`: not authenticated
   - `10007`: invalid license
-- DeepHub rejects duplicate subscriptions when the same topic is subscribed with identical parameters twice.
-- DeepHub accepts some topic filters as either scalar or array values.
-- DeepHub documents additional alias filter names such as:
+- The reference implementation rejects duplicate subscriptions when the same topic is subscribed with identical parameters twice.
+- The reference implementation accepts some topic filters as either scalar or array values.
+- The reference implementation documents additional alias filter names such as:
   - `trackable_id` as an alias for `id`
   - `collision_id_1` / `collision_id_2` as aliases around the OMLOX collision object filters
-- DeepHub documents a stronger ownership model for authorization, where topic access may depend on resource ownership claims in the JWT.
+- The reference implementation documents a stronger ownership model for authorization, where topic access may depend on resource ownership claims in the JWT.
 
 ### Guidance for this repository
 
 - Treat the OMLOX PDF as normative for required behavior.
-- Treat the DeepHub additions above as optional extensions unless we explicitly adopt them.
-- If we adopt any DeepHub extension, document it separately from the OMLOX core behavior so the distinction stays clear.
+- Treat the product-specific additions above as optional extensions unless we explicitly adopt them.
+- If we adopt any product-specific extension, document it separately from the OMLOX core behavior so the distinction stays clear.

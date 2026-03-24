@@ -1,6 +1,6 @@
-# Flowcate DeepHub Reference Extensions
+# Reference Extensions
 
-This document records public DeepHub APIs and protocol features that go beyond the OMLOX Hub PDF but may still be useful implementation ideas for this repository.
+This document records public reference APIs and protocol features that go beyond the OMLOX Hub PDF but may still be useful implementation ideas for this repository.
 
 These items are not normative OMLOX requirements. Treat them as candidate extensions or implementation patterns.
 
@@ -8,7 +8,7 @@ These items are not normative OMLOX requirements. Treat them as candidate extens
 
 ### Object change event feeds
 
-DeepHub exposes object change events over both WebSocket and MQTT for:
+A reference implementation exposes object change events over both WebSocket and MQTT for:
 - `provider_changes`
 - `trackable_changes`
 - `fence_changes`
@@ -22,7 +22,7 @@ Why this may be useful:
 
 ### Anchor API and anchor entities
 
-DeepHub adds an Anchor API and `anchor` entities associated with zones.
+A reference implementation adds an Anchor API and `anchor` entities associated with zones.
 
 Why this may be useful:
 - better modeling of physical RTLS infrastructure
@@ -31,7 +31,7 @@ Why this may be useful:
 
 ### Helper endpoints for geometry construction
 
-DeepHub adds helper endpoints such as:
+A reference implementation adds helper endpoints such as:
 - `/zones/fromlocal`
 - `/fences/fromlocal`
 
@@ -41,7 +41,7 @@ Why this may be useful:
 
 ### Version endpoint
 
-DeepHub exposes `/version` for API versions.
+A reference implementation exposes `/version` for API versions.
 
 Why this may be useful:
 - health and compatibility checks
@@ -49,7 +49,7 @@ Why this may be useful:
 
 ### Mobile Zone Extension (MZE)
 
-DeepHub documents a Mobile Zone Extension where a proximity zone can move based on updates from a provider or trackable, configured through zone properties.
+A reference implementation documents a Mobile Zone Extension where a proximity zone can move based on updates from a provider or trackable, configured through zone properties.
 
 Why this may be useful:
 - mobile RFID/iBeacon readers
@@ -57,7 +57,7 @@ Why this may be useful:
 
 ### Locating rule extension
 
-DeepHub documents a locating rule extension around trackables and provider selection.
+A reference implementation documents a locating rule extension around trackables and provider selection.
 
 Why this may be useful:
 - deterministic provider arbitration
@@ -65,7 +65,7 @@ Why this may be useful:
 
 ### Adapter endpoints and integration surfaces
 
-DeepHub documents product-specific integration surfaces such as:
+A reference implementation documents product-specific integration surfaces such as:
 - Cisco CMX webhook ingestion at `/adapters/cisco/locations`
 - ISO-24730 adapter support
 - Quuppa connector support
@@ -76,7 +76,7 @@ Why this may be useful:
 
 ### Unified Namespace (UNS) support
 
-DeepHub documents MQTT support in the context of a Unified Namespace.
+A reference implementation documents MQTT support in the context of a Unified Namespace.
 
 Why this may be useful:
 - plant-wide event distribution
@@ -84,7 +84,7 @@ Why this may be useful:
 
 ### RPC gateway positioning
 
-DeepHub presents RPC as an API surface for interacting with devices and services beyond the minimal OMLOX examples.
+A reference implementation presents RPC as an API surface for interacting with devices and services beyond the minimal OMLOX examples.
 
 Why this may be useful:
 - future device control workflows
@@ -104,14 +104,14 @@ Potentially useful later:
 - Unified Namespace support
 
 Useful only when there is a concrete product need:
-- DeepHub-specific auth ownership semantics
-- DeepHub-only WebSocket/MQTT aliases and extra error codes
+- product-specific auth ownership semantics
+- product-specific WebSocket/MQTT aliases and extra error codes
 
 ## Sources
 
-- Flowcate DeepHub API category and product overview
-- Flowcate DeepHub WebSocket API docs
-- Flowcate DeepHub MQTT topics docs
-- Flowcate DeepHub changelog
+- Vendor API category and product overview
+- Vendor WebSocket API docs
+- Vendor MQTT topics docs
+- Vendor changelog
 - Flowcate Mobile Zone Extension docs
 - Flowcate Cisco CMX adapter docs

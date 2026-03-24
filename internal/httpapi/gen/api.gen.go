@@ -561,8 +561,14 @@ type ZoneId = openapi_types.UUID
 // BadRequest defines model for BadRequest.
 type BadRequest = ErrorResponse
 
+// Forbidden defines model for Forbidden.
+type Forbidden = ErrorResponse
+
 // NotFound defines model for NotFound.
 type NotFound = ErrorResponse
+
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = ErrorResponse
 
 // PostProviderLocationsJSONBody defines parameters for PostProviderLocations.
 type PostProviderLocationsJSONBody = []Location
@@ -2240,7 +2246,11 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 
 type BadRequestJSONResponse ErrorResponse
 
+type ForbiddenJSONResponse ErrorResponse
+
 type NotFoundJSONResponse ErrorResponse
+
+type UnauthorizedJSONResponse ErrorResponse
 
 type ListFencesRequestObject struct {
 }
@@ -2254,6 +2264,24 @@ type ListFences200JSONResponse []Fence
 func (response ListFences200JSONResponse) VisitListFencesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListFences401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListFences401JSONResponse) VisitListFencesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListFences403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListFences403JSONResponse) VisitListFencesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2284,6 +2312,24 @@ func (response CreateFence400JSONResponse) VisitCreateFenceResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateFence401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateFence401JSONResponse) VisitCreateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateFence403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateFence403JSONResponse) VisitCreateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteFenceRequestObject struct {
 	FenceId FenceId `json:"fenceId"`
 }
@@ -2298,6 +2344,24 @@ type DeleteFence204Response struct {
 func (response DeleteFence204Response) VisitDeleteFenceResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteFence401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteFence401JSONResponse) VisitDeleteFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteFence403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteFence403JSONResponse) VisitDeleteFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type DeleteFence404JSONResponse struct{ NotFoundJSONResponse }
@@ -2322,6 +2386,24 @@ type GetFence200JSONResponse Fence
 func (response GetFence200JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFence401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFence401JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFence403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetFence403JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2362,6 +2444,24 @@ func (response UpdateFence400JSONResponse) VisitUpdateFenceResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateFence401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateFence401JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFence403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateFence403JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UpdateFence404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateFence404JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
@@ -2383,6 +2483,24 @@ type ListProviders200JSONResponse []LocationProvider
 func (response ListProviders200JSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListProviders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListProviders401JSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListProviders403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListProviders403JSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2413,6 +2531,24 @@ func (response CreateProvider400JSONResponse) VisitCreateProviderResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateProvider401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateProvider401JSONResponse) VisitCreateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProvider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateProvider403JSONResponse) VisitCreateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type PostProviderLocationsRequestObject struct {
 	Body *PostProviderLocationsJSONRequestBody
 }
@@ -2434,6 +2570,24 @@ type PostProviderLocations400JSONResponse struct{ BadRequestJSONResponse }
 func (response PostProviderLocations400JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostProviderLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PostProviderLocations401JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostProviderLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PostProviderLocations403JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2463,6 +2617,24 @@ func (response PostProviderProximities400JSONResponse) VisitPostProviderProximit
 	return json.NewEncoder(w).Encode(response)
 }
 
+type PostProviderProximities401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PostProviderProximities401JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PostProviderProximities403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PostProviderProximities403JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteProviderRequestObject struct {
 	ProviderId ProviderId `json:"providerId"`
 }
@@ -2477,6 +2649,24 @@ type DeleteProvider204Response struct {
 func (response DeleteProvider204Response) VisitDeleteProviderResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteProvider401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProvider401JSONResponse) VisitDeleteProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProvider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProvider403JSONResponse) VisitDeleteProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type DeleteProvider404JSONResponse struct{ NotFoundJSONResponse }
@@ -2501,6 +2691,24 @@ type GetProvider200JSONResponse LocationProvider
 func (response GetProvider200JSONResponse) VisitGetProviderResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProvider401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProvider401JSONResponse) VisitGetProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProvider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProvider403JSONResponse) VisitGetProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2537,6 +2745,24 @@ type UpdateProvider400JSONResponse struct{ BadRequestJSONResponse }
 func (response UpdateProvider400JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProvider401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateProvider401JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProvider403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateProvider403JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2586,6 +2812,24 @@ func (response PutRPC400JSONResponse) VisitPutRPCResponse(w http.ResponseWriter)
 	return json.NewEncoder(w).Encode(response)
 }
 
+type PutRPC401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutRPC401JSONResponse) VisitPutRPCResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PutRPC403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutRPC403JSONResponse) VisitPutRPCResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetRPCAvailableRequestObject struct {
 }
 
@@ -2602,6 +2846,24 @@ func (response GetRPCAvailable200JSONResponse) VisitGetRPCAvailableResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetRPCAvailable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetRPCAvailable401JSONResponse) VisitGetRPCAvailableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRPCAvailable403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetRPCAvailable403JSONResponse) VisitGetRPCAvailableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListTrackablesRequestObject struct {
 }
 
@@ -2614,6 +2876,24 @@ type ListTrackables200JSONResponse []Trackable
 func (response ListTrackables200JSONResponse) VisitListTrackablesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListTrackables401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListTrackables401JSONResponse) VisitListTrackablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListTrackables403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListTrackables403JSONResponse) VisitListTrackablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2644,6 +2924,24 @@ func (response CreateTrackable400JSONResponse) VisitCreateTrackableResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateTrackable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateTrackable401JSONResponse) VisitCreateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTrackable403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateTrackable403JSONResponse) VisitCreateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteTrackableRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
 }
@@ -2658,6 +2956,24 @@ type DeleteTrackable204Response struct {
 func (response DeleteTrackable204Response) VisitDeleteTrackableResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteTrackable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteTrackable401JSONResponse) VisitDeleteTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTrackable403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteTrackable403JSONResponse) VisitDeleteTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type DeleteTrackable404JSONResponse struct{ NotFoundJSONResponse }
@@ -2682,6 +2998,24 @@ type GetTrackable200JSONResponse Trackable
 func (response GetTrackable200JSONResponse) VisitGetTrackableResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTrackable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackable401JSONResponse) VisitGetTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTrackable403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackable403JSONResponse) VisitGetTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2722,6 +3056,24 @@ func (response UpdateTrackable400JSONResponse) VisitUpdateTrackableResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateTrackable401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateTrackable401JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTrackable403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateTrackable403JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UpdateTrackable404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateTrackable404JSONResponse) VisitUpdateTrackableResponse(w http.ResponseWriter) error {
@@ -2743,6 +3095,24 @@ type ListZones200JSONResponse []Zone
 func (response ListZones200JSONResponse) VisitListZonesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListZones401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListZones401JSONResponse) VisitListZonesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListZones403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListZones403JSONResponse) VisitListZonesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2773,6 +3143,24 @@ func (response CreateZone400JSONResponse) VisitCreateZoneResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateZone401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateZone401JSONResponse) VisitCreateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateZone403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateZone403JSONResponse) VisitCreateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteZoneRequestObject struct {
 	ZoneId ZoneId `json:"zoneId"`
 }
@@ -2787,6 +3175,24 @@ type DeleteZone204Response struct {
 func (response DeleteZone204Response) VisitDeleteZoneResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteZone401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteZone401JSONResponse) VisitDeleteZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteZone403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteZone403JSONResponse) VisitDeleteZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type DeleteZone404JSONResponse struct{ NotFoundJSONResponse }
@@ -2811,6 +3217,24 @@ type GetZone200JSONResponse Zone
 func (response GetZone200JSONResponse) VisitGetZoneResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetZone401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetZone401JSONResponse) VisitGetZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetZone403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetZone403JSONResponse) VisitGetZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2847,6 +3271,24 @@ type UpdateZone400JSONResponse struct{ BadRequestJSONResponse }
 func (response UpdateZone400JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateZone401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateZone401JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateZone403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateZone403JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }

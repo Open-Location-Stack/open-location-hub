@@ -19,7 +19,7 @@ Use this skill for spec-first API work in this repository when the task involves
 6. Keep WebSocket and MQTT protocol details out of REST path modeling; document them in companion OMLOX markdown.
 7. Mark inferred REST additions explicitly when the PDF implies lifecycle behavior without spelling out the exact endpoint set.
 8. For MQTT or WebSocket changes, consult `specifications/omlox/websocket.md` and `specifications/omlox/mqtt.md` before editing the REST contract.
-9. Flowcate DeepHub public docs may be used as reference implementation context, but OMLOX PDFs remain normative.
+9. Vendor or third-party public docs may be used as reference implementation context, but OMLOX PDFs remain normative.
 
 ## Heuristics
 - Prefer schema validation for stable field types, enums, defaults, and simple conditional requirements that codegen preserves well.

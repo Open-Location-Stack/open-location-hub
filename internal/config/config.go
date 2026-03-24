@@ -18,14 +18,18 @@ type Config struct {
 }
 
 type AuthConfig struct {
-	Mode               string
-	Audience           []string
-	Issuer             string
-	AllowedAlgs        []string
-	ClockSkew          time.Duration
-	StaticPublicKeys   []string
-	OIDCJWKSRefreshTTL time.Duration
-	Enabled            bool
+	Mode                string
+	Audience            []string
+	Issuer              string
+	AllowedAlgs         []string
+	ClockSkew           time.Duration
+	StaticPublicKeys    []string
+	OIDCJWKSRefreshTTL  time.Duration
+	HTTPTimeout         time.Duration
+	PermissionsFile     string
+	RolesClaim          string
+	OwnedResourcesClaim string
+	Enabled             bool
 }
 
 func FromEnv() (Config, error) {
@@ -36,14 +40,18 @@ func FromEnv() (Config, error) {
 		ValkeyURL:      env("VALKEY_URL", "redis://localhost:6379/0"),
 		MQTTBrokerURL:  env("MQTT_BROKER_URL", "tcp://localhost:1883"),
 		Auth: AuthConfig{
-			Mode:               env("AUTH_MODE", "none"),
-			Audience:           csvEnv("AUTH_AUDIENCE", "open-rtls-hub"),
-			Issuer:             env("AUTH_ISSUER", ""),
-			AllowedAlgs:        csvEnv("AUTH_ALLOWED_ALGS", "RS256"),
-			ClockSkew:          durationEnv("AUTH_CLOCK_SKEW", 30*time.Second),
-			StaticPublicKeys:   csvEnv("AUTH_STATIC_PUBLIC_KEYS", ""),
-			OIDCJWKSRefreshTTL: durationEnv("AUTH_OIDC_REFRESH_TTL", 10*time.Minute),
-			Enabled:            boolEnv("AUTH_ENABLED", true),
+			Mode:                env("AUTH_MODE", "none"),
+			Audience:            csvEnv("AUTH_AUDIENCE", "open-rtls-hub"),
+			Issuer:              env("AUTH_ISSUER", ""),
+			AllowedAlgs:         csvEnv("AUTH_ALLOWED_ALGS", "RS256"),
+			ClockSkew:           durationEnv("AUTH_CLOCK_SKEW", 30*time.Second),
+			StaticPublicKeys:    csvEnv("AUTH_STATIC_PUBLIC_KEYS", ""),
+			OIDCJWKSRefreshTTL:  durationEnv("AUTH_OIDC_REFRESH_TTL", 10*time.Minute),
+			HTTPTimeout:         durationEnv("AUTH_HTTP_TIMEOUT", 5*time.Second),
+			PermissionsFile:     env("AUTH_PERMISSIONS_FILE", "config/auth/permissions.yaml"),
+			RolesClaim:          env("AUTH_ROLES_CLAIM", "groups"),
+			OwnedResourcesClaim: env("AUTH_OWNED_RESOURCES_CLAIM", "owned_resources"),
+			Enabled:             boolEnv("AUTH_ENABLED", true),
 		},
 	}
 
@@ -74,6 +82,15 @@ func (a AuthConfig) Validate() error {
 		}
 	default:
 		return fmt.Errorf("unsupported AUTH_MODE=%q", a.Mode)
+	}
+	if a.PermissionsFile == "" {
+		return fmt.Errorf("AUTH_PERMISSIONS_FILE is required when auth is enabled")
+	}
+	if a.RolesClaim == "" {
+		return fmt.Errorf("AUTH_ROLES_CLAIM is required when auth is enabled")
+	}
+	if a.OwnedResourcesClaim == "" {
+		return fmt.Errorf("AUTH_OWNED_RESOURCES_CLAIM is required when auth is enabled")
 	}
 	return nil
 }

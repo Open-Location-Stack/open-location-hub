@@ -41,6 +41,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Zone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [zones]
       operationId: createZone
@@ -62,6 +66,10 @@ paths:
                 $ref: '#/components/schemas/Zone'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/zones/{zoneId}:
     parameters:
       - $ref: '#/components/parameters/ZoneId'
@@ -78,6 +86,10 @@ paths:
                 $ref: '#/components/schemas/Zone'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     put:
       tags: [zones]
       operationId: updateZone
@@ -99,6 +111,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [zones]
       operationId: deleteZone
@@ -108,6 +124,10 @@ paths:
           description: Deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/trackables:
     get:
       tags: [trackables]
@@ -122,6 +142,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Trackable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [trackables]
       operationId: createTrackable
@@ -141,6 +165,10 @@ paths:
                 $ref: '#/components/schemas/Trackable'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/trackables/{trackableId}:
     parameters:
       - $ref: '#/components/parameters/TrackableId'
@@ -157,6 +185,10 @@ paths:
                 $ref: '#/components/schemas/Trackable'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     put:
       tags: [trackables]
       operationId: updateTrackable
@@ -178,6 +210,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [trackables]
       operationId: deleteTrackable
@@ -187,6 +223,10 @@ paths:
           description: Deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers:
     get:
       tags: [providers]
@@ -201,6 +241,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LocationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [providers]
       operationId: createProvider
@@ -220,6 +264,10 @@ paths:
                 $ref: '#/components/schemas/LocationProvider'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers/{providerId}:
     parameters:
       - $ref: '#/components/parameters/ProviderId'
@@ -236,6 +284,10 @@ paths:
                 $ref: '#/components/schemas/LocationProvider'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     put:
       tags: [providers]
       operationId: updateProvider
@@ -257,6 +309,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [providers]
       operationId: deleteProvider
@@ -266,6 +322,10 @@ paths:
           description: Deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers/locations:
     post:
       tags: [providers]
@@ -284,6 +344,10 @@ paths:
           description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers/proximities:
     post:
       tags: [providers]
@@ -302,6 +366,10 @@ paths:
           description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/fences:
     get:
       tags: [fences]
@@ -316,6 +384,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Fence'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [fences]
       operationId: createFence
@@ -335,6 +407,10 @@ paths:
                 $ref: '#/components/schemas/Fence'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/fences/{fenceId}:
     parameters:
       - $ref: '#/components/parameters/FenceId'
@@ -351,6 +427,10 @@ paths:
                 $ref: '#/components/schemas/Fence'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     put:
       tags: [fences]
       operationId: updateFence
@@ -372,6 +452,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     delete:
       tags: [fences]
       operationId: deleteFence
@@ -381,6 +465,10 @@ paths:
           description: Deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/rpc/available:
     get:
       tags: [rpc]
@@ -393,6 +481,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RpcAvailableMethods'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/rpc:
     put:
       tags: [rpc]
@@ -417,12 +509,20 @@ paths:
           description: Notification accepted. Returned when `id` and `_caller_id` are omitted.
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: |
+        Authentication uses a JWT bearer token. Authorization is enforced by the
+        hub's server-side permission registry instead of OAuth
+        scope declarations in this OpenAPI document.
   parameters:
     ZoneId:
       in: path
@@ -454,6 +554,18 @@ components:
   responses:
     BadRequest:
       description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but not authorized
       content:
         application/json:
           schema:

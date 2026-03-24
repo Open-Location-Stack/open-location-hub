@@ -1,0 +1,19 @@
+admin@example.com:
+  description: Full administrative access for local Dex development and tests.
+  /v2/*:
+    - CREATE_ANY
+    - READ_ANY
+    - UPDATE_ANY
+    - DELETE_ANY
+
+reader@example.com:
+  description: Read-only role used to prove authorization failures in tests.
+  /v2/zones:
+    - READ_ANY
+  /v2/zones/:zoneId:
+    - READ_ANY
+
+owner@example.com:
+  description: Ownership-restricted role used to prove OWN authorization failures.
+  /v2/providers/:providerId:
+    - READ_OWN

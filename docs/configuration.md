@@ -18,3 +18,9 @@ All runtime configuration is environment-driven.
 - `AUTH_STATIC_PUBLIC_KEYS` (comma-separated PEM blocks or JWKS URLs)
 - `AUTH_CLOCK_SKEW` (duration, default `30s`)
 - `AUTH_OIDC_REFRESH_TTL` (duration, default `10m`)
+- `AUTH_HTTP_TIMEOUT` (duration, default `5s`)
+- `AUTH_PERMISSIONS_FILE` (YAML path, default `config/auth/permissions.yaml`)
+- `AUTH_ROLES_CLAIM` (JWT claim used for role extraction, default `groups`)
+- `AUTH_OWNED_RESOURCES_CLAIM` (JWT object claim for owned resource IDs; see `docs/auth.md` for format and usage)
+
+See [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md) for the full auth model, Dex setup, and permission file format.

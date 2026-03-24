@@ -372,37 +372,37 @@ If this hub implements MQTT, it should implement:
 - RPC method announcements, request handling topics, and response topics
 - support for OMLOX reserved RPC parameters and error codes
 
-## Flowcate DeepHub reference notes
+## Reference implementation notes
 
-The following notes come from Flowcate's public DeepHub documentation. They are useful as reference implementation guidance, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.
+The following notes come from a public reference implementation. They are useful as reference implementation guidance, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.
 
 Sources:
-- [DeepHub MQTT Topics](https://docs.deephub.io/docs/deephub/the-apis/MQTTTopics/)
-- [DeepHub overview via PROFINEWS mention of public docs](https://profinews.com/2022/10/omlox-activities-update/)
+- Public MQTT topic reference
+- Product overview via public articles
 
 ### Confirmed useful details
 
-- DeepHub documents the same high-level split between unprocessed inbound data and hub-published processed data.
-- DeepHub reinforces the OMLOX rationale that MQTT supports only local and WGS84 projections, not arbitrary per-subscriber projections.
-- DeepHub documents object types on the MQTT topics exactly as expected:
+- The reference implementation documents the same high-level split between unprocessed inbound data and hub-published processed data.
+- The reference implementation reinforces the OMLOX rationale that MQTT supports only local and WGS84 projections, not arbitrary per-subscriber projections.
+- The reference implementation documents object types on the MQTT topics exactly as expected:
   - `Location`
   - `Proximity`
   - `FenceEvent`
   - `TrackableMotion`
   - `CollisionEvent`
 
-### DeepHub-specific behavior worth knowing
+### Product-specific behavior worth knowing
 
-- DeepHub documents extra MQTT topic families for object change events, such as `fence_changes`, `trackable_changes`, `provider_changes`, `zone_changes`, and `anchor_changes`. These are product extensions, not part of the OMLOX MQTT extension.
-- DeepHub also documents Unified Namespace support rooted under a configurable prefix. That is product-specific and not part of OMLOX.
+- The reference implementation documents extra MQTT topic families for object change events, such as `fence_changes`, `trackable_changes`, `provider_changes`, `zone_changes`, and `anchor_changes`. These are product extensions, not part of the OMLOX MQTT extension.
+- The reference implementation also documents Unified Namespace support rooted under a configurable prefix. That is product-specific and not part of OMLOX.
 
 ### Divergence to watch
 
 - The OMLOX PDF defines the collision topic as `/omlox/json/collision_events/epsg4326`.
-- The public DeepHub MQTT page describes publication to `omlox/json/collision_events/epsg4326/{trackable_id}`.
-- Treat the PDF form as normative for this repository unless we intentionally add the DeepHub variant as an extension.
+- The public MQTT reference describes publication to `omlox/json/collision_events/epsg4326/{trackable_id}`.
+- Treat the PDF form as normative for this repository unless we intentionally add the product-specific variant as an extension.
 
 ### Guidance for this repository
 
 - Implement the OMLOX MQTT topic hierarchy first.
-- Keep DeepHub-only MQTT additions separate and clearly labeled if we choose to support them later.
+- Keep product-specific MQTT additions separate and clearly labeled if we choose to support them later.

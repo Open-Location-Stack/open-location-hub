@@ -12,6 +12,7 @@ When this implementation is complete enough, the project may seek to work with o
 - Dockerized local runtime for Postgres, Valkey, Mosquitto, and app
 - `just` orchestration for generation, checks, tests, and compose
 - JWT auth modes: `oidc`, `static`, and `hybrid`
+- RBAC and ownership-aware authorization
 - Unit tests and Testcontainers integration test harness
 
 ## Quickstart
@@ -30,5 +31,6 @@ When this implementation is complete enough, the project may seek to work with o
 - `docs/architecture.md`
 - `docs/configuration.md`
 - `docs/testing.md`
+- `docs/auth.md`
 - `docs/openapi-governance.md`
 - `docs/implementation-plan.md`
