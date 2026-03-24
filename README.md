@@ -22,6 +22,23 @@ When this implementation is complete enough, the project may seek to work with o
 4. `just compose-up`
 5. `just run` (or run app in compose)
 
+## Build dependencies
+
+The hub now includes native CRS transformation support via PROJ, so local builds need both the Go toolchain and the PROJ development libraries.
+
+macOS with Homebrew:
+- `brew install just pkgconf proj`
+- if `pkg-config` is still not on your shell path, use the repo-local shim via the provided `just` commands
+
+Debian/Ubuntu:
+- `sudo apt-get update`
+- `sudo apt-get install -y golang-go just build-essential pkg-config libproj-dev proj-data`
+
+Notes:
+- `just bootstrap` installs the pinned Go code generators used by this repo
+- Docker builds install the required PROJ packages inside the image, so containerized workflows do not depend on host-installed PROJ headers
+- `just test` and `just check` compile CGO-backed projection code, so missing `pkg-config` or `libproj` headers will fail the build
+
 ## Key commands
 - `just check` runs formatting, lint, tests, and build
 - `just test-int` runs integration tests (Docker required)

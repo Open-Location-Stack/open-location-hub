@@ -22,7 +22,7 @@ migrate-down:
 	goose -dir migrations postgres "$POSTGRES_URL" down
 
 run:
-	go run ./cmd/hub
+	PATH="$PWD/tools/bin:$PATH" go run ./cmd/hub
 
 compose-up:
 	docker compose --env-file .env.example up --build -d
@@ -37,15 +37,15 @@ fmt:
 	gofmt -w cmd internal tests
 
 lint:
-	go vet ./...
+	PATH="$PWD/tools/bin:$PATH" go vet ./...
 
 test:
-	go test ./...
+	PATH="$PWD/tools/bin:$PATH" go test ./...
 
 test-int:
-	go test ./tests/integration -v
+	PATH="$PWD/tools/bin:$PATH" go test ./tests/integration -v
 
 build:
-	go build ./...
+	PATH="$PWD/tools/bin:$PATH" go build ./...
 
 check: fmt lint test build

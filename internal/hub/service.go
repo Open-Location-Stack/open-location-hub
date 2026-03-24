@@ -15,6 +15,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -48,12 +49,14 @@ type Config struct {
 }
 
 type Service struct {
-	logger    *zap.Logger
-	queries   sqlcgen.Querier
-	cache     Cache
-	publisher Publisher
-	cfg       Config
-	now       func() time.Time
+	logger         *zap.Logger
+	queries        sqlcgen.Querier
+	cache          Cache
+	publisher      Publisher
+	cfg            Config
+	now            func() time.Time
+	crsTransformer *transform.CRSTransformer
+	transformCache *transform.Cache
 }
 
 type HTTPError struct {
@@ -68,12 +71,14 @@ func (e *HTTPError) Error() string {
 
 func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, publisher Publisher, cfg Config) *Service {
 	return &Service{
-		logger:    logger,
-		queries:   queries,
-		cache:     cache,
-		publisher: publisher,
-		cfg:       cfg,
-		now:       time.Now,
+		logger:         logger,
+		queries:        queries,
+		cache:          cache,
+		publisher:      publisher,
+		cfg:            cfg,
+		now:            time.Now,
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
 	}
 }
 
@@ -144,7 +149,11 @@ func (s *Service) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zon
 	if err != nil {
 		return gen.Zone{}, translateDBError(err)
 	}
-	return decodePayload[gen.Zone](row.Payload)
+	zone, err := decodePayload[gen.Zone](row.Payload)
+	if err == nil {
+		s.invalidateZoneTransform(zone.Id.String())
+	}
+	return zone, err
 }
 
 func (s *Service) GetZone(ctx context.Context, id openapi_types.UUID) (gen.Zone, error) {
@@ -169,7 +178,11 @@ func (s *Service) UpdateZone(ctx context.Context, id openapi_types.UUID, body js
 	if err != nil {
 		return gen.Zone{}, translateDBError(err)
 	}
-	return decodePayload[gen.Zone](row.Payload)
+	zone, err := decodePayload[gen.Zone](row.Payload)
+	if err == nil {
+		s.invalidateZoneTransform(zone.Id.String())
+	}
+	return zone, err
 }
 
 func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
@@ -180,6 +193,7 @@ func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
 	if rows == 0 {
 		return notFound("zone not found")
 	}
+	s.invalidateZoneTransform(id.String())
 	return nil
 }
 
@@ -624,38 +638,191 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 	if s.publisher == nil {
 		return nil
 	}
-	if err := s.publisher.PublishJSON(ctx, mqtt.TopicLocationLocal(location.ProviderId), location, false); err != nil {
+	variants, err := s.locationVariants(ctx, location)
+	if err != nil {
 		return err
 	}
-	return s.publisher.PublishJSON(ctx, mqtt.TopicLocationEPSG4326(location.ProviderId), location, false)
+	if variants.Local != nil {
+		if err := s.publisher.PublishJSON(ctx, mqtt.TopicLocationLocal(location.ProviderId), *variants.Local, false); err != nil {
+			return err
+		}
+	}
+	if variants.WGS84 != nil {
+		if err := s.publisher.PublishJSON(ctx, mqtt.TopicLocationEPSG4326(location.ProviderId), *variants.WGS84, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Location) error {
 	if s.publisher == nil || location.Trackables == nil {
 		return nil
 	}
+	variants, err := s.locationVariants(ctx, location)
+	if err != nil {
+		return err
+	}
 	for _, id := range *location.Trackables {
-		motion := gen.TrackableMotion{
-			Id:       id,
-			Location: location,
-		}
-		if parsed, err := uuid.Parse(id); err == nil {
+		baseMotion := gen.TrackableMotion{Id: id}
+		if parsed, parseErr := uuid.Parse(id); parseErr == nil {
 			trackable, getErr := s.GetTrackable(ctx, openapi_types.UUID(parsed))
 			if getErr == nil {
-				motion.Name = trackable.Name
-				motion.Geometry = trackable.Geometry
-				motion.Extrusion = trackable.Extrusion
-				motion.Properties = trackable.Properties
+				baseMotion.Name = trackable.Name
+				baseMotion.Geometry = trackable.Geometry
+				baseMotion.Extrusion = trackable.Extrusion
+				baseMotion.Properties = trackable.Properties
 			}
 		}
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionLocal(id), motion, false); err != nil {
-			return err
+		if variants.Local != nil {
+			motion := baseMotion
+			motion.Location = *variants.Local
+			if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionLocal(id), motion, false); err != nil {
+				return err
+			}
 		}
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionEPSG4326(id), motion, false); err != nil {
-			return err
+		if variants.WGS84 != nil {
+			motion := baseMotion
+			motion.Location = *variants.WGS84
+			if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionEPSG4326(id), motion, false); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+type locationPublicationVariants struct {
+	Local *gen.Location
+	WGS84 *gen.Location
+}
+
+func (s *Service) locationVariants(ctx context.Context, location gen.Location) (locationPublicationVariants, error) {
+	rawCRS := locationCRS(location)
+	switch {
+	case rawCRS == "" || rawCRS == "local":
+		localCopy, err := cloneLocation(location)
+		if err != nil {
+			return locationPublicationVariants{}, err
+		}
+		localCRS := "local"
+		localCopy.Crs = &localCRS
+		variants := locationPublicationVariants{Local: &localCopy}
+		wgs84Location, err := s.locationToWGS84(ctx, location)
+		if err != nil {
+			s.logger.Warn("location wgs84 transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source))
+			return variants, nil
+		}
+		variants.WGS84 = &wgs84Location
+		return variants, nil
+	default:
+		wgs84Location, err := s.locationToWGS84(ctx, location)
+		if err != nil {
+			return locationPublicationVariants{}, err
+		}
+		variants := locationPublicationVariants{WGS84: &wgs84Location}
+		localLocation, err := s.locationToLocal(ctx, wgs84Location)
+		if err != nil {
+			s.logger.Warn("location local transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source), zap.String("crs", rawCRS))
+			return variants, nil
+		}
+		variants.Local = &localLocation
+		return variants, nil
+	}
+}
+
+func (s *Service) locationToWGS84(ctx context.Context, location gen.Location) (gen.Location, error) {
+	crs := locationCRS(location)
+	switch {
+	case crs == "EPSG:4326":
+		out, err := cloneLocation(location)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		epsg := "EPSG:4326"
+		out.Crs = &epsg
+		return out, nil
+	case crs == "" || crs == "local":
+		zone, err := s.zoneForLocationSource(ctx, location)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		transformer, err := s.transformCache.Get(zone)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		point, err := transformer.LocalToWGS84(location.Position)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		out, err := cloneLocation(location)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		epsg := "EPSG:4326"
+		out.Crs = &epsg
+		out.Position = point
+		return out, nil
+	default:
+		point, err := s.crsTransformer.ToWGS84(crs, location.Position)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		out, err := cloneLocation(location)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		epsg := "EPSG:4326"
+		out.Crs = &epsg
+		out.Position = point
+		return out, nil
+	}
+}
+
+func (s *Service) locationToLocal(ctx context.Context, wgs84Location gen.Location) (gen.Location, error) {
+	zone, err := s.zoneForLocationSource(ctx, wgs84Location)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	transformer, err := s.transformCache.Get(zone)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	point, err := transformer.WGS84ToLocal(wgs84Location.Position)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	out, err := cloneLocation(wgs84Location)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	localCRS := "local"
+	out.Crs = &localCRS
+	out.Position = point
+	return out, nil
+}
+
+func (s *Service) zoneForLocationSource(ctx context.Context, location gen.Location) (gen.Zone, error) {
+	zones, err := s.ListZones(ctx)
+	if err != nil {
+		return gen.Zone{}, err
+	}
+	for _, zone := range zones {
+		if zone.Id.String() == location.Source {
+			return zone, nil
+		}
+		if zone.ForeignId != nil && *zone.ForeignId == location.Source {
+			return zone, nil
+		}
+	}
+	return gen.Zone{}, badRequest("location source did not match a known zone id or foreign_id")
+}
+
+func (s *Service) invalidateZoneTransform(zoneID string) {
+	if s.transformCache == nil || strings.TrimSpace(zoneID) == "" {
+		return
+	}
+	s.transformCache.Invalidate(zoneID)
 }
 
 func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location) error {
@@ -893,11 +1060,29 @@ func validateLocationCRS(crs *string) error {
 	}
 	value := strings.TrimSpace(*crs)
 	switch value {
-	case "", "local", "EPSG:4326":
+	case "", "local":
 		return nil
 	default:
-		return badRequest("location crs must be local or EPSG:4326")
+		if strings.HasPrefix(value, "EPSG:") && len(value) > len("EPSG:") {
+			return nil
+		}
+		return badRequest("location crs must be local or an EPSG code")
 	}
+}
+
+func locationCRS(location gen.Location) string {
+	if location.Crs == nil {
+		return ""
+	}
+	return strings.TrimSpace(*location.Crs)
+}
+
+func cloneLocation(location gen.Location) (gen.Location, error) {
+	payload, err := json.Marshal(location)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	return decodePayload[gen.Location](payload)
 }
 
 func translateDBError(err error) error {

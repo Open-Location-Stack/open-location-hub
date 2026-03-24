@@ -35,6 +35,7 @@ Optional (selected):
 
 - Hub MUST process updates according to chapter 7 flow.
 - Hub MUST publish resulting updates to WebSocket subscribers immediately.
-- Current repository behavior accepts omitted `crs`, `local`, and `EPSG:4326` on ingest and rejects other CRS values.
-- In MQTT extension, the hub currently republishes the same canonical payload to both local and EPSG:4326 topic variants.
-- Real local-to-WGS84 coordinate transformation is not implemented yet; the `epsg4326` topic is currently a routing alias, not a transformed output.
+- Current repository behavior accepts omitted `crs`, `local`, and named EPSG codes.
+- In MQTT extension, the hub publishes derived local and WGS84 variants when the necessary transformation is available.
+- Local georeferencing is derived from `Zone.ground_control_points`; named CRS conversion is delegated to the runtime projection engine.
+- If a requested derived variant cannot be produced safely, the hub suppresses that variant rather than publishing incorrect coordinates.

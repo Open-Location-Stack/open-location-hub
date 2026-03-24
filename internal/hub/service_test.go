@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"go.uber.org/zap"
 )
 
 func TestNormalizeZoneRequiresGroundControlPointsWhenConfigurationIsComplete(t *testing.T) {
@@ -209,7 +212,7 @@ func TestValidateLocationAllowsEPSG4326CRS(t *testing.T) {
 }
 
 func TestValidateLocationRejectsUnsupportedCRS(t *testing.T) {
-	crs := "EPSG:3857"
+	crs := "WGS84"
 	err := validateLocation(testLocation(t, &crs))
 	var httpErr *HTTPError
 	if !errors.As(err, &httpErr) || httpErr.Status != 400 {
@@ -338,11 +341,18 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 	}
 }
 
-func TestPublishLocationPublishesSamePayloadToLocalAndEPSG4326Topics(t *testing.T) {
+func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 	publisher := &recordingPublisher{}
-	service := &Service{publisher: publisher}
-	crs := "EPSG:4326"
-	location := testLocation(t, &crs)
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	service := &Service{
+		publisher:      publisher,
+		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 7})
 
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
@@ -356,8 +366,99 @@ func TestPublishLocationPublishesSamePayloadToLocalAndEPSG4326Topics(t *testing.
 	if publisher.calls[1].topic != mqtt.TopicLocationEPSG4326(location.ProviderId) {
 		t.Fatalf("unexpected epsg4326 topic: %s", publisher.calls[1].topic)
 	}
-	if string(publisher.calls[0].payload) != string(publisher.calls[1].payload) {
-		t.Fatal("expected local and epsg4326 topics to carry the same payload")
+	localPublished := decodePublishedLocation(t, publisher.calls[0].payload)
+	wgsPublished := decodePublishedLocation(t, publisher.calls[1].payload)
+	if localPublished.Crs == nil || *localPublished.Crs != "local" {
+		t.Fatal("expected local publication to stay local")
+	}
+	if wgsPublished.Crs == nil || *wgsPublished.Crs != "EPSG:4326" {
+		t.Fatal("expected wgs84 publication to use EPSG:4326")
+	}
+	assertLocationsDiffer(t, localPublished, wgsPublished)
+}
+
+func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing.T) {
+	publisher := &recordingPublisher{}
+	zone := georeferencedZoneFixture(t, -33.4489, -70.6693)
+	service := &Service{
+		publisher:      publisher,
+		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{-70.6692, -33.4488})
+
+	if err := service.publishLocation(context.Background(), location); err != nil {
+		t.Fatalf("publishLocation failed: %v", err)
+	}
+	if len(publisher.calls) != 2 {
+		t.Fatalf("expected two publish calls, got %d", len(publisher.calls))
+	}
+	localPublished := decodePublishedLocation(t, publisher.calls[0].payload)
+	wgsPublished := decodePublishedLocation(t, publisher.calls[1].payload)
+	if localPublished.Crs == nil || *localPublished.Crs != "local" {
+		t.Fatal("expected local publication to use local CRS")
+	}
+	if wgsPublished.Crs == nil || *wgsPublished.Crs != "EPSG:4326" {
+		t.Fatal("expected wgs84 publication to use EPSG:4326")
+	}
+	assertLocationsDiffer(t, localPublished, wgsPublished)
+}
+
+func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
+	publisher := &recordingPublisher{}
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, "missing-zone", [2]float32{2, 3})
+	service := &Service{
+		publisher:      publisher,
+		queries:        fakeQueries{listZonesFn: func(context.Context) ([]sqlcgen.Zone, error) { return nil, nil }},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.publishLocation(context.Background(), location); err != nil {
+		t.Fatalf("publishLocation failed: %v", err)
+	}
+	if len(publisher.calls) != 1 {
+		t.Fatalf("expected only one publish call, got %d", len(publisher.calls))
+	}
+	published := decodePublishedLocation(t, publisher.calls[0].payload)
+	if published.Crs == nil || *published.Crs != "local" {
+		t.Fatal("expected only local topic to be published")
+	}
+}
+
+func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
+	publisher := &recordingPublisher{}
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	service := &Service{
+		publisher:      publisher,
+		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 5})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	if err := service.publishTrackableMotions(context.Background(), location); err != nil {
+		t.Fatalf("publishTrackableMotions failed: %v", err)
+	}
+	if len(publisher.calls) != 2 {
+		t.Fatalf("expected two motion publications, got %d", len(publisher.calls))
+	}
+	localMotion := decodePublishedMotion(t, publisher.calls[0].payload)
+	wgsMotion := decodePublishedMotion(t, publisher.calls[1].payload)
+	if localMotion.Location.Crs == nil || *localMotion.Location.Crs != "local" {
+		t.Fatal("expected local motion to stay local")
+	}
+	if wgsMotion.Location.Crs == nil || *wgsMotion.Location.Crs != "EPSG:4326" {
+		t.Fatal("expected wgs84 motion to use EPSG:4326")
 	}
 }
 
@@ -406,8 +507,13 @@ func testPolicy() proximityResolutionPolicy {
 
 func testLocation(t *testing.T, crs *string) gen.Location {
 	t.Helper()
+	return testLocationWithCoordinates(t, crs, "zone-a", [2]float32{1, 2})
+}
+
+func testLocationWithCoordinates(t *testing.T, crs *string, source string, coordinates [2]float32) gen.Location {
+	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{1, 2}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return gen.Location{
@@ -415,7 +521,7 @@ func testLocation(t *testing.T, crs *string) gen.Location {
 		Position:     point,
 		ProviderId:   "provider-a",
 		ProviderType: "uwb",
-		Source:       "zone-a",
+		Source:       source,
 	}
 }
 
@@ -539,6 +645,87 @@ func (p *recordingPublisher) PublishJSON(_ context.Context, topic string, payloa
 	}
 	p.calls = append(p.calls, publishCall{topic: topic, payload: raw})
 	return nil
+}
+
+func decodePublishedLocation(t *testing.T, payload []byte) gen.Location {
+	t.Helper()
+	var location gen.Location
+	if err := json.Unmarshal(payload, &location); err != nil {
+		t.Fatalf("decode location failed: %v", err)
+	}
+	return location
+}
+
+func decodePublishedMotion(t *testing.T, payload []byte) gen.TrackableMotion {
+	t.Helper()
+	var motion gen.TrackableMotion
+	if err := json.Unmarshal(payload, &motion); err != nil {
+		t.Fatalf("decode motion failed: %v", err)
+	}
+	return motion
+}
+
+func assertLocationsDiffer(t *testing.T, a, b gen.Location) {
+	t.Helper()
+	ap, err := point2D(a.Position)
+	if err != nil {
+		t.Fatalf("decode first location failed: %v", err)
+	}
+	bp, err := point2D(b.Position)
+	if err != nil {
+		t.Fatalf("decode second location failed: %v", err)
+	}
+	if math.Abs(ap[0]-bp[0]) < 1e-6 && math.Abs(ap[1]-bp[1]) < 1e-6 {
+		t.Fatal("expected transformed variants to differ")
+	}
+}
+
+func zoneListQuery(t *testing.T, zones ...gen.Zone) func(context.Context) ([]sqlcgen.Zone, error) {
+	t.Helper()
+	return func(context.Context) ([]sqlcgen.Zone, error) {
+		rows := make([]sqlcgen.Zone, 0, len(zones))
+		for _, zone := range zones {
+			payload, err := json.Marshal(zone)
+			if err != nil {
+				t.Fatalf("marshal zone failed: %v", err)
+			}
+			rows = append(rows, sqlcgen.Zone{Payload: payload})
+		}
+		return rows, nil
+	}
+}
+
+func georeferencedZoneFixture(t *testing.T, lat, lon float64) gen.Zone {
+	t.Helper()
+	zoneID := uuid.New()
+	gcps := []gen.GroundControlPoint{
+		{Local: pointAt(t, 0, 0), Wgs84: pointAt(t, lon, lat)},
+		{Local: pointAt(t, 10, 0), Wgs84: pointAt(t, lon+0.0001, lat)},
+		{Local: pointAt(t, 0, 10), Wgs84: pointAt(t, lon, lat+0.0001)},
+	}
+	return gen.Zone{
+		Id:                  [16]byte(zoneID),
+		Type:                "uwb",
+		GroundControlPoints: &gcps,
+	}
+}
+
+func pointAt(t *testing.T, x, y float64) gen.Point {
+	t.Helper()
+	point := gen.Point{Type: "Point"}
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
+		t.Fatalf("coordinates setup failed: %v", err)
+	}
+	return point
+}
+
+func zapTestLogger(t *testing.T) *zap.Logger {
+	t.Helper()
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		t.Fatalf("logger setup failed: %v", err)
+	}
+	return logger
 }
 
 type fakeQueries struct {

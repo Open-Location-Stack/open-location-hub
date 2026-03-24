@@ -11,10 +11,10 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 - Auth foundations are implemented for `none`, `oidc`, `static`, and `hybrid` modes, including JWT validation, OIDC discovery/JWKS refresh, permissions loading, and ownership-aware authorization.
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Provider ingestion endpoints are implemented for locations and proximities, with Valkey-backed deduplication and transient latest-state storage.
-- Ingest explicitly accepts omitted `crs`, `local`, and `EPSG:4326`, rejects other CRS values, and currently republishes the canonical payload unchanged to both local and `EPSG:4326` topics.
+- Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, and trackable-motion publication.
 - RPC is implemented as REST-to-MQTT bridging with retained method discovery tracking and support for `_all_within_timeout`, `_return_first_success`, and `_return_first_error`.
-- Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, MQTT topic mapping, RPC bridge behavior, and Dex-backed end-to-end authorization.
+- Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
@@ -24,7 +24,7 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
   - it does not support moving zones tied to a provider or trackable
   - it does not combine multiple simultaneous proximity observations into a richer confidence model
   - it does not yet share logic with trackable locating rules or fence tolerance behavior
-- Location ingest currently republishes the received coordinates as-is; there is no CRS transformation pipeline to produce a true derived WGS84/local dual output.
+- CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
 - RPC availability is discovered from MQTT retained announcements, but the hub does not yet publish its own built-in mandatory OMLOX methods or host local RPC handlers.
@@ -44,10 +44,10 @@ Delivered:
 - `POST /v2/providers/locations` and `POST /v2/providers/proximities` are implemented.
 - Valkey-backed TTL configuration exists for latest state, proximity-derived state, dedup windows, and RPC timeout.
 - Ingestion uses a shared path so HTTP and MQTT inputs exercise the same core logic.
-- Service-level tests now cover deduplication, latest-state TTLs, proximity stale-state re-entry, fence-membership TTL binding, and the current dual-topic MQTT publication behavior.
-- Location ingest validation now explicitly allows omitted `crs`, `local`, and `EPSG:4326` and rejects unsupported CRS values with `400 Bad Request`.
-- Proximity-derived locations remain local-coordinate outputs derived from the resolved zone position.
-- MQTT publication for processed locations still republishes the same canonical payload to both local and `EPSG:4326` topics; real coordinate transformation is still deferred.
+- Location ingest validation now accepts omitted `crs`, `local`, and named EPSG codes, with runtime transformation determining which derived outputs are publishable.
+- CRS transformation uses PROJ-backed named CRS conversion plus zone `ground_control_points` fitting for local georeferencing.
+- Proximity-derived locations still originate in local zone coordinates, but georeferenced zones now also emit derived WGS84 publication.
+- Service-level and end-to-end tests cover round-trip transformation behavior, randomized and edge-case coordinate conversion, topic suppression when a derived variant is unavailable, and Mosquitto-backed live publish/subscribe assertions.
 
 ### Phase 3: MQTT bridge baseline
 Delivered:
@@ -87,7 +87,7 @@ Exit criteria:
 Scope:
 - Add richer query/filter behavior for REST resources where OMLOX workflows benefit from more than list-by-created-time.
 - Add stronger event modeling for fence timeouts, motion derivation, and future collision handling.
-- Add a true CRS transformation pipeline so local and `EPSG:4326` outputs are derived rather than topic aliases over the same payload.
+- Revisit the current 2D similarity-fit georeferencing model if OMLOX deployments require affine, anchor-assisted, or higher-order calibration.
 - Revisit optional proximity depth such as mobile zones, richer confidence-based switching, and shared tolerance semantics with fences/trackable locating.
 - Revisit the JSON-payload-first storage model if query volume or federation requirements demand more structured persistence.
 
