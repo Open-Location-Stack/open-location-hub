@@ -7,7 +7,302 @@ package sqlcgen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createFence = `-- name: CreateFence :one
+INSERT INTO fences (id, name, foreign_id, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING id, name, foreign_id, payload, created_at, updated_at
+`
+
+type CreateFenceParams struct {
+	ID        pgtype.UUID
+	Name      pgtype.Text
+	ForeignID pgtype.Text
+	Payload   []byte
+}
+
+func (q *Queries) CreateFence(ctx context.Context, arg CreateFenceParams) (Fence, error) {
+	row := q.db.QueryRow(ctx, createFence,
+		arg.ID,
+		arg.Name,
+		arg.ForeignID,
+		arg.Payload,
+	)
+	var i Fence
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createProvider = `-- name: CreateProvider :one
+INSERT INTO providers (id, type, name, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING id, type, name, payload, created_at, updated_at
+`
+
+type CreateProviderParams struct {
+	ID      string
+	Type    string
+	Name    pgtype.Text
+	Payload []byte
+}
+
+func (q *Queries) CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error) {
+	row := q.db.QueryRow(ctx, createProvider,
+		arg.ID,
+		arg.Type,
+		arg.Name,
+		arg.Payload,
+	)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createTrackable = `-- name: CreateTrackable :one
+INSERT INTO trackables (id, type, name, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING id, type, name, payload, created_at, updated_at
+`
+
+type CreateTrackableParams struct {
+	ID      pgtype.UUID
+	Type    string
+	Name    pgtype.Text
+	Payload []byte
+}
+
+func (q *Queries) CreateTrackable(ctx context.Context, arg CreateTrackableParams) (Trackable, error) {
+	row := q.db.QueryRow(ctx, createTrackable,
+		arg.ID,
+		arg.Type,
+		arg.Name,
+		arg.Payload,
+	)
+	var i Trackable
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createZone = `-- name: CreateZone :one
+INSERT INTO zones (id, type, foreign_id, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING id, type, foreign_id, payload, created_at, updated_at
+`
+
+type CreateZoneParams struct {
+	ID        pgtype.UUID
+	Type      string
+	ForeignID pgtype.Text
+	Payload   []byte
+}
+
+func (q *Queries) CreateZone(ctx context.Context, arg CreateZoneParams) (Zone, error) {
+	row := q.db.QueryRow(ctx, createZone,
+		arg.ID,
+		arg.Type,
+		arg.ForeignID,
+		arg.Payload,
+	)
+	var i Zone
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteFence = `-- name: DeleteFence :execrows
+DELETE FROM fences
+WHERE id = $1
+`
+
+func (q *Queries) DeleteFence(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFence, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteProvider = `-- name: DeleteProvider :execrows
+DELETE FROM providers
+WHERE id = $1
+`
+
+func (q *Queries) DeleteProvider(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProvider, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteTrackable = `-- name: DeleteTrackable :execrows
+DELETE FROM trackables
+WHERE id = $1
+`
+
+func (q *Queries) DeleteTrackable(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTrackable, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteZone = `-- name: DeleteZone :execrows
+DELETE FROM zones
+WHERE id = $1
+`
+
+func (q *Queries) DeleteZone(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteZone, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getFence = `-- name: GetFence :one
+SELECT id, name, foreign_id, payload, created_at, updated_at
+FROM fences
+WHERE id = $1
+`
+
+func (q *Queries) GetFence(ctx context.Context, id pgtype.UUID) (Fence, error) {
+	row := q.db.QueryRow(ctx, getFence, id)
+	var i Fence
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProvider = `-- name: GetProvider :one
+SELECT id, type, name, payload, created_at, updated_at
+FROM providers
+WHERE id = $1
+`
+
+func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) {
+	row := q.db.QueryRow(ctx, getProvider, id)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTrackable = `-- name: GetTrackable :one
+SELECT id, type, name, payload, created_at, updated_at
+FROM trackables
+WHERE id = $1
+`
+
+func (q *Queries) GetTrackable(ctx context.Context, id pgtype.UUID) (Trackable, error) {
+	row := q.db.QueryRow(ctx, getTrackable, id)
+	var i Trackable
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getZone = `-- name: GetZone :one
+SELECT id, type, foreign_id, payload, created_at, updated_at
+FROM zones
+WHERE id = $1
+`
+
+func (q *Queries) GetZone(ctx context.Context, id pgtype.UUID) (Zone, error) {
+	row := q.db.QueryRow(ctx, getZone, id)
+	var i Zone
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listFences = `-- name: ListFences :many
+SELECT id, name, foreign_id, payload, created_at, updated_at
+FROM fences
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListFences(ctx context.Context) ([]Fence, error) {
+	rows, err := q.db.Query(ctx, listFences)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Fence
+	for rows.Next() {
+		var i Fence
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ForeignID,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const listProviders = `-- name: ListProviders :many
 SELECT id, type, name, payload, created_at, updated_at
@@ -24,6 +319,39 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 	var items []Provider
 	for rows.Next() {
 		var i Provider
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Name,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTrackables = `-- name: ListTrackables :many
+SELECT id, type, name, payload, created_at, updated_at
+FROM trackables
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTrackables(ctx context.Context) ([]Trackable, error) {
+	rows, err := q.db.Query(ctx, listTrackables)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Trackable
+	for rows.Next() {
+		var i Trackable
 		if err := rows.Scan(
 			&i.ID,
 			&i.Type,
@@ -73,4 +401,148 @@ func (q *Queries) ListZones(ctx context.Context) ([]Zone, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateFence = `-- name: UpdateFence :one
+UPDATE fences
+SET name = $2,
+    foreign_id = $3,
+    payload = $4,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, foreign_id, payload, created_at, updated_at
+`
+
+type UpdateFenceParams struct {
+	ID        pgtype.UUID
+	Name      pgtype.Text
+	ForeignID pgtype.Text
+	Payload   []byte
+}
+
+func (q *Queries) UpdateFence(ctx context.Context, arg UpdateFenceParams) (Fence, error) {
+	row := q.db.QueryRow(ctx, updateFence,
+		arg.ID,
+		arg.Name,
+		arg.ForeignID,
+		arg.Payload,
+	)
+	var i Fence
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateProvider = `-- name: UpdateProvider :one
+UPDATE providers
+SET type = $2,
+    name = $3,
+    payload = $4,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, type, name, payload, created_at, updated_at
+`
+
+type UpdateProviderParams struct {
+	ID      string
+	Type    string
+	Name    pgtype.Text
+	Payload []byte
+}
+
+func (q *Queries) UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error) {
+	row := q.db.QueryRow(ctx, updateProvider,
+		arg.ID,
+		arg.Type,
+		arg.Name,
+		arg.Payload,
+	)
+	var i Provider
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTrackable = `-- name: UpdateTrackable :one
+UPDATE trackables
+SET type = $2,
+    name = $3,
+    payload = $4,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, type, name, payload, created_at, updated_at
+`
+
+type UpdateTrackableParams struct {
+	ID      pgtype.UUID
+	Type    string
+	Name    pgtype.Text
+	Payload []byte
+}
+
+func (q *Queries) UpdateTrackable(ctx context.Context, arg UpdateTrackableParams) (Trackable, error) {
+	row := q.db.QueryRow(ctx, updateTrackable,
+		arg.ID,
+		arg.Type,
+		arg.Name,
+		arg.Payload,
+	)
+	var i Trackable
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Name,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateZone = `-- name: UpdateZone :one
+UPDATE zones
+SET type = $2,
+    foreign_id = $3,
+    payload = $4,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, type, foreign_id, payload, created_at, updated_at
+`
+
+type UpdateZoneParams struct {
+	ID        pgtype.UUID
+	Type      string
+	ForeignID pgtype.Text
+	Payload   []byte
+}
+
+func (q *Queries) UpdateZone(ctx context.Context, arg UpdateZoneParams) (Zone, error) {
+	row := q.db.QueryRow(ctx, updateZone,
+		arg.ID,
+		arg.Type,
+		arg.ForeignID,
+		arg.Payload,
+	)
+	var i Zone
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.ForeignID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

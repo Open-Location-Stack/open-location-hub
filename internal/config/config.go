@@ -9,12 +9,16 @@ import (
 )
 
 type Config struct {
-	HTTPListenAddr string
-	LogLevel       string
-	PostgresURL    string
-	ValkeyURL      string
-	MQTTBrokerURL  string
-	Auth           AuthConfig
+	HTTPListenAddr    string
+	LogLevel          string
+	PostgresURL       string
+	ValkeyURL         string
+	MQTTBrokerURL     string
+	StateLocationTTL  time.Duration
+	StateProximityTTL time.Duration
+	StateDedupTTL     time.Duration
+	RPCTimeout        time.Duration
+	Auth              AuthConfig
 }
 
 type AuthConfig struct {
@@ -34,11 +38,15 @@ type AuthConfig struct {
 
 func FromEnv() (Config, error) {
 	cfg := Config{
-		HTTPListenAddr: env("HTTP_LISTEN_ADDR", ":8080"),
-		LogLevel:       env("LOG_LEVEL", "info"),
-		PostgresURL:    env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
-		ValkeyURL:      env("VALKEY_URL", "redis://localhost:6379/0"),
-		MQTTBrokerURL:  env("MQTT_BROKER_URL", "tcp://localhost:1883"),
+		HTTPListenAddr:    env("HTTP_LISTEN_ADDR", ":8080"),
+		LogLevel:          env("LOG_LEVEL", "info"),
+		PostgresURL:       env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
+		ValkeyURL:         env("VALKEY_URL", "redis://localhost:6379/0"),
+		MQTTBrokerURL:     env("MQTT_BROKER_URL", "tcp://localhost:1883"),
+		StateLocationTTL:  durationEnv("STATE_LOCATION_TTL", 10*time.Minute),
+		StateProximityTTL: durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
+		StateDedupTTL:     durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
+		RPCTimeout:        durationEnv("RPC_TIMEOUT", 5*time.Second),
 		Auth: AuthConfig{
 			Mode:                env("AUTH_MODE", "none"),
 			Audience:            csvEnv("AUTH_AUDIENCE", "open-rtls-hub"),
@@ -57,6 +65,18 @@ func FromEnv() (Config, error) {
 
 	if err := cfg.Auth.Validate(); err != nil {
 		return Config{}, err
+	}
+	if cfg.StateLocationTTL <= 0 {
+		return Config{}, fmt.Errorf("STATE_LOCATION_TTL must be > 0")
+	}
+	if cfg.StateProximityTTL <= 0 {
+		return Config{}, fmt.Errorf("STATE_PROXIMITY_TTL must be > 0")
+	}
+	if cfg.StateDedupTTL <= 0 {
+		return Config{}, fmt.Errorf("STATE_DEDUP_TTL must be > 0")
+	}
+	if cfg.RPCTimeout <= 0 {
+		return Config{}, fmt.Errorf("RPC_TIMEOUT must be > 0")
 	}
 	return cfg, nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -13,10 +14,13 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/config"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/handlers"
+	"github.com/formation-res/open-rtls-hub/internal/hub"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-rtls-hub/internal/rpc"
 	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres"
+	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -43,7 +47,10 @@ func main() {
 	cache := valkey.NewClient(cfg.ValkeyURL)
 	defer func() { _ = cache.Close() }()
 
-	mq := mqtt.NewClient(cfg.MQTTBrokerURL)
+	mq, err := mqtt.NewClient(logger, cfg.MQTTBrokerURL)
+	if err != nil {
+		logger.Fatal("mqtt init failed", observability.Error(err))
+	}
 	defer func() { _ = mq.Close() }()
 
 	authenticator, err := auth.NewAuthenticator(ctx, cfg.Auth)
@@ -58,6 +65,45 @@ func main() {
 		}
 	}
 
+	queries := sqlcgen.New(pg)
+	service := hub.New(logger, queries, cache, mq, hub.Config{
+		LocationTTL:  cfg.StateLocationTTL,
+		ProximityTTL: cfg.StateProximityTTL,
+		DedupTTL:     cfg.StateDedupTTL,
+	})
+	rpcBridge, err := rpc.NewBridge(logger, mq, cfg.RPCTimeout)
+	if err != nil {
+		logger.Fatal("rpc bridge init failed", observability.Error(err))
+	}
+
+	if err := mq.Subscribe(mqtt.TopicLocationPubWildcard(), func(ctx context.Context, _ string, payload []byte) error {
+		var body []gen.Location
+		if err := json.Unmarshal(payload, &body); err == nil {
+			return service.ProcessLocations(ctx, body)
+		}
+		var single gen.Location
+		if err := json.Unmarshal(payload, &single); err != nil {
+			return err
+		}
+		return service.ProcessLocations(ctx, []gen.Location{single})
+	}); err != nil {
+		logger.Fatal("mqtt location subscription failed", observability.Error(err))
+	}
+
+	if err := mq.Subscribe(mqtt.TopicProximityWildcard(), func(ctx context.Context, _ string, payload []byte) error {
+		var body []gen.Proximity
+		if err := json.Unmarshal(payload, &body); err == nil {
+			return service.ProcessProximities(ctx, body)
+		}
+		var single gen.Proximity
+		if err := json.Unmarshal(payload, &single); err != nil {
+			return err
+		}
+		return service.ProcessProximities(ctx, []gen.Proximity{single})
+	}); err != nil {
+		logger.Fatal("mqtt proximity subscription failed", observability.Error(err))
+	}
+
 	r := chi.NewRouter()
 	r.Use(observability.RequestLogger(logger))
 	r.Use(auth.Middleware(authenticator, cfg.Auth, registry))
@@ -68,10 +114,9 @@ func main() {
 	})
 
 	h := handlers.New(handlers.Dependencies{
-		Logger: logger,
-		DB:     pg,
-		Cache:  cache,
-		MQTT:   mq,
+		Logger:  logger,
+		Service: service,
+		RPC:     rpcBridge,
 	})
 	gen.HandlerFromMux(h, r)
 

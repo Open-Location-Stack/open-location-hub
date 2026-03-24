@@ -164,8 +164,32 @@ func TestDexBackedAuthorization(t *testing.T) {
 
 	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", ""), http.StatusUnauthorized)
 	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", "definitely-not-a-jwt"), http.StatusUnauthorized)
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", adminToken), http.StatusNotImplemented)
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", adminToken), http.StatusNotImplemented)
+
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", adminToken, map[string]any{
+		"type":                     "uwb",
+		"incomplete_configuration": true,
+		"ground_control_points":    []map[string]any{},
+		"name":                     "Test Zone",
+	})
+	assertStatus(t, createResp, http.StatusCreated)
+
+	var createdZone struct {
+		ID string `json:"id"`
+	}
+	decodeResponse(t, createResp, &createdZone)
+	if createdZone.ID == "" {
+		t.Fatal("expected created zone id")
+	}
+
+	listResp := request(t, http.MethodGet, appBaseURL+"/v2/zones", adminToken)
+	assertStatus(t, listResp, http.StatusOK)
+	var zones []map[string]any
+	decodeResponse(t, listResp, &zones)
+	if len(zones) == 0 {
+		t.Fatal("expected at least one zone")
+	}
+
+	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones/"+createdZone.ID, adminToken), http.StatusOK)
 	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/providers", readerToken), http.StatusForbidden)
 	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/providers/provider-1", ownerToken), http.StatusForbidden)
 }
@@ -256,6 +280,35 @@ func request(t *testing.T, method, target, token string) *http.Response {
 		t.Fatalf("request failed: %v", err)
 	}
 	return resp
+}
+
+func requestJSON(t *testing.T, method, target, token string, body any) *http.Response {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("json marshal failed: %v", err)
+	}
+	req, err := http.NewRequest(method, target, bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("request creation failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	return resp
+}
+
+func decodeResponse(t *testing.T, resp *http.Response, dst any) {
+	t.Helper()
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
 }
 
 func assertStatus(t *testing.T, resp *http.Response, want int) {

@@ -6,11 +6,31 @@ package sqlcgen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	CreateFence(ctx context.Context, arg CreateFenceParams) (Fence, error)
+	CreateProvider(ctx context.Context, arg CreateProviderParams) (Provider, error)
+	CreateTrackable(ctx context.Context, arg CreateTrackableParams) (Trackable, error)
+	CreateZone(ctx context.Context, arg CreateZoneParams) (Zone, error)
+	DeleteFence(ctx context.Context, id pgtype.UUID) (int64, error)
+	DeleteProvider(ctx context.Context, id string) (int64, error)
+	DeleteTrackable(ctx context.Context, id pgtype.UUID) (int64, error)
+	DeleteZone(ctx context.Context, id pgtype.UUID) (int64, error)
+	GetFence(ctx context.Context, id pgtype.UUID) (Fence, error)
+	GetProvider(ctx context.Context, id string) (Provider, error)
+	GetTrackable(ctx context.Context, id pgtype.UUID) (Trackable, error)
+	GetZone(ctx context.Context, id pgtype.UUID) (Zone, error)
+	ListFences(ctx context.Context) ([]Fence, error)
 	ListProviders(ctx context.Context) ([]Provider, error)
+	ListTrackables(ctx context.Context) ([]Trackable, error)
 	ListZones(ctx context.Context) ([]Zone, error)
+	UpdateFence(ctx context.Context, arg UpdateFenceParams) (Fence, error)
+	UpdateProvider(ctx context.Context, arg UpdateProviderParams) (Provider, error)
+	UpdateTrackable(ctx context.Context, arg UpdateTrackableParams) (Trackable, error)
+	UpdateZone(ctx context.Context, arg UpdateZoneParams) (Zone, error)
 }
 
 var _ Querier = (*Queries)(nil)

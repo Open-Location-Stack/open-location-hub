@@ -2,20 +2,19 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
-	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/rpc"
 	"go.uber.org/zap"
 )
 
 type Dependencies struct {
-	Logger *zap.Logger
-	DB     *pgxpool.Pool
-	Cache  *valkey.Client
-	MQTT   *mqtt.Client
+	Logger  *zap.Logger
+	Service *hub.Service
+	RPC     *rpc.Bridge
 }
 
 type Handler struct {
@@ -26,78 +25,247 @@ func New(deps Dependencies) *Handler {
 	return &Handler{deps: deps}
 }
 
-func notImplemented(w http.ResponseWriter, endpoint string) {
-	message := endpoint + " is scaffolded but not implemented yet"
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
-		Type:    "not_implemented",
-		Code:    http.StatusNotImplemented,
-		Message: &message,
-	})
+func (h *Handler) ListZones(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListZones(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
 
-func (h *Handler) ListZones(w http.ResponseWriter, _ *http.Request)  { notImplemented(w, "ListZones") }
-func (h *Handler) CreateZone(w http.ResponseWriter, _ *http.Request) { notImplemented(w, "CreateZone") }
-func (h *Handler) GetZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
-	notImplemented(w, "GetZone")
+func (h *Handler) CreateZone(w http.ResponseWriter, r *http.Request) {
+	body, err := readRawBody(r)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.CreateZone(r.Context(), body)
+	writeJSONOrError(w, item, err, http.StatusCreated)
 }
-func (h *Handler) UpdateZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
-	notImplemented(w, "UpdateZone")
+
+func (h *Handler) GetZone(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
+	item, err := h.deps.Service.GetZone(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) DeleteZone(w http.ResponseWriter, _ *http.Request, _ gen.ZoneId) {
-	notImplemented(w, "DeleteZone")
+
+func (h *Handler) UpdateZone(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
+	body, err := readRawBody(r)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.UpdateZone(r.Context(), id, body)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) ListTrackables(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "ListTrackables")
+
+func (h *Handler) DeleteZone(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
+	err := h.deps.Service.DeleteZone(r.Context(), id)
+	writeNoContentOrError(w, err)
 }
-func (h *Handler) CreateTrackable(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "CreateTrackable")
+
+func (h *Handler) ListTrackables(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListTrackables(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
-func (h *Handler) GetTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
-	notImplemented(w, "GetTrackable")
+
+func (h *Handler) CreateTrackable(w http.ResponseWriter, r *http.Request) {
+	var body gen.TrackableWrite
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.CreateTrackable(r.Context(), body)
+	writeJSONOrError(w, item, err, http.StatusCreated)
 }
-func (h *Handler) UpdateTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
-	notImplemented(w, "UpdateTrackable")
+
+func (h *Handler) GetTrackable(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	item, err := h.deps.Service.GetTrackable(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) DeleteTrackable(w http.ResponseWriter, _ *http.Request, _ gen.TrackableId) {
-	notImplemented(w, "DeleteTrackable")
+
+func (h *Handler) UpdateTrackable(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	var body gen.TrackableWrite
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.UpdateTrackable(r.Context(), id, body)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) ListProviders(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "ListProviders")
+
+func (h *Handler) DeleteTrackable(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	err := h.deps.Service.DeleteTrackable(r.Context(), id)
+	writeNoContentOrError(w, err)
 }
-func (h *Handler) CreateProvider(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "CreateProvider")
+
+func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListProviders(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
-func (h *Handler) GetProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
-	notImplemented(w, "GetProvider")
+
+func (h *Handler) CreateProvider(w http.ResponseWriter, r *http.Request) {
+	var body gen.LocationProviderWrite
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.CreateProvider(r.Context(), body)
+	writeJSONOrError(w, item, err, http.StatusCreated)
 }
-func (h *Handler) UpdateProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
-	notImplemented(w, "UpdateProvider")
+
+func (h *Handler) GetProvider(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	item, err := h.deps.Service.GetProvider(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) DeleteProvider(w http.ResponseWriter, _ *http.Request, _ gen.ProviderId) {
-	notImplemented(w, "DeleteProvider")
+
+func (h *Handler) UpdateProvider(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	var body gen.LocationProviderWrite
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.UpdateProvider(r.Context(), id, body)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
-func (h *Handler) PostProviderLocations(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "PostProviderLocations")
+
+func (h *Handler) DeleteProvider(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	err := h.deps.Service.DeleteProvider(r.Context(), id)
+	writeNoContentOrError(w, err)
 }
-func (h *Handler) PostProviderProximities(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "PostProviderProximities")
+
+func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
+	var body []gen.Location
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	err := h.deps.Service.ProcessLocations(r.Context(), body)
+	writeAcceptedOrError(w, err)
 }
-func (h *Handler) ListFences(w http.ResponseWriter, _ *http.Request) { notImplemented(w, "ListFences") }
-func (h *Handler) CreateFence(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "CreateFence")
+
+func (h *Handler) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
+	var body []gen.Proximity
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	err := h.deps.Service.ProcessProximities(r.Context(), body)
+	writeAcceptedOrError(w, err)
 }
-func (h *Handler) GetFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
-	notImplemented(w, "GetFence")
+
+func (h *Handler) ListFences(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListFences(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
-func (h *Handler) UpdateFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
-	notImplemented(w, "UpdateFence")
+
+func (h *Handler) CreateFence(w http.ResponseWriter, r *http.Request) {
+	body, err := readRawBody(r)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.CreateFence(r.Context(), body)
+	writeJSONOrError(w, item, err, http.StatusCreated)
 }
-func (h *Handler) DeleteFence(w http.ResponseWriter, _ *http.Request, _ gen.FenceId) {
-	notImplemented(w, "DeleteFence")
+
+func (h *Handler) GetFence(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
+	item, err := h.deps.Service.GetFence(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
 }
+
+func (h *Handler) UpdateFence(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
+	body, err := readRawBody(r)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	item, err := h.deps.Service.UpdateFence(r.Context(), id, body)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
+func (h *Handler) DeleteFence(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
+	err := h.deps.Service.DeleteFence(r.Context(), id)
+	writeNoContentOrError(w, err)
+}
+
 func (h *Handler) GetRPCAvailable(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "GetRPCAvailable")
+	writeJSONOrError(w, h.deps.RPC.AvailableMethods(), nil, http.StatusOK)
 }
-func (h *Handler) PutRPC(w http.ResponseWriter, _ *http.Request) { notImplemented(w, "PutRPC") }
+
+func (h *Handler) PutRPC(w http.ResponseWriter, r *http.Request) {
+	var body gen.JsonRpcRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	response, notifyOnly, err := h.deps.RPC.Invoke(r.Context(), body)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	if notifyOnly {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(response)
+}
+
+func decodeJSONBody(r *http.Request, dst any) error {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		return &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
+	}
+	return nil
+}
+
+func readRawBody(r *http.Request) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		return nil, &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
+	}
+	return raw, nil
+}
+
+func writeAcceptedOrError(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func writeNoContentOrError(w http.ResponseWriter, err error) {
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeJSONOrError(w http.ResponseWriter, payload any, err error, successStatus int) {
+	if err != nil {
+		var httpErr *hub.HTTPError
+		if errors.As(err, &httpErr) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(httpErr.Status)
+			_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
+				Type:    httpErr.Type,
+				Code:    httpErr.Status,
+				Message: &httpErr.Message,
+			})
+			return
+		}
+		message := err.Error()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
+			Type:    "internal_error",
+			Code:    http.StatusInternalServerError,
+			Message: &message,
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(successStatus)
+	if payload != nil {
+		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
