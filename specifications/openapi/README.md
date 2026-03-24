@@ -11,3 +11,6 @@ Out of OpenAPI scope in v0:
 - MQTT topic protocol details
 
 Those remain documented in `specifications/omlox/` and are represented in implementation docs.
+
+Companion notes:
+- `omlox-openapi-gap-handling.md` documents project-specific handling for gaps between the OMLOX PDFs, OpenAPI 3.1, and the current Go toolchain.

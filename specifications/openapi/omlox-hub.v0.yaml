@@ -9,6 +9,9 @@ info:
     Where the PDF defines setup or lifecycle behavior but does not enumerate a
     verb/path pair, companion REST lifecycle endpoints are included here and
     marked as inferred.
+externalDocs:
+  description: Companion OMLOX protocol notes for WebSocket, MQTT, and RPC mapping details.
+  url: ./README.md
 servers:
   - url: http://localhost:8080
 security:
@@ -460,13 +463,13 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [code, message]
+      required: [type, code]
       properties:
-        code:
-          type: string
-        message:
-          type: string
         type:
+          type: string
+        code:
+          type: integer
+        message:
           type: string
 
     ExtensionProperties:
@@ -494,6 +497,17 @@ components:
       oneOf:
         - $ref: '#/components/schemas/GeoJsonPosition2D'
         - $ref: '#/components/schemas/GeoJsonPosition3D'
+
+    PositiveNumber:
+      type: number
+      minimum: 0
+      exclusiveMinimum: true
+
+    PositiveOrMinusOne:
+      anyOf:
+        - type: number
+          enum: [-1]
+        - $ref: '#/components/schemas/PositiveNumber'
 
     Point:
       type: object
@@ -607,6 +621,36 @@ components:
     ZoneWrite:
       type: object
       required: [type]
+      allOf:
+        - if:
+            properties:
+              type:
+                enum: [rfid, ibeacon]
+            required: [type]
+          then:
+            required: [position]
+            not:
+              required: [ground_control_points]
+        - if:
+            properties:
+              type:
+                not:
+                  enum: [rfid, ibeacon]
+              incomplete_configuration:
+                const: false
+            required: [type, incomplete_configuration]
+          then:
+            required: [ground_control_points]
+        - if:
+            properties:
+              type:
+                not:
+                  enum: [rfid, ibeacon]
+            required: [type]
+            not:
+              required: [incomplete_configuration]
+          then:
+            required: [ground_control_points]
       properties:
         id:
           type: string
@@ -667,13 +711,13 @@ components:
         location_providers:
           $ref: '#/components/schemas/StringIdList'
         fence_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         radius:
           type: number
         properties:
@@ -705,13 +749,13 @@ components:
         location_providers:
           $ref: '#/components/schemas/StringIdList'
         fence_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         radius:
           type: number
         properties:
@@ -734,13 +778,13 @@ components:
         sensors:
           $ref: '#/components/schemas/ExtensionProperties'
         fence_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
@@ -757,13 +801,13 @@ components:
         sensors:
           $ref: '#/components/schemas/ExtensionProperties'
         fence_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
@@ -857,13 +901,13 @@ components:
         name:
           type: string
         timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         crs:
           type: string
           description: Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
@@ -879,6 +923,14 @@ components:
     FenceWrite:
       type: object
       required: [region]
+      allOf:
+        - if:
+            properties:
+              crs:
+                const: local
+            required: [crs]
+          then:
+            required: [zone_id]
       properties:
         id:
           type: string
@@ -901,13 +953,13 @@ components:
         name:
           type: string
         timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
-          type: number
+          $ref: '#/components/schemas/PositiveNumber'
         tolerance_timeout:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_delay:
-          type: number
+          $ref: '#/components/schemas/PositiveOrMinusOne'
         crs:
           type: string
         zone_id:

@@ -30,5 +30,7 @@ This markdown captures the normative API behavior and endpoint shapes directly v
 - `locations.md`
 - `proximities.md`
 - `websocket.md`
+- `mqtt.md`
 - `mqtt-extension.md`
 - `rpc-extension.md`
+- `flowcate-reference-extensions.md`

@@ -27,11 +27,13 @@ func New(deps Dependencies) *Handler {
 }
 
 func notImplemented(w http.ResponseWriter, endpoint string) {
+	message := endpoint + " is scaffolded but not implemented yet"
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
 	_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
-		Code:    "not_implemented",
-		Message: endpoint + " is scaffolded but not implemented yet",
+		Type:    "not_implemented",
+		Code:    http.StatusNotImplemented,
+		Message: &message,
 	})
 }
 

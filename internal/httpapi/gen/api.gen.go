@@ -77,24 +77,6 @@ func (e FenceEventEventType) Valid() bool {
 	}
 }
 
-// Defines values for FenceWriteElevationRef.
-const (
-	FenceWriteElevationRefFloor FenceWriteElevationRef = "floor"
-	FenceWriteElevationRefWgs84 FenceWriteElevationRef = "wgs84"
-)
-
-// Valid indicates whether the value is a known member of the FenceWriteElevationRef enum.
-func (e FenceWriteElevationRef) Valid() bool {
-	switch e {
-	case FenceWriteElevationRefFloor:
-		return true
-	case FenceWriteElevationRefWgs84:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for JsonRpcRequestParamsAggregation.
 const (
 	UnderscoreAllWithinTimeout   JsonRpcRequestParamsAggregation = "_all_within_timeout"
@@ -118,16 +100,31 @@ func (e JsonRpcRequestParamsAggregation) Valid() bool {
 
 // Defines values for LocationElevationRef.
 const (
-	Floor LocationElevationRef = "floor"
-	Wgs84 LocationElevationRef = "wgs84"
+	LocationElevationRefFloor LocationElevationRef = "floor"
+	LocationElevationRefWgs84 LocationElevationRef = "wgs84"
 )
 
 // Valid indicates whether the value is a known member of the LocationElevationRef enum.
 func (e LocationElevationRef) Valid() bool {
 	switch e {
-	case Floor:
+	case LocationElevationRefFloor:
 		return true
-	case Wgs84:
+	case LocationElevationRefWgs84:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PositiveOrMinusOne0.
+const (
+	Minus1 PositiveOrMinusOne0 = -1
+)
+
+// Valid indicates whether the value is a known member of the PositiveOrMinusOne0 enum.
+func (e PositiveOrMinusOne0) Valid() bool {
+	switch e {
+	case Minus1:
 		return true
 	default:
 		return false
@@ -201,9 +198,9 @@ type CollisionEventCollisionType string
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
-	Code    string  `json:"code"`
-	Message string  `json:"message"`
-	Type    *string `json:"type,omitempty"`
+	Code    int     `json:"code"`
+	Message *string `json:"message,omitempty"`
+	Type    string  `json:"type"`
 }
 
 // ExtensionProperties defines model for ExtensionProperties.
@@ -214,8 +211,8 @@ type Fence struct {
 	// Crs Valid EPSG identifier or `local`. Defaults to `EPSG:4326`.
 	Crs              *string              `json:"crs,omitempty"`
 	ElevationRef     *FenceElevationRef   `json:"elevation_ref,omitempty"`
-	ExitDelay        *float32             `json:"exit_delay,omitempty"`
-	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
+	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
+	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
 	Extrusion        *float32             `json:"extrusion,omitempty"`
 	Floor            *float32             `json:"floor,omitempty"`
 	ForeignId        *string              `json:"foreign_id,omitempty"`
@@ -224,8 +221,8 @@ type Fence struct {
 	Properties       *ExtensionProperties `json:"properties,omitempty"`
 	Radius           *float32             `json:"radius,omitempty"`
 	Region           Fence_Region         `json:"region"`
-	Timeout          *float32             `json:"timeout,omitempty"`
-	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	Timeout          *PositiveOrMinusOne  `json:"timeout,omitempty"`
+	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
 
 	// ZoneId Required when `crs` is `local`.
 	ZoneId *string `json:"zone_id,omitempty"`
@@ -257,33 +254,7 @@ type FenceEvent struct {
 type FenceEventEventType string
 
 // FenceWrite defines model for FenceWrite.
-type FenceWrite struct {
-	Crs           *string                 `json:"crs,omitempty"`
-	ElevationRef  *FenceWriteElevationRef `json:"elevation_ref,omitempty"`
-	ExitDelay     *float32                `json:"exit_delay,omitempty"`
-	ExitTolerance *float32                `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32                `json:"extrusion,omitempty"`
-	Floor         *float32                `json:"floor,omitempty"`
-	ForeignId     *string                 `json:"foreign_id,omitempty"`
-
-	// Id If omitted on create, the hub generates a UUID.
-	Id               *openapi_types.UUID  `json:"id,omitempty"`
-	Name             *string              `json:"name,omitempty"`
-	Properties       *ExtensionProperties `json:"properties,omitempty"`
-	Radius           *float32             `json:"radius,omitempty"`
-	Region           FenceWrite_Region    `json:"region"`
-	Timeout          *float32             `json:"timeout,omitempty"`
-	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
-	ZoneId           *string              `json:"zone_id,omitempty"`
-}
-
-// FenceWriteElevationRef defines model for FenceWrite.ElevationRef.
-type FenceWriteElevationRef string
-
-// FenceWrite_Region defines model for FenceWrite.Region.
-type FenceWrite_Region struct {
-	union json.RawMessage
-}
+type FenceWrite = interface{}
 
 // GeoJsonPosition defines model for GeoJsonPosition.
 type GeoJsonPosition struct {
@@ -429,27 +400,27 @@ type LocationElevationRef string
 
 // LocationProvider defines model for LocationProvider.
 type LocationProvider struct {
-	ExitDelay        *float32             `json:"exit_delay,omitempty"`
-	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
-	FenceTimeout     *float32             `json:"fence_timeout,omitempty"`
+	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
+	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
+	FenceTimeout     *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
 	Id               string               `json:"id"`
 	Name             *string              `json:"name,omitempty"`
 	Properties       *ExtensionProperties `json:"properties,omitempty"`
 	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
-	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
 	Type             string               `json:"type"`
 }
 
 // LocationProviderWrite defines model for LocationProviderWrite.
 type LocationProviderWrite struct {
-	ExitDelay        *float32             `json:"exit_delay,omitempty"`
-	ExitTolerance    *float32             `json:"exit_tolerance,omitempty"`
-	FenceTimeout     *float32             `json:"fence_timeout,omitempty"`
+	ExitDelay        *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
+	ExitTolerance    *PositiveNumber      `json:"exit_tolerance,omitempty"`
+	FenceTimeout     *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
 	Id               string               `json:"id"`
 	Name             *string              `json:"name,omitempty"`
 	Properties       *ExtensionProperties `json:"properties,omitempty"`
 	Sensors          *ExtensionProperties `json:"sensors,omitempty"`
-	ToleranceTimeout *float32             `json:"tolerance_timeout,omitempty"`
+	ToleranceTimeout *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
 	Type             string               `json:"type"`
 }
 
@@ -464,6 +435,17 @@ type Polygon struct {
 	Coordinates [][]GeoJsonPosition `json:"coordinates"`
 	Type        string              `json:"type"`
 }
+
+// PositiveNumber defines model for PositiveNumber.
+type PositiveNumber = float32
+
+// PositiveOrMinusOne defines model for PositiveOrMinusOne.
+type PositiveOrMinusOne struct {
+	union json.RawMessage
+}
+
+// PositiveOrMinusOne0 defines model for PositiveOrMinusOne.0.
+type PositiveOrMinusOne0 float32
 
 // Proximity defines model for Proximity.
 type Proximity struct {
@@ -489,10 +471,10 @@ type StringIdList = []string
 
 // Trackable defines model for Trackable.
 type Trackable struct {
-	ExitDelay         *float32             `json:"exit_delay,omitempty"`
-	ExitTolerance     *float32             `json:"exit_tolerance,omitempty"`
+	ExitDelay         *PositiveOrMinusOne  `json:"exit_delay,omitempty"`
+	ExitTolerance     *PositiveNumber      `json:"exit_tolerance,omitempty"`
 	Extrusion         *float32             `json:"extrusion,omitempty"`
-	FenceTimeout      *float32             `json:"fence_timeout,omitempty"`
+	FenceTimeout      *PositiveOrMinusOne  `json:"fence_timeout,omitempty"`
 	Geometry          *Polygon             `json:"geometry,omitempty"`
 	Id                openapi_types.UUID   `json:"id"`
 	LocatingRules     *[]LocatingRule      `json:"locating_rules,omitempty"`
@@ -500,7 +482,7 @@ type Trackable struct {
 	Name              *string              `json:"name,omitempty"`
 	Properties        *ExtensionProperties `json:"properties,omitempty"`
 	Radius            *float32             `json:"radius,omitempty"`
-	ToleranceTimeout  *float32             `json:"tolerance_timeout,omitempty"`
+	ToleranceTimeout  *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
 	Type              TrackableType        `json:"type"`
 }
 
@@ -519,11 +501,11 @@ type TrackableMotion struct {
 
 // TrackableWrite defines model for TrackableWrite.
 type TrackableWrite struct {
-	ExitDelay     *float32 `json:"exit_delay,omitempty"`
-	ExitTolerance *float32 `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32 `json:"extrusion,omitempty"`
-	FenceTimeout  *float32 `json:"fence_timeout,omitempty"`
-	Geometry      *Polygon `json:"geometry,omitempty"`
+	ExitDelay     *PositiveOrMinusOne `json:"exit_delay,omitempty"`
+	ExitTolerance *PositiveNumber     `json:"exit_tolerance,omitempty"`
+	Extrusion     *float32            `json:"extrusion,omitempty"`
+	FenceTimeout  *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
+	Geometry      *Polygon            `json:"geometry,omitempty"`
 
 	// Id If omitted on create, the hub generates a UUID.
 	Id                *openapi_types.UUID  `json:"id,omitempty"`
@@ -532,7 +514,7 @@ type TrackableWrite struct {
 	Name              *string              `json:"name,omitempty"`
 	Properties        *ExtensionProperties `json:"properties,omitempty"`
 	Radius            *float32             `json:"radius,omitempty"`
-	ToleranceTimeout  *float32             `json:"tolerance_timeout,omitempty"`
+	ToleranceTimeout  *PositiveOrMinusOne  `json:"tolerance_timeout,omitempty"`
 	Type              TrackableWriteType   `json:"type"`
 }
 
@@ -562,26 +544,7 @@ type Zone struct {
 }
 
 // ZoneWrite defines model for ZoneWrite.
-type ZoneWrite struct {
-	Address             *string               `json:"address,omitempty"`
-	Building            *string               `json:"building,omitempty"`
-	Description         *string               `json:"description,omitempty"`
-	Floor               *float32              `json:"floor,omitempty"`
-	ForeignId           *string               `json:"foreign_id,omitempty"`
-	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
-
-	// Id If omitted on create, the hub generates a UUID.
-	Id                      *openapi_types.UUID  `json:"id,omitempty"`
-	IncompleteConfiguration *bool                `json:"incomplete_configuration,omitempty"`
-	MeasurementTimestamp    *time.Time           `json:"measurement_timestamp,omitempty"`
-	Name                    *string              `json:"name,omitempty"`
-	Position                *Point               `json:"position,omitempty"`
-	Properties              *ExtensionProperties `json:"properties,omitempty"`
-	Radius                  *float32             `json:"radius,omitempty"`
-	Site                    *string              `json:"site,omitempty"`
-	Type                    string               `json:"type"`
-	Wgs84Height             *float32             `json:"wgs84_height,omitempty"`
-}
+type ZoneWrite = interface{}
 
 // FenceId defines model for FenceId.
 type FenceId = openapi_types.UUID
@@ -873,68 +836,6 @@ func (t Fence_Region) MarshalJSON() ([]byte, error) {
 }
 
 func (t *Fence_Region) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsPolygon returns the union data inside the FenceWrite_Region as a Polygon
-func (t FenceWrite_Region) AsPolygon() (Polygon, error) {
-	var body Polygon
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromPolygon overwrites any union data inside the FenceWrite_Region as the provided Polygon
-func (t *FenceWrite_Region) FromPolygon(v Polygon) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergePolygon performs a merge with any union data inside the FenceWrite_Region, using the provided Polygon
-func (t *FenceWrite_Region) MergePolygon(v Polygon) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsPoint returns the union data inside the FenceWrite_Region as a Point
-func (t FenceWrite_Region) AsPoint() (Point, error) {
-	var body Point
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromPoint overwrites any union data inside the FenceWrite_Region as the provided Point
-func (t *FenceWrite_Region) FromPoint(v Point) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergePoint performs a merge with any union data inside the FenceWrite_Region, using the provided Point
-func (t *FenceWrite_Region) MergePoint(v Point) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t FenceWrite_Region) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *FenceWrite_Region) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -1261,6 +1162,68 @@ func (t JsonRpcSuccessResponse_Id) MarshalJSON() ([]byte, error) {
 }
 
 func (t *JsonRpcSuccessResponse_Id) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsPositiveOrMinusOne0 returns the union data inside the PositiveOrMinusOne as a PositiveOrMinusOne0
+func (t PositiveOrMinusOne) AsPositiveOrMinusOne0() (PositiveOrMinusOne0, error) {
+	var body PositiveOrMinusOne0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPositiveOrMinusOne0 overwrites any union data inside the PositiveOrMinusOne as the provided PositiveOrMinusOne0
+func (t *PositiveOrMinusOne) FromPositiveOrMinusOne0(v PositiveOrMinusOne0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePositiveOrMinusOne0 performs a merge with any union data inside the PositiveOrMinusOne, using the provided PositiveOrMinusOne0
+func (t *PositiveOrMinusOne) MergePositiveOrMinusOne0(v PositiveOrMinusOne0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPositiveNumber returns the union data inside the PositiveOrMinusOne as a PositiveNumber
+func (t PositiveOrMinusOne) AsPositiveNumber() (PositiveNumber, error) {
+	var body PositiveNumber
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPositiveNumber overwrites any union data inside the PositiveOrMinusOne as the provided PositiveNumber
+func (t *PositiveOrMinusOne) FromPositiveNumber(v PositiveNumber) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePositiveNumber performs a merge with any union data inside the PositiveOrMinusOne, using the provided PositiveNumber
+func (t *PositiveOrMinusOne) MergePositiveNumber(v PositiveNumber) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t PositiveOrMinusOne) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *PositiveOrMinusOne) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
