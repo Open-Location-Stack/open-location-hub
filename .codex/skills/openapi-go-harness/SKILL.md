@@ -15,13 +15,19 @@ Use for requests to scaffold or evolve this Go service harness.
 4. Regenerate API code with `just generate`.
 5. Keep generated outputs under `internal/httpapi/gen`.
 6. If generation changes interface types or operations, update handler signatures in `internal/httpapi/handlers/handlers.go`.
-7. Finish with `just test` and `just check`.
+7. Update implementation-facing docs in the same change when behavior, config, or workflows changed:
+   - `docs/implementation-plan.md` for current status, remaining work, and follow-ups
+   - `docs/configuration.md` for new or changed env vars
+   - `docs/architecture.md` when runtime flow or component boundaries changed
+8. Finish with `just test` and `just check`.
 
 ## Guardrails
 - Do not hand-edit generated files unless explicitly bootstrapping placeholders.
 - Prefer environment variables over hardcoded config.
 - Keep docs and scaffolding aligned with actual `just` workflows.
 - When adding endpoints from a spec expansion, prefer temporary scaffold stubs over partial implementations that break the generated interface.
+- Do not treat `docs/implementation-plan.md` as optional maintenance; revise it after each substantial implementation change.
+- If the implementation still falls short of the spec or the intended behavior, document the gap and the next follow-up explicitly.
 
 ## Project Status
 - Until further notice, this project is in `alpha` status.
