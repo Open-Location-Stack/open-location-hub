@@ -25,6 +25,7 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
   - it does not combine multiple simultaneous proximity observations into a richer confidence model
   - it does not yet share logic with trackable locating rules or fence tolerance behavior
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
+- macOS-specific validation is still incomplete in the current verified state because local PROJ headers/libs were not yet available to complete `just test` and `just check`; finish a full Homebrew-based validation pass and document any platform-specific fixes if needed.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
 - RPC availability is discovered from MQTT retained announcements, but the hub does not yet publish its own built-in mandatory OMLOX methods or host local RPC handlers.
