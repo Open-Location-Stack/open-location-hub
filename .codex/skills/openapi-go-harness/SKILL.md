@@ -10,14 +10,18 @@ Use for requests to scaffold or evolve this Go service harness.
 
 ## Workflow
 1. Update `specifications/openapi/omlox-hub.v0.yaml` first when API behavior changes.
-2. Regenerate API code with `just generate`.
-3. Keep generated outputs under `internal/httpapi/gen`.
-4. Ensure `just check` is green before finishing.
+2. If the request is about OMLOX contract alignment, read `docs/openapi-governance.md` and use the sibling `omlox-spec-governance` skill.
+3. Run `just bootstrap` before generation if dependencies or tools may be missing.
+4. Regenerate API code with `just generate`.
+5. Keep generated outputs under `internal/httpapi/gen`.
+6. If generation changes interface types or operations, update handler signatures in `internal/httpapi/handlers/handlers.go`.
+7. Finish with `just test` and `just check`.
 
 ## Guardrails
 - Do not hand-edit generated files unless explicitly bootstrapping placeholders.
 - Prefer environment variables over hardcoded config.
-- Keep Docker compose and README aligned.
+- Keep docs and scaffolding aligned with actual `just` workflows.
+- When adding endpoints from a spec expansion, prefer temporary scaffold stubs over partial implementations that break the generated interface.
 
 ## Project Status
 - Until further notice, this project is in `alpha` status.

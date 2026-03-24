@@ -1,5 +1,18 @@
 # Testing
 
+Follow Red/Green TDD practices
+
+## Required Validation Sequence
+
+For contract, scaffolding, or integration changes, run the repo workflow in this order:
+
+```bash
+just bootstrap
+just generate
+just test
+just check
+```
+
 ## Unit tests
 Run all unit tests:
 
@@ -18,3 +31,8 @@ just test-int
 
 The suite boots Postgres, Valkey, and Mosquitto containers and performs migration smoke checks.
 If Docker is unavailable, tests should skip.
+
+## Notes
+
+- `just generate` must run after OpenAPI changes so generated handler interfaces stay aligned.
+- `just check` reruns tests and build validation, so use it as the final gate before commit.

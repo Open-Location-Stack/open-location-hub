@@ -1,4 +1,4 @@
-version: 1
-display_name: OMLOX Spec Governance
-short_description: Keep OMLOX REST contracts normative and protocol boundaries explicit.
-default_prompt: Update OpenAPI and companion docs while preserving OMLOX v2 compatibility and clear protocol boundaries.
+interface:
+  display_name: "OMLOX Spec Governance"
+  short_description: "Map OMLOX PDF requirements into the repo's normative API and companion docs"
+  default_prompt: "Read the OMLOX PDFs and align the normative OpenAPI contract and companion docs, marking inferred REST details explicitly and preserving OMLOX v2 compatibility."
