@@ -22,6 +22,7 @@ The repository documentation is now split by audience: software/runtime document
 - Collision support now exists as an explicitly optional feature controlled by `COLLISIONS_ENABLED`; when enabled, the hub emits bounded single-hub trackable-versus-trackable collision events in WGS84.
 - RPC now operates as a control-plane surface: `GET /v2/rpc/available` and `PUT /v2/rpc` support hub-owned methods, MQTT-bridged methods, retained method discovery, and the `_all_within_timeout`, `_return_first_success`, and `_return_first_error` aggregation modes.
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
+- The integration test harness now keeps HTTP response bodies open for decode assertions and retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
 
 ### Implemented but still incomplete

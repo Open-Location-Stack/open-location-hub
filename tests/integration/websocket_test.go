@@ -51,7 +51,7 @@ func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatus(t, createLocalResp, http.StatusAccepted)
+	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
 
 	msg := readWSJSON(t, conn)
 	if msg.Event != "message" || msg.Topic != "location_updates" {

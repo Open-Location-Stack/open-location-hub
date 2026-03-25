@@ -162,8 +162,8 @@ func TestDexBackedAuthorization(t *testing.T) {
 
 	appBaseURL := mappedHTTPURL(t, ctx, app, "8080/tcp")
 
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", ""), http.StatusUnauthorized)
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", "definitely-not-a-jwt"), http.StatusUnauthorized)
+	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", ""), http.StatusUnauthorized)
+	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", "definitely-not-a-jwt"), http.StatusUnauthorized)
 
 	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", adminToken, map[string]any{
 		"type":                     "uwb",
@@ -189,9 +189,9 @@ func TestDexBackedAuthorization(t *testing.T) {
 		t.Fatal("expected at least one zone")
 	}
 
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/zones/"+createdZone.ID, adminToken), http.StatusOK)
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/providers", readerToken), http.StatusForbidden)
-	assertStatus(t, request(t, http.MethodGet, appBaseURL+"/v2/providers/provider-1", ownerToken), http.StatusForbidden)
+	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/zones/"+createdZone.ID, adminToken), http.StatusOK)
+	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/providers", readerToken), http.StatusForbidden)
+	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/providers/provider-1", ownerToken), http.StatusForbidden)
 }
 
 func repoPath(t *testing.T, rel string) string {
@@ -203,15 +203,26 @@ func repoPath(t *testing.T, rel string) string {
 
 func runMigrations(t *testing.T, ctx context.Context, dsn string) {
 	t.Helper()
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("sql open failed: %v", err)
+	deadline := time.Now().Add(30 * time.Second)
+	var lastErr error
+	for attempt := 1; time.Now().Before(deadline); attempt++ {
+		db, err := sql.Open("pgx", dsn)
+		if err != nil {
+			lastErr = err
+		} else {
+			if err := db.PingContext(ctx); err != nil {
+				lastErr = err
+			} else if err := goose.Up(db, repoPath(t, "migrations")); err == nil {
+				_ = db.Close()
+				return
+			} else {
+				lastErr = err
+			}
+			_ = db.Close()
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	defer db.Close()
-
-	if err := goose.Up(db, repoPath(t, "migrations")); err != nil {
-		t.Fatalf("migrations failed: %v", err)
-	}
+	t.Fatalf("migrations failed after retrying: %v", lastErr)
 }
 
 func fetchDexIDToken(t *testing.T, ctx context.Context, container testcontainers.Container, username, password string) string {
@@ -313,8 +324,14 @@ func decodeResponse(t *testing.T, resp *http.Response, dst any) {
 
 func assertStatus(t *testing.T, resp *http.Response, want int) {
 	t.Helper()
-	defer resp.Body.Close()
 	if resp.StatusCode != want {
+		defer resp.Body.Close()
 		t.Fatalf("unexpected status: got %d want %d", resp.StatusCode, want)
 	}
+}
+
+func assertStatusAndClose(t *testing.T, resp *http.Response, want int) {
+	t.Helper()
+	defer resp.Body.Close()
+	assertStatus(t, resp, want)
 }

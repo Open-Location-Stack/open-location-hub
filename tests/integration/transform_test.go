@@ -47,7 +47,7 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatus(t, createLocalResp, http.StatusAccepted)
+	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
 
 	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-local")], 10*time.Second)
 	wgsPublished := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326("provider-local")], 10*time.Second)
@@ -78,7 +78,7 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatus(t, createWGSResp, http.StatusAccepted)
+	assertStatusAndClose(t, createWGSResp, http.StatusAccepted)
 
 	localFromWGS := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-wgs")], 10*time.Second)
 	wgsFromWGS := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326("provider-wgs")], 10*time.Second)
@@ -126,7 +126,7 @@ func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) 
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatus(t, publishResp, http.StatusAccepted)
+	assertStatusAndClose(t, publishResp, http.StatusAccepted)
 
 	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-missing")], 10*time.Second)
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
