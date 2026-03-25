@@ -21,6 +21,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-rtls-hub/internal/ws"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -66,10 +67,14 @@ func main() {
 	}
 
 	queries := sqlcgen.New(pg)
-	service := hub.New(logger, queries, cache, mq, hub.Config{
+	eventBus := hub.NewEventBus()
+	service := hub.New(logger, queries, cache, eventBus, hub.Config{
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
+		CollisionsEnabled:                     cfg.CollisionsEnabled,
+		CollisionStateTTL:                     cfg.CollisionStateTTL,
+		CollisionCollidingDebounce:            cfg.CollisionCollidingDebounce,
 		ProximityResolutionEntryConfidenceMin: cfg.ProximityResolutionEntryConfidenceMin,
 		ProximityResolutionExitGraceDuration:  cfg.ProximityResolutionExitGraceDuration,
 		ProximityResolutionBoundaryGrace:      cfg.ProximityResolutionBoundaryGrace,
@@ -78,6 +83,17 @@ func main() {
 		ProximityResolutionFallbackRadius:     cfg.ProximityResolutionFallbackRadius,
 		ProximityResolutionStaleStateTTL:      cfg.ProximityResolutionStaleStateTTL,
 	})
+	mqttPublisher := mqtt.NewEventPublisher(mq)
+	if eventBus != nil {
+		ch, _ := eventBus.Subscribe(128)
+		go func() {
+			for event := range ch {
+				if err := mqttPublisher.Handle(context.Background(), event); err != nil {
+					logger.Warn("mqtt event publish failed", observability.Error(err))
+				}
+			}
+		}()
+	}
 	rpcBridge, err := rpc.NewBridge(logger, mq, rpc.Config{
 		Timeout:              cfg.RPCTimeout,
 		HandlerID:            cfg.RPCHandlerID,
@@ -136,6 +152,8 @@ func main() {
 		RPC:     rpcBridge,
 	})
 	gen.HandlerFromMux(h, r)
+	wsHub := ws.New(logger, service, eventBus, authenticator, registry, cfg.Auth, cfg.WebSocketWriteTimeout, cfg.WebSocketOutboundBuffer, cfg.CollisionsEnabled)
+	r.Get("/v2/ws/socket", wsHub.Handle)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPListenAddr,

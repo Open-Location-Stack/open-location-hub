@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
@@ -342,10 +341,12 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 }
 
 func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
-	publisher := &recordingPublisher{}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	service := &Service{
-		publisher:      publisher,
+		bus:            bus,
 		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
@@ -357,17 +358,9 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
 	}
-	if len(publisher.calls) != 2 {
-		t.Fatalf("expected two publish calls, got %d", len(publisher.calls))
-	}
-	if publisher.calls[0].topic != mqtt.TopicLocationLocal(location.ProviderId) {
-		t.Fatalf("unexpected local topic: %s", publisher.calls[0].topic)
-	}
-	if publisher.calls[1].topic != mqtt.TopicLocationEPSG4326(location.ProviderId) {
-		t.Fatalf("unexpected epsg4326 topic: %s", publisher.calls[1].topic)
-	}
-	localPublished := decodePublishedLocation(t, publisher.calls[0].payload)
-	wgsPublished := decodePublishedLocation(t, publisher.calls[1].payload)
+	events := collectEvents(ch, 2)
+	localPublished := decodeEventLocation(t, eventByScope(t, events, ScopeLocal))
+	wgsPublished := decodeEventLocation(t, eventByScope(t, events, ScopeEPSG4326))
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
 		t.Fatal("expected local publication to stay local")
 	}
@@ -378,10 +371,12 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 }
 
 func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing.T) {
-	publisher := &recordingPublisher{}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, -33.4489, -70.6693)
 	service := &Service{
-		publisher:      publisher,
+		bus:            bus,
 		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
@@ -393,11 +388,9 @@ func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
 	}
-	if len(publisher.calls) != 2 {
-		t.Fatalf("expected two publish calls, got %d", len(publisher.calls))
-	}
-	localPublished := decodePublishedLocation(t, publisher.calls[0].payload)
-	wgsPublished := decodePublishedLocation(t, publisher.calls[1].payload)
+	events := collectEvents(ch, 2)
+	localPublished := decodeEventLocation(t, eventByScope(t, events, ScopeLocal))
+	wgsPublished := decodeEventLocation(t, eventByScope(t, events, ScopeEPSG4326))
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
 		t.Fatal("expected local publication to use local CRS")
 	}
@@ -408,11 +401,13 @@ func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing
 }
 
 func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
-	publisher := &recordingPublisher{}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
 	crs := "local"
 	location := testLocationWithCoordinates(t, &crs, "missing-zone", [2]float32{2, 3})
 	service := &Service{
-		publisher:      publisher,
+		bus:            bus,
 		queries:        fakeQueries{listZonesFn: func(context.Context) ([]sqlcgen.Zone, error) { return nil, nil }},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
@@ -422,20 +417,20 @@ func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
 	}
-	if len(publisher.calls) != 1 {
-		t.Fatalf("expected only one publish call, got %d", len(publisher.calls))
-	}
-	published := decodePublishedLocation(t, publisher.calls[0].payload)
+	events := collectEvents(ch, 1)
+	published := decodeEventLocation(t, events[0])
 	if published.Crs == nil || *published.Crs != "local" {
 		t.Fatal("expected only local topic to be published")
 	}
 }
 
 func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
-	publisher := &recordingPublisher{}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	service := &Service{
-		publisher:      publisher,
+		bus:            bus,
 		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
@@ -446,14 +441,12 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
-	if err := service.publishTrackableMotions(context.Background(), location); err != nil {
+	if _, err := service.publishTrackableMotions(context.Background(), location); err != nil {
 		t.Fatalf("publishTrackableMotions failed: %v", err)
 	}
-	if len(publisher.calls) != 2 {
-		t.Fatalf("expected two motion publications, got %d", len(publisher.calls))
-	}
-	localMotion := decodePublishedMotion(t, publisher.calls[0].payload)
-	wgsMotion := decodePublishedMotion(t, publisher.calls[1].payload)
+	events := collectEvents(ch, 2)
+	localMotion := decodeEventMotion(t, eventByScope(t, events, ScopeLocal))
+	wgsMotion := decodeEventMotion(t, eventByScope(t, events, ScopeEPSG4326))
 	if localMotion.Location.Crs == nil || *localMotion.Location.Crs != "local" {
 		t.Fatal("expected local motion to stay local")
 	}
@@ -476,8 +469,8 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 				return []sqlcgen.Fence{{Payload: payload}}, nil
 			},
 		},
-		publisher: &recordingPublisher{},
-		cfg:       Config{LocationTTL: 90 * time.Second},
+		bus: NewEventBus(),
+		cfg: Config{LocationTTL: 90 * time.Second},
 	}
 	location := testLocation(t, nil)
 	trackables := []string{"trackable-a"}
@@ -629,24 +622,6 @@ func (c *memoryCache) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-type recordingPublisher struct {
-	calls []publishCall
-}
-
-type publishCall struct {
-	topic   string
-	payload []byte
-}
-
-func (p *recordingPublisher) PublishJSON(_ context.Context, topic string, payload any, _ bool) error {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	p.calls = append(p.calls, publishCall{topic: topic, payload: raw})
-	return nil
-}
-
 func decodePublishedLocation(t *testing.T, payload []byte) gen.Location {
 	t.Helper()
 	var location gen.Location
@@ -663,6 +638,49 @@ func decodePublishedMotion(t *testing.T, payload []byte) gen.TrackableMotion {
 		t.Fatalf("decode motion failed: %v", err)
 	}
 	return motion
+}
+
+func decodeEventLocation(t *testing.T, event Event) gen.Location {
+	t.Helper()
+	envelope, err := Decode[LocationEnvelope](event)
+	if err != nil {
+		t.Fatalf("decode event location failed: %v", err)
+	}
+	return envelope.Location
+}
+
+func decodeEventMotion(t *testing.T, event Event) gen.TrackableMotion {
+	t.Helper()
+	envelope, err := Decode[TrackableMotionEnvelope](event)
+	if err != nil {
+		t.Fatalf("decode event motion failed: %v", err)
+	}
+	return envelope.Motion
+}
+
+func collectEvents(ch <-chan Event, count int) []Event {
+	out := make([]Event, 0, count)
+	timeout := time.After(2 * time.Second)
+	for len(out) < count {
+		select {
+		case event := <-ch:
+			out = append(out, event)
+		case <-timeout:
+			return out
+		}
+	}
+	return out
+}
+
+func eventByScope(t *testing.T, events []Event, scope EventScope) Event {
+	t.Helper()
+	for _, event := range events {
+		if event.Scope == scope {
+			return event
+		}
+	}
+	t.Fatalf("scope %s not found", scope)
+	return Event{}
 }
 
 func assertLocationsDiffer(t *testing.T, a, b gen.Location) {

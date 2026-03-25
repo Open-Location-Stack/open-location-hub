@@ -44,14 +44,22 @@ type RPCPolicy struct {
 	Invoke   []MethodRule
 }
 
+// WebSocketPolicy holds per-role subscribe and publish permissions for OMLOX
+// WebSocket topics.
+type WebSocketPolicy struct {
+	Subscribe []MethodRule
+	Publish   []MethodRule
+}
+
 // MethodRule grants invocation permission for a single method or wildcard.
 type MethodRule struct {
 	Pattern string
 }
 
 type rolePolicy struct {
-	Routes []Rule
-	RPC    RPCPolicy
+	Routes    []Rule
+	RPC       RPCPolicy
+	WebSocket WebSocketPolicy
 }
 
 // Registry holds the role-to-route authorization rules loaded from YAML.
@@ -73,6 +81,7 @@ func LoadRegistry(path string) (*Registry, error) {
 	for role, entries := range doc {
 		rules := make([]Rule, 0, len(entries))
 		rpcPolicy := RPCPolicy{}
+		wsPolicy := WebSocketPolicy{}
 		for pattern, v := range entries {
 			if pattern == "description" {
 				continue
@@ -83,6 +92,14 @@ func LoadRegistry(path string) (*Registry, error) {
 					return nil, fmt.Errorf("role %q rpc: %w", role, err)
 				}
 				rpcPolicy = parsed
+				continue
+			}
+			if pattern == "websocket" {
+				parsed, err := parseWebSocketPolicy(v)
+				if err != nil {
+					return nil, fmt.Errorf("role %q websocket: %w", role, err)
+				}
+				wsPolicy = parsed
 				continue
 			}
 			perms, err := parsePermissions(v)
@@ -100,7 +117,13 @@ func LoadRegistry(path string) (*Registry, error) {
 		sort.SliceStable(rpcPolicy.Invoke, func(i, j int) bool {
 			return compareMethodSpecificity(rpcPolicy.Invoke[i].Pattern, rpcPolicy.Invoke[j].Pattern) > 0
 		})
-		registry.roles[role] = rolePolicy{Routes: rules, RPC: rpcPolicy}
+		sort.SliceStable(wsPolicy.Subscribe, func(i, j int) bool {
+			return compareMethodSpecificity(wsPolicy.Subscribe[i].Pattern, wsPolicy.Subscribe[j].Pattern) > 0
+		})
+		sort.SliceStable(wsPolicy.Publish, func(i, j int) bool {
+			return compareMethodSpecificity(wsPolicy.Publish[i].Pattern, wsPolicy.Publish[j].Pattern) > 0
+		})
+		registry.roles[role] = rolePolicy{Routes: rules, RPC: rpcPolicy, WebSocket: wsPolicy}
 	}
 	return registry, nil
 }
@@ -142,6 +165,59 @@ func parseRPCPolicy(v any) (RPCPolicy, error) {
 			if allowed {
 				out.Invoke = append(out.Invoke, MethodRule{Pattern: strings.TrimSpace(pattern)})
 			}
+		}
+	}
+	return out, nil
+}
+
+func parseWebSocketPolicy(v any) (WebSocketPolicy, error) {
+	body, ok := v.(map[string]any)
+	if !ok {
+		return WebSocketPolicy{}, fmt.Errorf("websocket policy must be a map")
+	}
+	out := WebSocketPolicy{}
+	if subscribe, ok := body["subscribe"]; ok {
+		rules, err := parseMethodRules(subscribe)
+		if err != nil {
+			return WebSocketPolicy{}, fmt.Errorf("subscribe: %w", err)
+		}
+		out.Subscribe = rules
+	}
+	if publish, ok := body["publish"]; ok {
+		rules, err := parseMethodRules(publish)
+		if err != nil {
+			return WebSocketPolicy{}, fmt.Errorf("publish: %w", err)
+		}
+		out.Publish = rules
+	}
+	return out, nil
+}
+
+func parseMethodRules(v any) ([]MethodRule, error) {
+	items, ok := v.([]any)
+	if ok {
+		out := make([]MethodRule, 0, len(items))
+		for _, item := range items {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("list entries must be strings")
+			}
+			out = append(out, MethodRule{Pattern: strings.TrimSpace(s)})
+		}
+		return out, nil
+	}
+	methodMap, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("policy must be a list or map")
+	}
+	out := make([]MethodRule, 0, len(methodMap))
+	for pattern, raw := range methodMap {
+		allowed, ok := raw.(bool)
+		if !ok {
+			return nil, fmt.Errorf("entry %q must be a boolean", pattern)
+		}
+		if allowed {
+			out = append(out, MethodRule{Pattern: strings.TrimSpace(pattern)})
 		}
 	}
 	return out, nil
@@ -236,6 +312,34 @@ func (r *Registry) AuthorizeRPCInvoke(principal *Principal, method string) error
 		}
 	}
 	return forbidden("token does not grant access to rpc method invocation")
+}
+
+// AuthorizeWebSocketSubscribe checks whether the principal may subscribe to
+// the supplied WebSocket topic.
+func (r *Registry) AuthorizeWebSocketSubscribe(principal *Principal, topic string) error {
+	if principal == nil {
+		return unauthorized("missing authenticated principal")
+	}
+	for _, role := range principal.Roles {
+		if methodAllowed(r.roles[role].WebSocket.Subscribe, topic) {
+			return nil
+		}
+	}
+	return forbidden("token does not grant access to websocket topic subscription")
+}
+
+// AuthorizeWebSocketPublish checks whether the principal may publish to the
+// supplied WebSocket topic.
+func (r *Registry) AuthorizeWebSocketPublish(principal *Principal, topic string) error {
+	if principal == nil {
+		return unauthorized("missing authenticated principal")
+	}
+	for _, role := range principal.Roles {
+		if methodAllowed(r.roles[role].WebSocket.Publish, topic) {
+			return nil
+		}
+	}
+	return forbidden("token does not grant access to websocket topic publish")
 }
 
 func permissionsForMethod(method string) (Permission, Permission, error) {

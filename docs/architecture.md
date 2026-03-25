@@ -4,11 +4,24 @@
 - `cmd/hub`: process bootstrap and wiring
 - `internal/config`: environment-driven configuration
 - `internal/httpapi`: API surface and handlers
+- `internal/ws`: OMLOX WebSocket wrapper protocol, subscriptions, and fan-out
 - `internal/storage/postgres`: durable store
 - `internal/state/valkey`: transient state
 - `internal/mqtt`: MQTT topic mapping and broker integration
 - `internal/auth`: token verification middleware
 - `internal/rpc`: local-method dispatch, MQTT RPC bridging, announcements, and aggregation
+- `internal/hub`: shared CRUD, ingest, derived event generation, collision evaluation, and internal event bus emission
+
+## Event Fan-Out
+1. REST, MQTT, or WebSocket ingest enters the shared hub service.
+2. The hub validates, normalizes, deduplicates, stores transient latest state, and derives follow-on events.
+3. The hub emits normalized internal events for locations, proximities, trackable motions, fence events, and optional collision events.
+4. MQTT and WebSocket consume that same event stream and publish transport-specific payloads.
+
+Implications:
+- ingest logic is shared across REST, MQTT, and WebSocket
+- MQTT is no longer the only downstream publication path
+- the internal event seam is intended to keep future federation work from depending on MQTT-specific topics
 
 ## RPC Control Plane
 1. A client calls `GET /v2/rpc/available` or `PUT /v2/rpc` over HTTP.
@@ -53,3 +66,8 @@ Current limits and likely next steps:
 2. Regenerate generated server/types.
 3. Implement handler behavior.
 4. Validate with tests and check pipeline.
+
+## WebSocket Notes
+- `GET /v2/ws/socket` is implemented outside the REST OpenAPI contract because it is a protocol companion surface rather than a generated REST endpoint.
+- When auth is enabled, WebSocket messages authenticate with `params.token` and apply dedicated topic publish/subscribe authorization.
+- `collision_events` is a known topic but remains configuration-gated by `COLLISIONS_ENABLED`.

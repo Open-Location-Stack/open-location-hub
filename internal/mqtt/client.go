@@ -206,6 +206,12 @@ func TopicTrackableMotionEPSG4326(trackableID string) string {
 	return fmt.Sprintf("/omlox/json/trackable_motions/epsg4326/%s", trackableID)
 }
 
+// TopicCollisionEventEPSG4326 returns the OMLOX MQTT topic for collision
+// events. The OMLOX MQTT mapping only defines the WGS84 topic.
+func TopicCollisionEventEPSG4326() string {
+	return "/omlox/json/collision_events/epsg4326"
+}
+
 // TopicRPCAvailable returns the retained OMLOX MQTT topic for RPC method
 // availability.
 func TopicRPCAvailable(method string) string {

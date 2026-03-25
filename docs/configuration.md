@@ -8,6 +8,8 @@ All runtime configuration is environment-driven.
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
 - `VALKEY_URL` (default `redis://localhost:6379/0`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
+- `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
+- `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
 
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)
@@ -16,10 +18,16 @@ All runtime configuration is environment-driven.
 - `RPC_TIMEOUT` (duration, default `5s`)
 - `RPC_ANNOUNCEMENT_INTERVAL` (duration, default `1m`)
 - `RPC_HANDLER_ID` (default `open-rtls-hub`)
+- `COLLISIONS_ENABLED` (`true`/`false`, default `false`)
+- `COLLISION_STATE_TTL` (duration, default `2m`)
+- `COLLISION_COLLIDING_DEBOUNCE` (duration, default `5s`)
 
 Stateful ingest behavior:
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed before latest-state and publish fan-out work
 - latest provider-source location state, trackable latest-location state, and fence membership state use the configured location/proximity TTLs for expiry semantics
+- WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
+- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in Valkey for `COLLISION_STATE_TTL`
+- `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
 
 RPC behavior:
 - `RPC_TIMEOUT` is the default wait time for request-response style RPC calls when the client does not supply `_timeout`

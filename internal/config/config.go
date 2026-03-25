@@ -16,12 +16,17 @@ type Config struct {
 	PostgresURL                           string
 	ValkeyURL                             string
 	MQTTBrokerURL                         string
+	WebSocketWriteTimeout                 time.Duration
+	WebSocketOutboundBuffer               int
 	StateLocationTTL                      time.Duration
 	StateProximityTTL                     time.Duration
 	StateDedupTTL                         time.Duration
 	RPCTimeout                            time.Duration
 	RPCAnnouncementInterval               time.Duration
 	RPCHandlerID                          string
+	CollisionsEnabled                     bool
+	CollisionStateTTL                     time.Duration
+	CollisionCollidingDebounce            time.Duration
 	ProximityResolutionEntryConfidenceMin float64
 	ProximityResolutionExitGraceDuration  time.Duration
 	ProximityResolutionBoundaryGrace      float64
@@ -56,12 +61,17 @@ func FromEnv() (Config, error) {
 		PostgresURL:                           env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
 		ValkeyURL:                             env("VALKEY_URL", "redis://localhost:6379/0"),
 		MQTTBrokerURL:                         env("MQTT_BROKER_URL", "tcp://localhost:1883"),
+		WebSocketWriteTimeout:                 durationEnv("WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
+		WebSocketOutboundBuffer:               intEnv("WEBSOCKET_OUTBOUND_BUFFER", 32),
 		StateLocationTTL:                      durationEnv("STATE_LOCATION_TTL", 10*time.Minute),
 		StateProximityTTL:                     durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
 		StateDedupTTL:                         durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
 		RPCTimeout:                            durationEnv("RPC_TIMEOUT", 5*time.Second),
 		RPCAnnouncementInterval:               durationEnv("RPC_ANNOUNCEMENT_INTERVAL", time.Minute),
 		RPCHandlerID:                          env("RPC_HANDLER_ID", "open-rtls-hub"),
+		CollisionsEnabled:                     boolEnv("COLLISIONS_ENABLED", false),
+		CollisionStateTTL:                     durationEnv("COLLISION_STATE_TTL", 2*time.Minute),
+		CollisionCollidingDebounce:            durationEnv("COLLISION_COLLIDING_DEBOUNCE", 5*time.Second),
 		ProximityResolutionEntryConfidenceMin: floatEnv("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
 		ProximityResolutionExitGraceDuration:  durationEnv("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
 		ProximityResolutionBoundaryGrace:      floatEnv("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
@@ -91,6 +101,12 @@ func FromEnv() (Config, error) {
 	if cfg.StateLocationTTL <= 0 {
 		return Config{}, fmt.Errorf("STATE_LOCATION_TTL must be > 0")
 	}
+	if cfg.WebSocketWriteTimeout <= 0 {
+		return Config{}, fmt.Errorf("WEBSOCKET_WRITE_TIMEOUT must be > 0")
+	}
+	if cfg.WebSocketOutboundBuffer <= 0 {
+		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")
+	}
 	if cfg.StateProximityTTL <= 0 {
 		return Config{}, fmt.Errorf("STATE_PROXIMITY_TTL must be > 0")
 	}
@@ -105,6 +121,12 @@ func FromEnv() (Config, error) {
 	}
 	if strings.TrimSpace(cfg.RPCHandlerID) == "" {
 		return Config{}, fmt.Errorf("RPC_HANDLER_ID must not be empty")
+	}
+	if cfg.CollisionStateTTL <= 0 {
+		return Config{}, fmt.Errorf("COLLISION_STATE_TTL must be > 0")
+	}
+	if cfg.CollisionCollidingDebounce < 0 {
+		return Config{}, fmt.Errorf("COLLISION_COLLIDING_DEBOUNCE must be >= 0")
 	}
 	if cfg.ProximityResolutionEntryConfidenceMin < 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN must be >= 0")
@@ -225,6 +247,18 @@ func floatEnv(k string, d float64) float64 {
 		return d
 	}
 	x, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return d
+	}
+	return x
+}
+
+func intEnv(k string, d int) int {
+	v := env(k, "")
+	if v == "" {
+		return d
+	}
+	x, err := strconv.Atoi(v)
 	if err != nil {
 		return d
 	}

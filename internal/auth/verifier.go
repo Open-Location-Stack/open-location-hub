@@ -303,7 +303,7 @@ func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
 func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !cfg.Enabled || cfg.Mode == "none" || r.URL.Path == "/healthz" {
+			if !cfg.Enabled || cfg.Mode == "none" || r.URL.Path == "/healthz" || r.URL.Path == "/v2/ws/socket" {
 				next.ServeHTTP(w, r)
 				return
 			}

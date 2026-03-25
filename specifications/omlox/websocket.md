@@ -11,6 +11,11 @@ Spec references:
 
 - WebSocket support is mandatory for an OMLOX Hub implementation.
 - This document covers the hub-facing publish/subscribe behavior the hub must implement.
+- Current repository status:
+  - `GET /v2/ws/socket` is implemented
+  - the hub accepts `message`, `subscribe`, and `unsubscribe` and emits `message`, `subscribed`, `unsubscribed`, and `error`
+  - MQTT and WebSocket now consume the same internal hub-event stream
+  - `collision_events` is implemented behind the runtime flag `COLLISIONS_ENABLED` and returns `10002` when the topic is requested while disabled
 
 ## Endpoint
 
@@ -126,6 +131,9 @@ Error codes mandated by the spec:
 - `10004`: client is not authorized
 - `10005`: payload contains invalid data
 
+Repository note:
+- the implementation uses `10002` for known-but-disabled topics such as `collision_events` when collision support is turned off at runtime
+
 ## Authorization
 
 - The hub must be able to handle authentication and authorization using OpenID.
@@ -212,6 +220,8 @@ Hub behavior:
 - the hub must check trackable movements for collisions
 - collision events must be sent immediately
 - all collision events are hub-generated
+- current repository behavior is bounded to single-hub trackable-versus-trackable collision evaluation in WGS84
+- collision evaluation is enabled only when `COLLISIONS_ENABLED=true`
 
 Client publish allowed:
 - no
@@ -360,6 +370,11 @@ The hub should implement all of the following:
 - outbound publishing for location updates, GeoJSON locations, collision events, fence events, GeoJSON fence events, and trackable motions
 - error responses with the mandated WebSocket error codes
 - JWT-in-`params.token` handling when authorization is enabled
+
+Current repository behavior notes:
+- authorization is evaluated per WebSocket message using dedicated WebSocket topic permissions from the auth registry
+- outbound delivery is protected by a per-connection buffer; slow subscribers are disconnected instead of blocking shared fan-out
+- duplicate subscriptions are allowed
 
 ## Reference implementation notes
 

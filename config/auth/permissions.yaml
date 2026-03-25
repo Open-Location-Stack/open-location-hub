@@ -9,6 +9,12 @@ admin@example.com:
     discover: true
     invoke:
       "*": true
+  websocket:
+    subscribe:
+      "*": true
+    publish:
+      location_updates: true
+      proximity_updates: true
 
 reader@example.com:
   description: Read-only role used to prove authorization failures in tests.
@@ -23,8 +29,17 @@ reader@example.com:
     invoke:
       com.omlox.ping: true
       com.omlox.identify: true
+  websocket:
+    subscribe:
+      location_*: true
+      fence_events*: true
+      trackable_motions: true
+    publish: {}
 
 owner@example.com:
   description: Ownership-restricted role used to prove OWN authorization failures.
   /v2/providers/:providerId:
     - READ_OWN
+  websocket:
+    subscribe: {}
+    publish: {}

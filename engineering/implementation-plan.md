@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there.
+This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -16,7 +16,10 @@ The repository documentation is now split by audience: software/runtime document
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Provider ingestion endpoints are implemented for locations and proximities, with Valkey-backed deduplication and transient latest-state storage.
 - Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
-- MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, and trackable-motion publication.
+- A shared internal event bus now fans normalized hub events out to MQTT and WebSocket consumers instead of keeping MQTT as the only outbound path.
+- MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, trackable-motion, and optional collision publication.
+- The mandatory OMLOX WebSocket surface is implemented at `GET /v2/ws/socket`, including wrapper events, runtime subscription IDs, topic fan-out, `params.token` authentication, dedicated WebSocket topic permissions, GeoJSON topic variants, and disabled-feature errors for collision topic access when collisions are turned off.
+- Collision support now exists as an explicitly optional feature controlled by `COLLISIONS_ENABLED`; when enabled, the hub emits bounded single-hub trackable-versus-trackable collision events in WGS84.
 - RPC now operates as a control-plane surface: `GET /v2/rpc/available` and `PUT /v2/rpc` support hub-owned methods, MQTT-bridged methods, retained method discovery, and the `_all_within_timeout`, `_return_first_success`, and `_return_first_error` aggregation modes.
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
@@ -34,12 +37,13 @@ The repository documentation is now split by audience: software/runtime document
 - Linux and Docker builds use native PROJ packages and are expected to work normally.
 - CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
-- MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
+- MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
 - MQTT remains useful for local integration, but the intended architecture is that cross-hub federation uses REST and WebSocket rather than MQTT.
 - RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
-- The hub does not yet implement the mandatory OMLOX WebSocket surface documented in `specifications/omlox/websocket.md`, so it is not yet feature complete as a standards-facing hub implementation.
+- WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
+- Collision support is intentionally bounded and configuration-gated; it does not yet model cross-hub correlation, richer polygon semantics, or broader OMLOX collision behaviors beyond trackable-versus-trackable detection.
 - Federation between OMLOX hubs is not yet modeled in configuration, auth, data provenance, or runtime behavior, so current deployments are effectively single-hub topologies.
 - The runtime does not yet define a stable configured hub UUID for provenance, scoped identity, replay handling, and cross-hub routing.
 - The current auth model covers user and caller authorization for one hub, but hub-to-hub service identities, multi-issuer trust, per-peer scopes, and propagated ownership/provenance rules are not yet designed or enforced.
@@ -67,7 +71,7 @@ Delivered:
 Delivered:
 - The MQTT client now connects to a real broker, subscribes, publishes, reconnects, and shuts down cleanly.
 - Inbound MQTT location and proximity topics feed the shared ingestion service.
-- Outbound MQTT publication exists for processed locations, fence events, and trackable motions.
+- Outbound MQTT publication now consumes the shared hub-event bus and exists for processed locations, fence events, trackable motions, and optional collision events.
 
 Residual work:
 - Document and enforce operational behavior for sustained publish failures, reconnect storms, and overloaded downstream consumers.
@@ -86,9 +90,22 @@ Residual work:
 - Implement one or more real `com.omlox.core.xcmd` adapters for supported provider/core integrations.
 - Extend RPC auditability and operational diagnostics beyond the current structured logs.
 
+### Phase 5: WebSocket baseline
+Delivered:
+- `GET /v2/ws/socket` is implemented as the OMLOX WebSocket wrapper surface outside the REST OpenAPI contract.
+- WebSocket subscriptions now consume the same normalized event stream as MQTT publication.
+- WebSocket supports `location_updates`, `location_updates:geojson`, `proximity_updates`, `fence_events`, `fence_events:geojson`, `trackable_motions`, and configuration-gated `collision_events`.
+- WebSocket message handling reuses the same location and proximity ingest paths as REST and MQTT.
+- Topic-level WebSocket authorization now exists alongside route-level REST auth and RPC method auth.
+
+Residual work:
+- Deepen filter indexing and fan-out efficiency for high-cardinality subscriber counts.
+- Add more end-to-end coverage for auth-enabled WebSocket flows once Docker-backed integration is consistently available in CI/local environments.
+- Revisit topic/backpressure metrics and operational visibility beyond the current disconnect-on-overflow behavior.
+
 ## Remaining Work
 
-### Phase 5: Production hardening
+### Phase 6: Production hardening
 Scope:
 - Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, Valkey, MQTT, and RPC.
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
@@ -111,17 +128,15 @@ Scope:
 Exit criteria:
 - The implementation moves from an operational baseline to an OMLOX behavior model that is deeper, more scalable, and easier to evolve.
 
-### Phase 6: Standards-facing feature completion
+### Phase 7: Standards-facing feature completion
 Scope:
-- Implement `GET /v2/ws/socket` and the mandatory OMLOX WebSocket protocol behavior, including wrapper events, topic subscriptions, auth via `params.token`, and required error codes.
-- Publish and accept the mandatory WebSocket topics for `location_updates`, `proximity_updates`, `fence_events`, `trackable_motions`, GeoJSON variants, and the product-defined collision support decision.
 - Close remaining MQTT extension gaps for enabled deployments, including clearer expiry behavior, topic-family completeness, and operational handling under reconnect/replay conditions.
-- Decide and document the product stance on collision events: either implement them to the intended OMLOX-facing scope or explicitly document them as a non-goal for the current release line.
+- Deepen the currently bounded collision implementation and decide how much more OMLOX collision behavior belongs in the product scope.
 
 Exit criteria:
 - Another OMLOX-compliant client or hub can use the documented REST, WebSocket, and optional MQTT surfaces without relying on repository-specific shortcuts or undocumented gaps.
 
-### Phase 7: Federation foundations
+### Phase 8: Federation foundations
 Scope:
 - Define hub identity, peer identity, and peer configuration for upstream and downstream relationships.
 - Add a required stable configured hub UUID and treat it as the origin namespace for federated resources, events, deduplication, and routed RPC.
@@ -134,7 +149,7 @@ Scope:
 Exit criteria:
 - An on-prem hub can federate selected OMLOX resources and event streams with a regional cloud hub securely and repeatably, and a regional hub can in turn forward or expose that data to an aggregate hub without losing provenance or policy control.
 
-### Phase 8: Resource and event federation completion
+### Phase 9: Resource and event federation completion
 Scope:
 - Add snapshot and reconciliation flows for zones, providers, trackables, and fences.
 - Add practical change feeds for CRUD-managed resources so pull-based federation does not depend only on periodic full scans.
@@ -148,30 +163,29 @@ Exit criteria:
 
 ## Near-Term Priority
 
-The immediate priority should now be standards-facing feature completion plus federation foundations, followed by production hardening. The repository already has a functioning CRUD, ingest, MQTT, and RPC baseline, but the largest gaps for a feature-complete OMLOX hub are the mandatory WebSocket surface, clearer event-model completeness, and the absence of a federation model for on-prem to cloud deployments.
+The immediate priority should now be federation foundations plus production hardening. The repository now has working CRUD, ingest, MQTT, RPC, and WebSocket baselines, but the largest gaps for a feature-complete OMLOX hub remain deeper event semantics, stronger operational behavior, and the absence of a federation model for on-prem to cloud deployments.
 
 ## Feature-Complete Next Steps
 
 To move this repository toward feature-complete status for the intended product scope, the next verified work should be:
 
-1. Implement the mandatory OMLOX WebSocket API and wire it to the existing shared ingest and publish paths.
-2. Close the biggest standards-facing behavior gaps:
-   - complete or explicitly bound collision-event support
+1. Close the biggest remaining standards-facing behavior gaps:
    - deepen fence timeout and tolerance semantics where OMLOX requires more than the current simplified behavior
+   - deepen or intentionally bound the current collision-event implementation
    - document exact MQTT extension support, its local-only role, and any remaining limits
-3. Add hub federation foundations:
+2. Add hub federation foundations:
    - stable configured hub UUID and peer identities
    - peer configuration for REST/WebSocket-based push and pull modes
    - provenance metadata and replay or deduplication state
    - loop suppression rules
-4. Extend auth and authorization for federation:
+3. Extend auth and authorization for federation:
    - machine identities separate from human users
    - multi-issuer and multi-audience trust handling
    - per-peer scopes for ingest, subscribe, replicate, and RPC
    - propagated ownership, tenant, and region boundaries
-5. Add cloud-authoritative metadata sync so buildings or sites, zones, fences, and related metadata can be managed centrally and synchronized safely to on-prem hubs.
-6. Add resource synchronization support for zones, providers, trackables, and fences, including practical change-feed support.
-7. Add the operational foundations required for federated deployments:
+4. Add cloud-authoritative metadata sync so buildings or sites, zones, fences, and related metadata can be managed centrally and synchronized safely to on-prem hubs.
+5. Add resource synchronization support for zones, providers, trackables, and fences, including practical change-feed support.
+6. Add the operational foundations required for federated deployments:
    - peer health and readiness
    - replication lag and retry metrics
    - dead-letter handling

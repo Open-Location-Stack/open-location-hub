@@ -26,6 +26,12 @@ func TestDefaults(t *testing.T) {
 	if cfg.RPCTimeout <= 0 {
 		t.Fatal("expected positive rpc timeout")
 	}
+	if cfg.WebSocketWriteTimeout <= 0 || cfg.WebSocketOutboundBuffer <= 0 {
+		t.Fatal("expected positive websocket settings")
+	}
+	if cfg.CollisionsEnabled {
+		t.Fatal("expected collisions to default to disabled")
+	}
 }
 
 func TestOIDCRequiresIssuer(t *testing.T) {

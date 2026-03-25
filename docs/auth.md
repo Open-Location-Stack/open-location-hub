@@ -2,6 +2,8 @@
 
 This project supports standards-based JWT bearer authentication for the REST API and an authorization model built around JWT claims plus a server-side permissions file.
 
+The same token verifier is also used for the OMLOX WebSocket surface, but WebSocket authentication happens per message through `params.token` instead of the HTTP `Authorization` header.
+
 ## Modes
 
 - `none`: disable auth checks
@@ -100,6 +102,25 @@ dedicated `rpc` section per role:
 This means a role can be allowed to reach the RPC endpoint path but still be
 blocked from invoking a specific method.
 
+WebSocket policy entries are evaluated separately from REST route permissions. They use a dedicated `websocket` section per role:
+
+- `subscribe` lists topic names or wildcard patterns the role may subscribe to
+- `publish` lists topic names or wildcard patterns the role may send `message` events to
+
+Example:
+
+```yaml
+admin@example.com:
+  websocket:
+    subscribe:
+      "*": true
+    publish:
+      location_updates: true
+      proximity_updates: true
+```
+
+The current implementation supports exact topic names and suffix-style wildcard patterns such as `location_*`.
+
 ## Ownership Claims
 
 Ownership-aware rules use the claim configured by `AUTH_OWNED_RESOURCES_CLAIM`.
@@ -125,8 +146,19 @@ For `*_OWN` permissions, the request path parameter must be present in the match
 - `401 Unauthorized`: missing bearer header, malformed token, invalid signature, bad issuer, bad audience, expired token, or other authentication failure
 - `403 Forbidden`: authenticated token lacks a matching permission or ownership claim
 - `403 Forbidden` on RPC also covers missing method-level discovery or invocation permission
+- WebSocket auth failures are returned as OMLOX wrapper `error` events with code `10004`
 
 Authentication failures return a `WWW-Authenticate: Bearer` header and the API error body.
+
+## WebSocket Authentication
+
+When auth is enabled:
+- every WebSocket `subscribe` and `message` event must carry the JWT access token in `params.token`
+- the hub authenticates and authorizes each message independently
+- the WebSocket upgrade itself is intentionally allowed without an HTTP bearer header so the OMLOX `params.token` model can be used
+- route-style REST permissions do not grant WebSocket topic access automatically; the `websocket` policy block must allow the topic
+
+If a topic is valid but disabled by configuration, the WebSocket layer returns an OMLOX wrapper `error` event with code `10002` and a descriptive message instead of treating it as an unknown topic.
 
 ## Dex Development Setup
 

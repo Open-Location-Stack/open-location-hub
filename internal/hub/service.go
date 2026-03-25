@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
@@ -23,11 +23,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.uber.org/zap"
 )
-
-// Publisher emits derived OMLOX events and updates to MQTT.
-type Publisher interface {
-	PublishJSON(ctx context.Context, topic string, payload any, retained bool) error
-}
 
 // Cache provides the transient storage operations used by the service layer.
 type Cache interface {
@@ -50,6 +45,9 @@ type Config struct {
 	ProximityResolutionPositionMode       string
 	ProximityResolutionFallbackRadius     float64
 	ProximityResolutionStaleStateTTL      time.Duration
+	CollisionsEnabled                     bool
+	CollisionStateTTL                     time.Duration
+	CollisionCollidingDebounce            time.Duration
 }
 
 // Service implements the hub's CRUD and ingest behavior over storage, cache,
@@ -58,7 +56,7 @@ type Service struct {
 	logger         *zap.Logger
 	queries        sqlcgen.Querier
 	cache          Cache
-	publisher      Publisher
+	bus            *EventBus
 	cfg            Config
 	now            func() time.Time
 	crsTransformer *transform.CRSTransformer
@@ -78,12 +76,12 @@ func (e *HTTPError) Error() string {
 }
 
 // New constructs a Service with the configured dependencies.
-func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, publisher Publisher, cfg Config) *Service {
+func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, bus *EventBus, cfg Config) *Service {
 	return &Service{
 		logger:         logger,
 		queries:        queries,
 		cache:          cache,
-		publisher:      publisher,
+		bus:            bus,
 		cfg:            cfg,
 		now:            time.Now,
 		crsTransformer: transform.NewCRSTransformer(),
@@ -454,6 +452,9 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 		if strings.TrimSpace(proximity.ProviderId) == "" || strings.TrimSpace(proximity.ProviderType) == "" || strings.TrimSpace(proximity.Source) == "" {
 			return badRequest("proximity entries require provider_id, provider_type, and source")
 		}
+		if err := s.publishProximity(proximity); err != nil {
+			return err
+		}
 		location, err := s.locationFromProximity(ctx, proximity)
 		if err != nil {
 			return err
@@ -462,6 +463,18 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *Service) publishProximity(proximity gen.Proximity) error {
+	if s.bus == nil {
+		return nil
+	}
+	event, err := newEvent(EventProximity, ScopeRaw, proximityTime(proximity), proximity.ProviderId, "", "", ProximityEnvelope{Proximity: proximity})
+	if err != nil {
+		return err
+	}
+	s.bus.Emit(event)
 	return nil
 }
 
@@ -656,19 +669,25 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		}
 	}
 	if err := s.publishLocation(ctx, location); err != nil {
-		s.logger.Warn("mqtt location publish failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		s.logger.Warn("location event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
-	if err := s.publishTrackableMotions(ctx, location); err != nil {
-		s.logger.Warn("mqtt trackable motion publish failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+	motions, err := s.publishTrackableMotions(ctx, location)
+	if err != nil {
+		s.logger.Warn("trackable motion event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	if err := s.publishFenceEvents(ctx, location); err != nil {
-		s.logger.Warn("mqtt fence event publish failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		s.logger.Warn("fence event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+	}
+	if s.cfg.CollisionsEnabled {
+		if err := s.publishCollisionEvents(ctx, motions); err != nil {
+			s.logger.Warn("collision event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		}
 	}
 	return nil
 }
 
 func (s *Service) publishLocation(ctx context.Context, location gen.Location) error {
-	if s.publisher == nil {
+	if s.bus == nil {
 		return nil
 	}
 	variants, err := s.locationVariants(ctx, location)
@@ -676,26 +695,39 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		return err
 	}
 	if variants.Local != nil {
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicLocationLocal(location.ProviderId), *variants.Local, false); err != nil {
+		feature, err := locationGeoJSONFeatureCollection(*variants.Local)
+		if err != nil {
 			return err
 		}
+		event, err := newEvent(EventLocation, ScopeLocal, locationTime(*variants.Local), variants.Local.ProviderId, "", "", LocationEnvelope{Location: *variants.Local, GeoJSON: feature})
+		if err != nil {
+			return err
+		}
+		s.bus.Emit(event)
 	}
 	if variants.WGS84 != nil {
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicLocationEPSG4326(location.ProviderId), *variants.WGS84, false); err != nil {
+		feature, err := locationGeoJSONFeatureCollection(*variants.WGS84)
+		if err != nil {
 			return err
 		}
+		event, err := newEvent(EventLocation, ScopeEPSG4326, locationTime(*variants.WGS84), variants.WGS84.ProviderId, "", "", LocationEnvelope{Location: *variants.WGS84, GeoJSON: feature})
+		if err != nil {
+			return err
+		}
+		s.bus.Emit(event)
 	}
 	return nil
 }
 
-func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Location) error {
-	if s.publisher == nil || location.Trackables == nil {
-		return nil
+func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
+	if s.bus == nil || location.Trackables == nil {
+		return nil, nil
 	}
 	variants, err := s.locationVariants(ctx, location)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	wgsMotions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
 	for _, id := range *location.Trackables {
 		baseMotion := gen.TrackableMotion{Id: id}
 		if parsed, parseErr := uuid.Parse(id); parseErr == nil {
@@ -710,19 +742,24 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		if variants.Local != nil {
 			motion := baseMotion
 			motion.Location = *variants.Local
-			if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionLocal(id), motion, false); err != nil {
-				return err
+			event, err := newEvent(EventTrackableMotion, ScopeLocal, locationTime(motion.Location), motion.Location.ProviderId, id, "", TrackableMotionEnvelope{Motion: motion})
+			if err != nil {
+				return nil, err
 			}
+			s.bus.Emit(event)
 		}
 		if variants.WGS84 != nil {
 			motion := baseMotion
 			motion.Location = *variants.WGS84
-			if err := s.publisher.PublishJSON(ctx, mqtt.TopicTrackableMotionEPSG4326(id), motion, false); err != nil {
-				return err
+			event, err := newEvent(EventTrackableMotion, ScopeEPSG4326, locationTime(motion.Location), motion.Location.ProviderId, id, "", TrackableMotionEnvelope{Motion: motion})
+			if err != nil {
+				return nil, err
 			}
+			s.bus.Emit(event)
+			wgsMotions = append(wgsMotions, motion)
 		}
 	}
-	return nil
+	return wgsMotions, nil
 }
 
 type locationPublicationVariants struct {
@@ -859,7 +896,7 @@ func (s *Service) invalidateZoneTransform(zoneID string) {
 }
 
 func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location) error {
-	if s.publisher == nil || location.Trackables == nil {
+	if s.bus == nil || location.Trackables == nil {
 		return nil
 	}
 	fences, err := s.ListFences(ctx)
@@ -897,7 +934,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					EntryTime:   &now,
 					ForeignId:   fence.ForeignId,
 				}
-				if err := s.publishFenceEvent(ctx, event); err != nil {
+				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
 					return err
 				}
 			case !inside && wasInside:
@@ -913,7 +950,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					ExitTime:    &now,
 					ForeignId:   fence.ForeignId,
 				}
-				if err := s.publishFenceEvent(ctx, event); err != nil {
+				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
 					return err
 				}
 			}
@@ -922,21 +959,406 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 	return nil
 }
 
-func (s *Service) publishFenceEvent(ctx context.Context, event gen.FenceEvent) error {
-	if err := s.publisher.PublishJSON(ctx, mqtt.TopicFenceEvent(event.FenceId.String()), event, false); err != nil {
+func (s *Service) publishFenceEvent(_ context.Context, fence gen.Fence, event gen.FenceEvent) error {
+	geo, err := fenceGeoJSONFeatureCollection(fence, event)
+	if err != nil {
 		return err
 	}
-	if event.TrackableId != nil {
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicFenceEventTrackable(*event.TrackableId), event, false); err != nil {
+	envelope := FenceEventEnvelope{Event: event, Fence: fence, GeoJSON: geo}
+	busEvent, err := newEvent(EventFenceEvent, ScopeDerived, fenceEventTime(event), stringPtrValue(event.ProviderId), stringPtrValue(event.TrackableId), event.FenceId.String(), envelope)
+	if err != nil {
+		return err
+	}
+	s.bus.Emit(busEvent)
+	return nil
+}
+
+func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.TrackableMotion) error {
+	if s.bus == nil || !s.cfg.CollisionsEnabled || len(motions) == 0 {
+		return nil
+	}
+	allTrackables, err := s.ListTrackables(ctx)
+	if err != nil {
+		return err
+	}
+	trackables := make(map[string]gen.Trackable, len(allTrackables))
+	for _, trackable := range allTrackables {
+		trackables[trackable.Id.String()] = trackable
+	}
+	for _, motion := range motions {
+		if err := s.cache.Set(ctx, latestTrackableMotionKey(motion.Id), mustMarshal(motion), s.cfg.CollisionStateTTL); err != nil {
 			return err
 		}
-	}
-	if event.ProviderId != nil {
-		if err := s.publisher.PublishJSON(ctx, mqtt.TopicFenceEventProvider(*event.ProviderId), event, false); err != nil {
-			return err
+		for otherID, otherTrackable := range trackables {
+			if otherID == motion.Id {
+				continue
+			}
+			payload, err := s.cache.Get(ctx, latestTrackableMotionKey(otherID))
+			if err != nil {
+				return err
+			}
+			if len(payload) == 0 {
+				if err := s.cache.Delete(ctx, collisionPairKey(motion.Id, otherID)); err != nil {
+					return err
+				}
+				continue
+			}
+			var otherMotion gen.TrackableMotion
+			if err := json.Unmarshal(payload, &otherMotion); err != nil {
+				return err
+			}
+			event, active, err := s.evaluateCollision(motion, trackables[motion.Id], otherMotion, otherTrackable)
+			if err != nil {
+				return err
+			}
+			if !active {
+				if event != nil {
+					busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", CollisionEnvelope{Event: *event})
+					if err != nil {
+						return err
+					}
+					s.bus.Emit(busEvent)
+				}
+				if err := s.cache.Delete(ctx, collisionPairKey(motion.Id, otherID)); err != nil {
+					return err
+				}
+				continue
+			}
+			if event == nil {
+				continue
+			}
+			if err := s.cache.Set(ctx, collisionPairKey(motion.Id, otherID), mustMarshal(activeCollisionState{
+				Active:      true,
+				StartTime:   timeValue(event.StartTime),
+				LastSeen:    timeValue(event.CollisionTime),
+				LastEmitted: timeValue(event.CollisionTime),
+			}), s.cfg.CollisionStateTTL); err != nil {
+				return err
+			}
+			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", CollisionEnvelope{Event: *event})
+			if err != nil {
+				return err
+			}
+			s.bus.Emit(busEvent)
 		}
 	}
 	return nil
+}
+
+type activeCollisionState struct {
+	Active      bool      `json:"active"`
+	StartTime   time.Time `json:"start_time"`
+	LastSeen    time.Time `json:"last_seen"`
+	LastEmitted time.Time `json:"last_emitted"`
+}
+
+func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
+	leftPoint, err := point2D(leftMotion.Location.Position)
+	if err != nil {
+		return nil, false, nil
+	}
+	rightPoint, err := point2D(rightMotion.Location.Position)
+	if err != nil {
+		return nil, false, nil
+	}
+	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint)
+	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
+	payload, err := s.cache.Get(context.Background(), key)
+	if err != nil {
+		return nil, false, err
+	}
+	var state activeCollisionState
+	if len(payload) != 0 {
+		if err := json.Unmarshal(payload, &state); err != nil {
+			return nil, false, err
+		}
+	}
+	if !colliding {
+		if !state.Active {
+			return nil, false, nil
+		}
+		now := s.now().UTC()
+		event := collisionEventForPair(gen.CollisionEnd, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+		event.EndTime = &now
+		return &event, false, nil
+	}
+	now := s.now().UTC()
+	if !state.Active {
+		event := collisionEventForPair(gen.CollisionStart, now, now, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+		return &event, true, nil
+	}
+	if s.cfg.CollisionCollidingDebounce > 0 && !state.LastEmitted.IsZero() && now.Sub(state.LastEmitted) < s.cfg.CollisionCollidingDebounce {
+		return nil, true, nil
+	}
+	event := collisionEventForPair(gen.Colliding, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+	return &event, true, nil
+}
+
+func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float32) gen.CollisionEvent {
+	event := gen.CollisionEvent{
+		Id:            openapi_types.UUID(uuid.New()),
+		CollisionType: kind,
+		CollisionTime: &at,
+		Collisions: []gen.Collision{
+			collisionFromMotion(leftMotion, leftTrackable),
+			collisionFromMotion(rightMotion, rightTrackable),
+		},
+		CenterDistance: &distance,
+	}
+	if !start.IsZero() {
+		event.StartTime = &start
+	}
+	if area != nil {
+		event.CollisionArea = area
+	}
+	return event
+}
+
+func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable) gen.Collision {
+	id := uuid.Nil
+	if parsed, err := uuid.Parse(motion.Id); err == nil {
+		id = parsed
+	}
+	geometry := motion.Geometry
+	if geometry == nil {
+		geometry = trackable.Geometry
+	}
+	if geometry == nil {
+		geometry = pointSquarePolygon(motion.Location.Position, effectiveRadius(trackable))
+	}
+	return gen.Collision{
+		Id:         openapi_types.UUID(id),
+		ObjectType: string(trackable.Type),
+		Position:   motion.Location.Position,
+		Geometry:   *geometry,
+	}
+}
+
+func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, leftPoint, rightPoint [2]float64) (bool, *gen.CollisionEvent_CollisionArea, float32) {
+	distance := float32(math.Hypot(leftPoint[0]-rightPoint[0], leftPoint[1]-rightPoint[1]))
+	if leftMotion.Geometry != nil && rightMotion.Geometry != nil && polygonsOverlap(*leftMotion.Geometry, *rightMotion.Geometry) {
+		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
+		return true, &area, distance
+	}
+	radius := effectiveRadius(leftTrackable) + effectiveRadius(rightTrackable)
+	if float64(distance) <= radius {
+		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
+		return true, &area, distance
+	}
+	return false, nil, distance
+}
+
+func latestTrackableMotionKey(trackableID string) string {
+	return fmt.Sprintf("hub:trackable-motion:%s", trackableID)
+}
+
+func collisionPairKey(leftID, rightID string) string {
+	ids := []string{leftID, rightID}
+	sort.Strings(ids)
+	return fmt.Sprintf("hub:collision:%s:%s", ids[0], ids[1])
+}
+
+func stringPtrValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func timeValue(v *time.Time) time.Time {
+	if v == nil {
+		return time.Time{}
+	}
+	return *v
+}
+
+func locationTime(location gen.Location) time.Time {
+	if location.TimestampGenerated != nil {
+		return *location.TimestampGenerated
+	}
+	if location.TimestampSent != nil {
+		return *location.TimestampSent
+	}
+	return time.Time{}
+}
+
+func proximityTime(proximity gen.Proximity) time.Time {
+	if proximity.TimestampGenerated != nil {
+		return *proximity.TimestampGenerated
+	}
+	if proximity.TimestampSent != nil {
+		return *proximity.TimestampSent
+	}
+	return time.Time{}
+}
+
+func fenceEventTime(event gen.FenceEvent) time.Time {
+	if event.EntryTime != nil {
+		return *event.EntryTime
+	}
+	if event.ExitTime != nil {
+		return *event.ExitTime
+	}
+	return time.Time{}
+}
+
+func mustMarshal(value any) []byte {
+	payload, _ := json.Marshal(value)
+	return payload
+}
+
+func locationGeoJSONFeatureCollection(location gen.Location) (GeoJSONFeatureCollection, error) {
+	props, err := structProperties(location)
+	if err != nil {
+		return GeoJSONFeatureCollection{}, err
+	}
+	return GeoJSONFeatureCollection{
+		Type: "FeatureCollection",
+		Features: []GeoJSONFeature{{
+			Type:       "Feature",
+			Geometry:   location.Position,
+			Properties: props,
+		}},
+	}, nil
+}
+
+func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJSONFeatureCollection, error) {
+	props, err := structProperties(event)
+	if err != nil {
+		return GeoJSONFeatureCollection{}, err
+	}
+	region, err := fenceRegionGeometry(fence.Region)
+	if err != nil {
+		return GeoJSONFeatureCollection{}, err
+	}
+	return GeoJSONFeatureCollection{
+		Type: "FeatureCollection",
+		Features: []GeoJSONFeature{{
+			Type:       "Feature",
+			Geometry:   region,
+			Properties: props,
+		}},
+	}, nil
+}
+
+func structProperties(value any) (map[string]any, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	delete(out, "position")
+	delete(out, "region")
+	return out, nil
+}
+
+func fenceRegionGeometry(region gen.Fence_Region) (any, error) {
+	if point, err := region.AsPoint(); err == nil {
+		return point, nil
+	}
+	if polygon, err := region.AsPolygon(); err == nil {
+		return polygon, nil
+	}
+	return nil, badRequest("unsupported fence region geometry")
+}
+
+func midpoint(left, right [2]float64) [2]float64 {
+	return [2]float64{(left[0] + right[0]) / 2, (left[1] + right[1]) / 2}
+}
+
+func collisionAreaPoint(point [2]float64) gen.CollisionEvent_CollisionArea {
+	area := gen.CollisionEvent_CollisionArea{}
+	geo := gen.Point{Type: "Point"}
+	_ = geo.Coordinates.FromGeoJsonPosition2D([]float32{float32(point[0]), float32(point[1])})
+	_ = area.FromPoint(geo)
+	return area
+}
+
+func effectiveRadius(trackable gen.Trackable) float64 {
+	if trackable.Radius != nil && *trackable.Radius > 0 {
+		return float64(*trackable.Radius)
+	}
+	return 0.5
+}
+
+func pointSquarePolygon(center gen.Point, radius float64) *gen.Polygon {
+	point, err := point2D(center)
+	if err != nil {
+		return nil
+	}
+	return squarePolygon(point, radius)
+}
+
+func squarePolygon(center [2]float64, radius float64) *gen.Polygon {
+	polygon := gen.Polygon{Type: "Polygon"}
+	ring := []gen.GeoJsonPosition{}
+	points := [][2]float64{
+		{center[0] - radius, center[1] - radius},
+		{center[0] + radius, center[1] - radius},
+		{center[0] + radius, center[1] + radius},
+		{center[0] - radius, center[1] + radius},
+		{center[0] - radius, center[1] - radius},
+	}
+	for _, p := range points {
+		pos := gen.GeoJsonPosition{}
+		_ = pos.FromGeoJsonPosition2D([]float32{float32(p[0]), float32(p[1])})
+		ring = append(ring, pos)
+	}
+	polygon.Coordinates = [][]gen.GeoJsonPosition{ring}
+	return &polygon
+}
+
+func polygonsOverlap(left, right gen.Polygon) bool {
+	leftBounds, err := polygonBounds(left)
+	if err != nil {
+		return false
+	}
+	rightBounds, err := polygonBounds(right)
+	if err != nil {
+		return false
+	}
+	return !(leftBounds.maxX < rightBounds.minX || rightBounds.maxX < leftBounds.minX || leftBounds.maxY < rightBounds.minY || rightBounds.maxY < leftBounds.minY)
+}
+
+type bounds struct {
+	minX float64
+	minY float64
+	maxX float64
+	maxY float64
+}
+
+func polygonBounds(polygon gen.Polygon) (bounds, error) {
+	if len(polygon.Coordinates) == 0 {
+		return bounds{}, fmt.Errorf("polygon has no coordinates")
+	}
+	out := bounds{minX: math.MaxFloat64, minY: math.MaxFloat64, maxX: -math.MaxFloat64, maxY: -math.MaxFloat64}
+	for _, pos := range polygon.Coordinates[0] {
+		xy, err := pos.AsGeoJsonPosition2D()
+		if err != nil || len(xy) < 2 {
+			continue
+		}
+		x := float64(xy[0])
+		y := float64(xy[1])
+		if x < out.minX {
+			out.minX = x
+		}
+		if x > out.maxX {
+			out.maxX = x
+		}
+		if y < out.minY {
+			out.minY = y
+		}
+		if y > out.maxY {
+			out.maxY = y
+		}
+	}
+	if out.minX == math.MaxFloat64 {
+		return bounds{}, fmt.Errorf("polygon bounds unavailable")
+	}
+	return out, nil
 }
 
 func normalizeZone(body json.RawMessage, forcedID uuid.UUID) (gen.Zone, []byte, error) {

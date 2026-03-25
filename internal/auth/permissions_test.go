@@ -64,3 +64,27 @@ func TestMethodAllowedSupportsExactAndWildcardPatterns(t *testing.T) {
 		t.Fatal("did not expect unrelated rpc method match")
 	}
 }
+
+func TestAuthorizeWebSocketTopicSupportsExactAndWildcardPatterns(t *testing.T) {
+	registry := &Registry{
+		roles: map[string]rolePolicy{
+			"reader": {
+				WebSocket: WebSocketPolicy{
+					Subscribe: []MethodRule{{Pattern: "fence_events"}, {Pattern: "location_*"}},
+					Publish:   []MethodRule{{Pattern: "proximity_updates"}},
+				},
+			},
+		},
+	}
+	principal := &Principal{Roles: []string{"reader"}}
+
+	if err := registry.AuthorizeWebSocketSubscribe(principal, "location_updates"); err != nil {
+		t.Fatalf("expected wildcard subscribe to match: %v", err)
+	}
+	if err := registry.AuthorizeWebSocketPublish(principal, "proximity_updates"); err != nil {
+		t.Fatalf("expected exact publish to match: %v", err)
+	}
+	if err := registry.AuthorizeWebSocketPublish(principal, "location_updates"); err == nil {
+		t.Fatal("expected publish denial")
+	}
+}
