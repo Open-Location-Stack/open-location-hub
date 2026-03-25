@@ -1,4 +1,4 @@
-# Open RTLS Hub
+# Open Location Hub
 
 Open RTLS Hub is an OpenAPI-first Go implementation of an RTLS hub that targets the omlox hub specification and related standards. It is part of [Open Location Stack](https://openlocationstack.com), which is an initiative that we at [FORMATION](https://tryformation.com) are pushing to allow us to more easily integrate with partners supplying RTLS technology and, hopefully, bootstrapping an ecosystem of value add - somethingh that is currently missing and holding back the industry.
 
