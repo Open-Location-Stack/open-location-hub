@@ -27,6 +27,7 @@ type Client struct {
 	inner         pahomqtt.Client
 	mu            sync.RWMutex
 	subscriptions []subscription
+	onConnect     []func(context.Context)
 }
 
 // NewClient connects to the configured MQTT broker and prepares automatic
@@ -46,6 +47,7 @@ func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 	opts.OnConnect = func(client pahomqtt.Client) {
 		c.logger.Info("mqtt connected", zap.String("broker", brokerURL))
 		c.resubscribe(client)
+		c.runOnConnectHooks(context.Background())
 	}
 	opts.OnConnectionLost = func(_ pahomqtt.Client, err error) {
 		c.logger.Warn("mqtt connection lost", zap.Error(err))
@@ -59,6 +61,17 @@ func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// AddOnConnectListener registers a callback that runs after successful broker
+// connection and resubscription.
+func (c *Client) AddOnConnectListener(fn func(context.Context)) {
+	c.mu.Lock()
+	c.onConnect = append(c.onConnect, fn)
+	c.mu.Unlock()
+	if c.inner != nil && c.inner.IsConnected() {
+		fn(context.Background())
+	}
 }
 
 // Close disconnects from the broker.
@@ -105,6 +118,15 @@ func (c *Client) resubscribe(client pahomqtt.Client) {
 		if err := c.subscribe(client, sub.filter, sub.handler); err != nil {
 			c.logger.Warn("mqtt subscribe failed", zap.Error(err), zap.String("filter", sub.filter))
 		}
+	}
+}
+
+func (c *Client) runOnConnectHooks(ctx context.Context) {
+	c.mu.RLock()
+	hooks := append([]func(context.Context){}, c.onConnect...)
+	c.mu.RUnlock()
+	for _, hook := range hooks {
+		hook(ctx)
 	}
 }
 
@@ -217,4 +239,10 @@ func TopicRPCResponse(method, callerID string) string {
 // responses.
 func TopicRPCResponseWildcard() string {
 	return "/omlox/jsonrpc/rpc/+/response/+"
+}
+
+// TopicRPCXCMDResponseBroadcast returns the OMLOX MQTT topic for XCMD broadcast
+// messages emitted by method handlers.
+func TopicRPCXCMDResponseBroadcast() string {
+	return "/omlox/jsonrpc/rpc/com.omlox.core.xcmd/broadcast"
 }

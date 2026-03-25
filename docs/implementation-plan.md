@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-24 with `just bootstrap`, `just generate`, `just test`, and `just check`.
+This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests plus repository inspection. A full `just test` and `just check` pass still remains blocked on local PROJ headers/libs in the current macOS environment.
 
 ## Current Status
 
@@ -15,7 +15,7 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 - Provider ingestion endpoints are implemented for locations and proximities, with Valkey-backed deduplication and transient latest-state storage.
 - Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, and trackable-motion publication.
-- RPC is implemented as REST-to-MQTT bridging with retained method discovery tracking and support for `_all_within_timeout`, `_return_first_success`, and `_return_first_error`.
+- RPC now operates as a control-plane surface: `GET /v2/rpc/available` and `PUT /v2/rpc` support hub-owned methods, MQTT-bridged methods, retained method discovery, and the `_all_within_timeout`, `_return_first_success`, and `_return_first_error` aggregation modes.
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
 
@@ -31,7 +31,8 @@ This plan reflects the current repository state as verified on 2026-03-24 with `
 - macOS-specific validation is still incomplete in the current verified state because local PROJ headers/libs were not yet available to complete `just test` and `just check`; finish a full Homebrew-based validation pass and document any platform-specific fixes if needed.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
-- RPC availability is discovered from MQTT retained announcements, but the hub does not yet publish its own built-in mandatory OMLOX methods or host local RPC handlers.
+- RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
+- MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
 
 ## Completed Phases
@@ -60,20 +61,21 @@ Delivered:
 - Outbound MQTT publication exists for processed locations, fence events, and trackable motions.
 
 Residual work:
-- Add integration tests against the Mosquitto fixture that assert live publish/subscribe behavior, not just HTTP-side wiring.
 - Document and enforce operational behavior for sustained publish failures, reconnect storms, and overloaded downstream consumers.
-- Add retained method publication for hub-provided RPC methods if the hub is expected to advertise them directly.
+- Revisit MQTT v5 message-expiry support for retained RPC availability announcements if strict OMLOX expiry behavior becomes a deployment requirement.
 
 ### Phase 4: RPC baseline
 Delivered:
-- `GET /v2/rpc/available` exposes the retained MQTT-discovered method registry.
-- `PUT /v2/rpc` bridges JSON-RPC requests to MQTT and collects responses according to the supported aggregation modes.
-- Unit coverage exists for method discovery and first-success request handling.
+- `GET /v2/rpc/available` exposes a unified registry of hub-owned and MQTT-discovered methods.
+- `PUT /v2/rpc` validates OMLOX JSON-RPC extensions, applies per-method authorization, dispatches to local handlers and/or MQTT, and collects responses according to the supported aggregation modes.
+- The hub now publishes retained MQTT availability announcements for `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`.
+- Local handlers now exist for `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, with `com.omlox.core.xcmd` routed through an adapter seam that currently returns a deterministic unsupported error when no adapter is configured.
+- Unit coverage now includes method discovery, local handler dispatch, `_all_within_timeout`, `_return_first_error`, invalid-parameter handling, and per-method authorization checks.
 
 Residual work:
-- Add tests for `_all_within_timeout` and `_return_first_error` paths against multiple responses and timeout boundaries.
-- Decide whether the hub should provide local handlers for `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, and implement them if required.
-- Harden malformed-response handling, response fan-in limits, and caller correlation cleanup under load.
+- Add Mosquitto-backed end-to-end coverage for retained announcements, reconnect re-announcement behavior, and mixed local/external handler scenarios.
+- Implement one or more real `com.omlox.core.xcmd` adapters for supported provider/core integrations.
+- Extend RPC auditability and operational diagnostics beyond the current structured logs.
 
 ## Remaining Work
 

@@ -14,10 +14,17 @@ All runtime configuration is environment-driven.
 - `STATE_PROXIMITY_TTL` (duration, default `5m`)
 - `STATE_DEDUP_TTL` (duration, default `2m`)
 - `RPC_TIMEOUT` (duration, default `5s`)
+- `RPC_ANNOUNCEMENT_INTERVAL` (duration, default `1m`)
+- `RPC_HANDLER_ID` (default `open-rtls-hub`)
 
 Stateful ingest behavior:
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed before latest-state and publish fan-out work
 - latest provider-source location state, trackable latest-location state, and fence membership state use the configured location/proximity TTLs for expiry semantics
+
+RPC behavior:
+- `RPC_TIMEOUT` is the default wait time for request-response style RPC calls when the client does not supply `_timeout`
+- `RPC_ANNOUNCEMENT_INTERVAL` controls how often the hub republishes retained MQTT availability announcements for hub-owned methods
+- `RPC_HANDLER_ID` is the handler identifier announced for hub-owned RPC methods and the identifier clients may use with `_handler_id` to target the hub directly
 
 ## Proximity Resolution
 - `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
@@ -50,3 +57,12 @@ Proximity resolution behavior:
 - `AUTH_OWNED_RESOURCES_CLAIM` (JWT object claim for owned resource IDs; see `docs/auth.md` for format and usage)
 
 See [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md) for the full auth model, Dex setup, and permission file format.
+
+## RPC Security Defaults
+
+For production deployments:
+- keep `AUTH_ENABLED=true`
+- treat `GET /v2/rpc/available` as sensitive because it reveals reachable control functions
+- use per-method RPC permissions in the auth registry to control who may invoke which methods
+- grant `com.omlox.core.xcmd` only to tightly controlled operator or automation roles
+- keep direct MQTT broker access limited to the hub and trusted device/adaptor components

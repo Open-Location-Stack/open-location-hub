@@ -30,7 +30,7 @@ tags:
   - name: fences
     description: Manage fence definitions used for derived fence-event publication.
   - name: rpc
-    description: Inspect available JSON-RPC methods and bridge JSON-RPC traffic onto MQTT.
+    description: Inspect reachable JSON-RPC methods and invoke hub-owned or MQTT-bridged control-plane functionality.
 paths:
   /v2/zones:
     get:
@@ -501,7 +501,11 @@ paths:
       tags: [rpc]
       operationId: getRPCAvailable
       summary: List available RPC methods
-      description: Returns the MQTT-discovered registry of RPC methods and handler IDs currently announced to the hub.
+      description: |
+        Returns the currently reachable JSON-RPC method registry known to the
+        hub. The registry includes hub-owned methods implemented locally plus
+        MQTT-discovered external handlers. Treat this endpoint as sensitive
+        because it reveals reachable control functions and handler identifiers.
       responses:
         '200':
           description: Available methods grouped by method name.
@@ -517,8 +521,13 @@ paths:
     put:
       tags: [rpc]
       operationId: putRPC
-      summary: Invoke JSON-RPC over MQTT
-      description: Sends a JSON-RPC 2.0 request to MQTT and optionally waits for responses according to the requested aggregation mode.
+      summary: Invoke OMLOX JSON-RPC
+      description: |
+        Sends a JSON-RPC 2.0 request to the hub control plane. Depending on the
+        method and `_handler_id`, the hub may handle the request locally, bridge
+        it to MQTT, or do both and aggregate responses. JSON-RPC protocol and
+        OMLOX extension errors are returned in the `200` response body as
+        JSON-RPC error envelopes.
       requestBody:
         required: true
         content:
@@ -535,7 +544,7 @@ paths:
                   - $ref: '#/components/schemas/JsonRpcSuccessResponse'
                   - $ref: '#/components/schemas/JsonRpcErrorResponse'
         '204':
-          description: Notification accepted. Returned when `id` and `_caller_id` are omitted.
+          description: Notification accepted. Returned when `id` and `_caller_id` are omitted, so no response payload is expected.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1306,13 +1315,13 @@ components:
             type: string
     RpcAvailableMethods:
       type: object
-      description: Mapping of JSON-RPC method name to discovered handler IDs.
+      description: Mapping of JSON-RPC method name to currently reachable handler IDs known to the hub.
       additionalProperties:
         $ref: '#/components/schemas/RpcAvailableMethodsEntry'
 
     JsonRpcRequest:
       type: object
-      description: JSON-RPC 2.0 request accepted by the REST-to-MQTT bridge.
+      description: JSON-RPC 2.0 request accepted by the hub control plane.
       required: [jsonrpc, method]
       properties:
         jsonrpc:
@@ -1327,7 +1336,7 @@ components:
           description: Request identifier. Omit together with `_caller_id` to send a notification.
         method:
           type: string
-          description: JSON-RPC method name.
+          description: JSON-RPC method name such as `com.omlox.ping`, `com.omlox.identify`, `com.omlox.core.xcmd`, or a deployment-specific vendor method.
         params:
           type: object
           description: Method-specific parameters plus supported OMLOX bridge extensions.
@@ -1335,20 +1344,20 @@ components:
           properties:
             _timeout:
               type: number
-              description: Maximum time in milliseconds to wait for responses.
+              description: Maximum time in milliseconds to wait for responses when the request expects a result.
             _aggregation:
               type: string
-              description: Response aggregation mode used by the hub while waiting for MQTT responses.
+              description: Response aggregation mode used when multiple handlers may answer. `_handler_id` and `_aggregation` cannot be combined.
               enum:
                 - _all_within_timeout
                 - _return_first_success
                 - _return_first_error
             _handler_id:
               type: string
-              description: Optional explicit handler identifier for directed invocation.
+              description: Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-rtls-hub` for local built-in methods.
             _caller_id:
               type: string
-              description: Caller identifier used to correlate MQTT responses.
+              description: Caller identifier used to correlate MQTT responses. Omit together with `id` to send a notification.
 
     JsonRpcErrorObject:
       type: object
@@ -1364,7 +1373,7 @@ components:
 
     JsonRpcSuccessResponse:
       type: object
-      description: JSON-RPC success envelope returned by the bridge.
+      description: JSON-RPC success envelope returned by the hub control plane.
       required: [jsonrpc, id, result]
       properties:
         jsonrpc:
@@ -1380,7 +1389,7 @@ components:
 
     JsonRpcErrorResponse:
       type: object
-      description: JSON-RPC error envelope returned by the bridge.
+      description: JSON-RPC error envelope returned by the hub control plane.
       required: [jsonrpc, id, error]
       properties:
         jsonrpc:

@@ -21,7 +21,7 @@ just test
 ```
 
 Covers config parsing/defaults, auth verification behavior, and MQTT topic mapping.
-Covers CRS/georeferencing round trips, randomized globe-wide coordinate conversion cases, and service-level publication behavior as those tests are added.
+Covers CRS/georeferencing round trips, randomized globe-wide coordinate conversion cases, service-level publication behavior, and RPC bridge validation such as local built-in methods, aggregation behavior, and per-method authorization.
 
 ## Integration tests
 Run integration tests with Docker/Testcontainers:

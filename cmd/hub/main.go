@@ -78,10 +78,20 @@ func main() {
 		ProximityResolutionFallbackRadius:     cfg.ProximityResolutionFallbackRadius,
 		ProximityResolutionStaleStateTTL:      cfg.ProximityResolutionStaleStateTTL,
 	})
-	rpcBridge, err := rpc.NewBridge(logger, mq, cfg.RPCTimeout)
+	rpcBridge, err := rpc.NewBridge(logger, mq, rpc.Config{
+		Timeout:              cfg.RPCTimeout,
+		HandlerID:            cfg.RPCHandlerID,
+		AnnouncementInterval: cfg.RPCAnnouncementInterval,
+		Authorizer:           registry,
+		Identify: rpc.IdentifyConfig{
+			ServiceName: "open-rtls-hub",
+			AuthMode:    cfg.Auth.Mode,
+		},
+	})
 	if err != nil {
 		logger.Fatal("rpc bridge init failed", observability.Error(err))
 	}
+	defer func() { _ = rpcBridge.Close() }()
 
 	if err := mq.Subscribe(mqtt.TopicLocationPubWildcard(), func(ctx context.Context, _ string, payload []byte) error {
 		var body []gen.Location

@@ -15,6 +15,11 @@ type authError struct {
 }
 
 func (e *authError) Error() string { return e.message }
+func (e *authError) Status() int   { return e.status }
+func (e *authError) Type() string  { return e.typ }
+func (e *authError) Message() string {
+	return e.message
+}
 
 func unauthorized(message string) error {
 	return &authError{

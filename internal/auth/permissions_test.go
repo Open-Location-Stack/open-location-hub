@@ -48,3 +48,19 @@ func TestBestMatchingRulePrefersSpecificRoute(t *testing.T) {
 		t.Fatalf("unexpected rule %q", rule.Pattern)
 	}
 }
+
+func TestMethodAllowedSupportsExactAndWildcardPatterns(t *testing.T) {
+	rules := []MethodRule{
+		{Pattern: "com.omlox.identify"},
+		{Pattern: "com.vendor.*"},
+	}
+	if !methodAllowed(rules, "com.omlox.identify") {
+		t.Fatal("expected exact rpc method match")
+	}
+	if !methodAllowed(rules, "com.vendor.reboot") {
+		t.Fatal("expected wildcard rpc method match")
+	}
+	if methodAllowed(rules, "com.omlox.ping") {
+		t.Fatal("did not expect unrelated rpc method match")
+	}
+}

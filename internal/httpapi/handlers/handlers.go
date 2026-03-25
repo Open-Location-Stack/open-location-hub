@@ -188,8 +188,9 @@ func (h *Handler) DeleteFence(w http.ResponseWriter, r *http.Request, id gen.Fen
 	writeNoContentOrError(w, err)
 }
 
-func (h *Handler) GetRPCAvailable(w http.ResponseWriter, _ *http.Request) {
-	writeJSONOrError(w, h.deps.RPC.AvailableMethods(), nil, http.StatusOK)
+func (h *Handler) GetRPCAvailable(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.RPC.AvailableMethods(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
 
 func (h *Handler) PutRPC(w http.ResponseWriter, r *http.Request) {
@@ -253,6 +254,22 @@ func writeJSONOrError(w http.ResponseWriter, payload any, err error, successStat
 				Type:    httpErr.Type,
 				Code:    httpErr.Status,
 				Message: &httpErr.Message,
+			})
+			return
+		}
+		var authErr interface {
+			Status() int
+			Type() string
+			Message() string
+		}
+		if errors.As(err, &authErr) {
+			message := authErr.Message()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(authErr.Status())
+			_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
+				Type:    authErr.Type(),
+				Code:    authErr.Status(),
+				Message: &message,
 			})
 			return
 		}

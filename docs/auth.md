@@ -65,6 +65,10 @@ admin@example.com:
     - READ_ANY
     - UPDATE_ANY
     - DELETE_ANY
+  rpc:
+    discover: true
+    invoke:
+      "*": true
 
 reader@example.com:
   description: Read-only access
@@ -72,9 +76,29 @@ reader@example.com:
     - READ_ANY
   /v2/zones/:zoneId:
     - READ_ANY
+  /v2/rpc/available:
+    - READ_ANY
+  rpc:
+    discover: true
+    invoke:
+      com.omlox.ping: true
+      com.omlox.identify: true
 ```
 
 Path placeholders are used for ownership checks. The hub derives claim keys from route parameter names. For example `:providerId` maps to `provider_ids`.
+
+RPC policy entries are evaluated after route-level authorization. They use a
+dedicated `rpc` section per role:
+
+- `discover: true` allows `GET /v2/rpc/available`
+- `invoke` lists allowed method names
+- `invoke` entries may be:
+  - exact method names such as `com.omlox.ping`
+  - prefix wildcards such as `com.vendor.*`
+  - `*` for full RPC invocation access
+
+This means a role can be allowed to reach the RPC endpoint path but still be
+blocked from invoking a specific method.
 
 ## Ownership Claims
 
@@ -100,6 +124,7 @@ For `*_OWN` permissions, the request path parameter must be present in the match
 
 - `401 Unauthorized`: missing bearer header, malformed token, invalid signature, bad issuer, bad audience, expired token, or other authentication failure
 - `403 Forbidden`: authenticated token lacks a matching permission or ownership claim
+- `403 Forbidden` on RPC also covers missing method-level discovery or invocation permission
 
 Authentication failures return a `WWW-Authenticate: Bearer` header and the API error body.
 
@@ -141,6 +166,15 @@ Keycloak and similar OIDC providers fit the same model if they expose:
 - a claim that can be mapped via `AUTH_ROLES_CLAIM`
 
 For production deployments, prefer a real role or group claim instead of the Dex development fixture's email-based mapping. The hub is intended to verify JWT access tokens from the production IdP, not development-specific token handling.
+
+## RPC Security Guidance
+
+For RPC in production:
+- require JWT auth
+- treat `GET /v2/rpc/available` as sensitive metadata
+- grant `com.omlox.ping` and `com.omlox.identify` more broadly only if operators really need them
+- grant `com.omlox.core.xcmd` only to tightly controlled roles or automation identities
+- keep MQTT broker access narrow so user-facing applications cannot bypass the hub's policy and audit layer
 
 ## End-to-End Coverage
 

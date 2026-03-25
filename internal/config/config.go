@@ -20,6 +20,8 @@ type Config struct {
 	StateProximityTTL                     time.Duration
 	StateDedupTTL                         time.Duration
 	RPCTimeout                            time.Duration
+	RPCAnnouncementInterval               time.Duration
+	RPCHandlerID                          string
 	ProximityResolutionEntryConfidenceMin float64
 	ProximityResolutionExitGraceDuration  time.Duration
 	ProximityResolutionBoundaryGrace      float64
@@ -58,6 +60,8 @@ func FromEnv() (Config, error) {
 		StateProximityTTL:                     durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
 		StateDedupTTL:                         durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
 		RPCTimeout:                            durationEnv("RPC_TIMEOUT", 5*time.Second),
+		RPCAnnouncementInterval:               durationEnv("RPC_ANNOUNCEMENT_INTERVAL", time.Minute),
+		RPCHandlerID:                          env("RPC_HANDLER_ID", "open-rtls-hub"),
 		ProximityResolutionEntryConfidenceMin: floatEnv("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
 		ProximityResolutionExitGraceDuration:  durationEnv("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
 		ProximityResolutionBoundaryGrace:      floatEnv("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
@@ -95,6 +99,12 @@ func FromEnv() (Config, error) {
 	}
 	if cfg.RPCTimeout <= 0 {
 		return Config{}, fmt.Errorf("RPC_TIMEOUT must be > 0")
+	}
+	if cfg.RPCAnnouncementInterval <= 0 {
+		return Config{}, fmt.Errorf("RPC_ANNOUNCEMENT_INTERVAL must be > 0")
+	}
+	if strings.TrimSpace(cfg.RPCHandlerID) == "" {
+		return Config{}, fmt.Errorf("RPC_HANDLER_ID must not be empty")
 	}
 	if cfg.ProximityResolutionEntryConfidenceMin < 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN must be >= 0")

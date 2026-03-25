@@ -38,9 +38,25 @@ type Rule struct {
 	Permissions map[Permission]struct{}
 }
 
+// RPCPolicy holds per-role RPC discovery and invocation permissions.
+type RPCPolicy struct {
+	Discover bool
+	Invoke   []MethodRule
+}
+
+// MethodRule grants invocation permission for a single method or wildcard.
+type MethodRule struct {
+	Pattern string
+}
+
+type rolePolicy struct {
+	Routes []Rule
+	RPC    RPCPolicy
+}
+
 // Registry holds the role-to-route authorization rules loaded from YAML.
 type Registry struct {
-	roles map[string][]Rule
+	roles map[string]rolePolicy
 }
 
 // LoadRegistry reads the authorization registry from the configured YAML file.
@@ -53,11 +69,20 @@ func LoadRegistry(path string) (*Registry, error) {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return nil, err
 	}
-	registry := &Registry{roles: make(map[string][]Rule, len(doc))}
+	registry := &Registry{roles: make(map[string]rolePolicy, len(doc))}
 	for role, entries := range doc {
 		rules := make([]Rule, 0, len(entries))
+		rpcPolicy := RPCPolicy{}
 		for pattern, v := range entries {
 			if pattern == "description" {
+				continue
+			}
+			if pattern == "rpc" {
+				parsed, err := parseRPCPolicy(v)
+				if err != nil {
+					return nil, fmt.Errorf("role %q rpc: %w", role, err)
+				}
+				rpcPolicy = parsed
 				continue
 			}
 			perms, err := parsePermissions(v)
@@ -72,9 +97,54 @@ func LoadRegistry(path string) (*Registry, error) {
 		sort.SliceStable(rules, func(i, j int) bool {
 			return compareSpecificity(rules[i].Pattern, rules[j].Pattern) > 0
 		})
-		registry.roles[role] = rules
+		sort.SliceStable(rpcPolicy.Invoke, func(i, j int) bool {
+			return compareMethodSpecificity(rpcPolicy.Invoke[i].Pattern, rpcPolicy.Invoke[j].Pattern) > 0
+		})
+		registry.roles[role] = rolePolicy{Routes: rules, RPC: rpcPolicy}
 	}
 	return registry, nil
+}
+
+func parseRPCPolicy(v any) (RPCPolicy, error) {
+	body, ok := v.(map[string]any)
+	if !ok {
+		return RPCPolicy{}, fmt.Errorf("rpc policy must be a map")
+	}
+	out := RPCPolicy{}
+	if discover, ok := body["discover"]; ok {
+		flag, ok := discover.(bool)
+		if !ok {
+			return RPCPolicy{}, fmt.Errorf("rpc discover must be a boolean")
+		}
+		out.Discover = flag
+	}
+	if invoke, ok := body["invoke"]; ok {
+		methods, ok := invoke.([]any)
+		if ok {
+			for _, item := range methods {
+				s, ok := item.(string)
+				if !ok {
+					return RPCPolicy{}, fmt.Errorf("rpc invoke list must contain strings")
+				}
+				out.Invoke = append(out.Invoke, MethodRule{Pattern: strings.TrimSpace(s)})
+			}
+			return out, nil
+		}
+		methodMap, ok := invoke.(map[string]any)
+		if !ok {
+			return RPCPolicy{}, fmt.Errorf("rpc invoke must be a list or map")
+		}
+		for pattern, raw := range methodMap {
+			allowed, ok := raw.(bool)
+			if !ok {
+				return RPCPolicy{}, fmt.Errorf("rpc invoke entry %q must be a boolean", pattern)
+			}
+			if allowed {
+				out.Invoke = append(out.Invoke, MethodRule{Pattern: strings.TrimSpace(pattern)})
+			}
+		}
+	}
+	return out, nil
 }
 
 func parsePermissions(v any) (map[Permission]struct{}, error) {
@@ -123,7 +193,8 @@ func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 
 	matched := false
 	for _, role := range principal.Roles {
-		rule, params, ok := bestMatchingRule(r.roles[role], req.URL.Path)
+		policy := r.roles[role]
+		rule, params, ok := bestMatchingRule(policy.Routes, req.URL.Path)
 		if !ok {
 			continue
 		}
@@ -139,6 +210,32 @@ func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 		return forbidden("token does not grant access to this endpoint")
 	}
 	return forbidden("token does not grant access to this endpoint")
+}
+
+// AuthorizeRPCDiscover checks whether the principal may list reachable RPC methods.
+func (r *Registry) AuthorizeRPCDiscover(principal *Principal) error {
+	if principal == nil {
+		return unauthorized("missing authenticated principal")
+	}
+	for _, role := range principal.Roles {
+		if r.roles[role].RPC.Discover {
+			return nil
+		}
+	}
+	return forbidden("token does not grant access to rpc method discovery")
+}
+
+// AuthorizeRPCInvoke checks whether the principal may invoke the supplied RPC method.
+func (r *Registry) AuthorizeRPCInvoke(principal *Principal, method string) error {
+	if principal == nil {
+		return unauthorized("missing authenticated principal")
+	}
+	for _, role := range principal.Roles {
+		if methodAllowed(r.roles[role].RPC.Invoke, method) {
+			return nil
+		}
+	}
+	return forbidden("token does not grant access to rpc method invocation")
 }
 
 func permissionsForMethod(method string) (Permission, Permission, error) {
@@ -240,6 +337,44 @@ func specificityScore(pattern string) int {
 		}
 	}
 	return score
+}
+
+func compareMethodSpecificity(left, right string) int {
+	leftScore := methodSpecificityScore(left)
+	rightScore := methodSpecificityScore(right)
+	switch {
+	case leftScore > rightScore:
+		return 1
+	case leftScore < rightScore:
+		return -1
+	default:
+		return strings.Compare(left, right)
+	}
+}
+
+func methodSpecificityScore(pattern string) int {
+	switch {
+	case pattern == "*":
+		return 1
+	case strings.HasSuffix(pattern, "*"):
+		return len(pattern)
+	default:
+		return len(pattern) + 1000
+	}
+}
+
+func methodAllowed(rules []MethodRule, method string) bool {
+	for _, rule := range rules {
+		switch {
+		case rule.Pattern == "*":
+			return true
+		case strings.HasSuffix(rule.Pattern, "*") && strings.HasPrefix(method, strings.TrimSuffix(rule.Pattern, "*")):
+			return true
+		case rule.Pattern == method:
+			return true
+		}
+	}
+	return false
 }
 
 func ownsAll(principal *Principal, params map[string]string) bool {

@@ -5,6 +5,10 @@ admin@example.com:
     - READ_ANY
     - UPDATE_ANY
     - DELETE_ANY
+  rpc:
+    discover: true
+    invoke:
+      "*": true
 
 reader@example.com:
   description: Read-only role used to prove authorization failures in tests.
@@ -12,6 +16,13 @@ reader@example.com:
     - READ_ANY
   /v2/zones/:zoneId:
     - READ_ANY
+  /v2/rpc/available:
+    - READ_ANY
+  rpc:
+    discover: true
+    invoke:
+      com.omlox.ping: true
+      com.omlox.identify: true
 
 owner@example.com:
   description: Ownership-restricted role used to prove OWN authorization failures.

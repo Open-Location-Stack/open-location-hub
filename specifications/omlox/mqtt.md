@@ -44,6 +44,10 @@ Formats used by the hub spec:
 - method announcement messages must use `retained=true`
 - method announcement messages must use `messageExpiryInterval=120`
 
+Current implementation note:
+- the hub publishes retained announcements for hub-owned methods
+- the current MQTT client layer does not yet expose message-expiry configuration cleanly, so strict `messageExpiryInterval=120` behavior remains a documented gap rather than a hidden assumption
+
 ## Topic families
 
 ### Location updates
@@ -238,6 +242,10 @@ For `com.omlox.core.xcmd`:
 - every received `XCMD_BC` must be broadcast on:
   - `/omlox/jsonrpc/rpc/com.omlox.core.xcmd/broadcast`
 
+Repository note:
+- `open-rtls-hub` exposes `com.omlox.core.xcmd` at the RPC layer and publishes `XCMD_BC` payloads returned by an adapter
+- actual device-command execution still depends on a deployment-specific adapter
+
 ### Announcing available methods
 
 Topic:
@@ -329,9 +337,15 @@ Behavior:
 Even though the hub exposes RPC over REST, the hub-side implementation must also do the following over MQTT:
 - subscribe to `/omlox/jsonrpc/rpc/available/#`
 - discover available handlers from retained announcements
+- publish retained availability announcements for hub-owned methods
 - publish method requests to the generic or handler-specific request topics
 - subscribe to the caller-specific response topic before sending a request
 - collect responses according to `_aggregation`
+
+Current repository behavior:
+- hub-owned methods are announced with retained MQTT availability topics on startup and on reconnect
+- the hub maintains one registry that includes both local handlers and MQTT-discovered external handlers
+- malformed downstream response payloads are dropped from aggregation and logged
 
 ### Aggregation behavior used by the hub
 
@@ -347,6 +361,7 @@ Rules:
 - unknown handler id must yield `-32000`
 - request timeout must yield `-32001`
 - “no non-error response” must yield `-32002`
+- malformed downstream responses are treated as JSON-RPC errors in the current implementation and are logged for operators
 
 ## Payload mapping
 

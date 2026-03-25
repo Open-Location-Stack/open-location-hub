@@ -8,6 +8,25 @@
 - `internal/state/valkey`: transient state
 - `internal/mqtt`: MQTT topic mapping and broker integration
 - `internal/auth`: token verification middleware
+- `internal/rpc`: local-method dispatch, MQTT RPC bridging, announcements, and aggregation
+
+## RPC Control Plane
+1. A client calls `GET /v2/rpc/available` or `PUT /v2/rpc` over HTTP.
+2. REST auth verifies the bearer token and route-level access.
+3. The RPC bridge applies method-level authorization for discovery or invocation.
+4. The bridge looks up the method in a unified registry containing:
+   - hub-owned local methods
+   - MQTT-discovered external handlers
+5. The bridge either:
+   - handles the method locally
+   - forwards it to MQTT
+   - or does both and aggregates responses
+6. The bridge returns a JSON-RPC result or JSON-RPC error payload to the HTTP caller.
+
+Trust boundaries:
+- HTTP clients should talk to the hub, not directly to MQTT devices
+- MQTT should be restricted to the hub and trusted device/adaptor components
+- the hub is the policy, audit, and handler-selection boundary for control-plane actions
 
 ## Proximity Resolution Path
 1. A REST, WebSocket, or MQTT `Proximity` update enters the shared hub service.

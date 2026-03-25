@@ -314,7 +314,7 @@ type JsonRpcErrorObject struct {
 	Message string                  `json:"message"`
 }
 
-// JsonRpcErrorResponse JSON-RPC error envelope returned by the bridge.
+// JsonRpcErrorResponse JSON-RPC error envelope returned by the hub control plane.
 type JsonRpcErrorResponse struct {
 	// Error Standard JSON-RPC error object.
 	Error   JsonRpcErrorObject      `json:"error"`
@@ -336,7 +336,7 @@ type JsonRpcErrorResponse_Id struct {
 	union json.RawMessage
 }
 
-// JsonRpcRequest JSON-RPC 2.0 request accepted by the REST-to-MQTT bridge.
+// JsonRpcRequest JSON-RPC 2.0 request accepted by the hub control plane.
 type JsonRpcRequest struct {
 	// Id Request identifier. Omit together with `_caller_id` to send a notification.
 	Id *JsonRpcRequest_Id `json:"id,omitempty"`
@@ -344,7 +344,7 @@ type JsonRpcRequest struct {
 	// Jsonrpc JSON-RPC protocol version.
 	Jsonrpc string `json:"jsonrpc"`
 
-	// Method JSON-RPC method name.
+	// Method JSON-RPC method name such as `com.omlox.ping`, `com.omlox.identify`, `com.omlox.core.xcmd`, or a deployment-specific vendor method.
 	Method string `json:"method"`
 
 	// Params Method-specific parameters plus supported OMLOX bridge extensions.
@@ -365,26 +365,26 @@ type JsonRpcRequest_Id struct {
 	union json.RawMessage
 }
 
-// JsonRpcRequestParamsAggregation Response aggregation mode used by the hub while waiting for MQTT responses.
+// JsonRpcRequestParamsAggregation Response aggregation mode used when multiple handlers may answer. `_handler_id` and `_aggregation` cannot be combined.
 type JsonRpcRequestParamsAggregation string
 
 // JsonRpcRequest_Params Method-specific parameters plus supported OMLOX bridge extensions.
 type JsonRpcRequest_Params struct {
-	// UnderscoreAggregation Response aggregation mode used by the hub while waiting for MQTT responses.
+	// UnderscoreAggregation Response aggregation mode used when multiple handlers may answer. `_handler_id` and `_aggregation` cannot be combined.
 	UnderscoreAggregation *JsonRpcRequestParamsAggregation `json:"_aggregation,omitempty"`
 
-	// UnderscoreCallerId Caller identifier used to correlate MQTT responses.
+	// UnderscoreCallerId Caller identifier used to correlate MQTT responses. Omit together with `id` to send a notification.
 	UnderscoreCallerId *string `json:"_caller_id,omitempty"`
 
-	// UnderscoreHandlerId Optional explicit handler identifier for directed invocation.
+	// UnderscoreHandlerId Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-rtls-hub` for local built-in methods.
 	UnderscoreHandlerId *string `json:"_handler_id,omitempty"`
 
-	// UnderscoreTimeout Maximum time in milliseconds to wait for responses.
+	// UnderscoreTimeout Maximum time in milliseconds to wait for responses when the request expects a result.
 	UnderscoreTimeout    *float32               `json:"_timeout,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
-// JsonRpcSuccessResponse JSON-RPC success envelope returned by the bridge.
+// JsonRpcSuccessResponse JSON-RPC success envelope returned by the hub control plane.
 type JsonRpcSuccessResponse struct {
 	Id      JsonRpcSuccessResponse_Id `json:"id"`
 	Jsonrpc string                    `json:"jsonrpc"`
@@ -578,7 +578,7 @@ type Proximity struct {
 	TimestampSent *time.Time `json:"timestamp_sent,omitempty"`
 }
 
-// RpcAvailableMethods Mapping of JSON-RPC method name to discovered handler IDs.
+// RpcAvailableMethods Mapping of JSON-RPC method name to currently reachable handler IDs known to the hub.
 type RpcAvailableMethods map[string]RpcAvailableMethodsEntry
 
 // RpcAvailableMethodsEntry MQTT-discovered handler IDs for a single JSON-RPC method name.
@@ -1457,7 +1457,7 @@ type ServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
-	// Invoke JSON-RPC over MQTT
+	// Invoke OMLOX JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
 	// List available RPC methods
@@ -1571,7 +1571,7 @@ func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, pr
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Invoke JSON-RPC over MQTT
+// Invoke OMLOX JSON-RPC
 // (PUT /v2/rpc)
 func (_ Unimplemented) PutRPC(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -3549,7 +3549,7 @@ type StrictServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(ctx context.Context, request UpdateProviderRequestObject) (UpdateProviderResponseObject, error)
-	// Invoke JSON-RPC over MQTT
+	// Invoke OMLOX JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
 	// List available RPC methods
