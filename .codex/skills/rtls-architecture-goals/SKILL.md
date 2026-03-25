@@ -58,4 +58,4 @@ When using this skill:
 - prefer designs that remain evolvable under higher scale
 - if a shortcut is acceptable for alpha, state what future migration it may force
 - surface hidden assumptions about ordering, ownership, and locality
-- when architecture or behavior changes, ensure `docs/architecture.md` and `docs/implementation-plan.md` are updated to reflect the implemented state and the follow-up work that remains
+- when architecture or behavior changes, ensure `docs/architecture.md` and `engineering/implementation-plan.md` are updated to reflect the implemented state and the follow-up work that remains

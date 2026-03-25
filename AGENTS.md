@@ -10,7 +10,7 @@ This repository implements an OpenAPI-first OMLOX-compatible RTLS hub in Go.
 - Keep config environment-driven and Docker-friendly.
 - Treat OMLOX PDFs and the normative OpenAPI/companion spec docs as the source of truth before borrowing behavior from reference implementations.
 - Keep implementation-facing docs aligned with the code in the same change when behavior, workflows, or runtime knobs change.
-- Update `docs/implementation-plan.md` after every substantive change so it reflects what is done, what remains, and any newly discovered follow-up work.
+- Update `engineering/implementation-plan.md` after every substantive change so it reflects what is done, what remains, and any newly discovered follow-up work.
 
 ## Required Workflow
 1. `just bootstrap`
@@ -19,8 +19,8 @@ This repository implements an OpenAPI-first OMLOX-compatible RTLS hub in Go.
 4. `just check`
 
 ## Documentation Guardrails
-- If runtime behavior changes, update the relevant docs under `docs/` and `specifications/omlox/` in the same change.
-- `docs/implementation-plan.md` is not a roadmap wish list; it should describe the current verified state of the repository, residual gaps, and near-term follow-ups.
+- If runtime behavior changes, update the relevant software docs under `docs/`, the engineering docs under `engineering/`, and `specifications/omlox/` in the same change as needed.
+- `engineering/implementation-plan.md` is not a roadmap wish list; it should describe the current verified state of the repository, residual gaps, and near-term follow-ups.
 - If implementation diverges from existing docs, fix the docs before closing the task.
 - If behavior is intentionally left partial, document the limitation and the likely next step.
 

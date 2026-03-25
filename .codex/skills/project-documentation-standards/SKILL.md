@@ -9,7 +9,8 @@ Use this skill when the task materially touches documentation, including:
 
 - exported Go API surface in non-generated code
 - `specifications/openapi/omlox-hub.v0.yaml`
-- implementation-facing docs under `docs/`
+- software-facing docs under `docs/`
+- engineering docs under `engineering/`
 - OMLOX companion notes under `specifications/omlox/`
 - README or local setup and dependency guidance
 
@@ -39,9 +40,11 @@ Use this skill when the task materially touches documentation, including:
 
 ## Repository Docs
 
-- Update `docs/implementation-plan.md` after substantive changes so it reflects the verified current state, remaining gaps, and near-term follow-up.
+- Update `engineering/implementation-plan.md` after substantive changes so it reflects the verified current state, remaining gaps, and near-term follow-up.
 - Update `docs/configuration.md` when config knobs or runtime assumptions change.
 - Update `docs/architecture.md` when component boundaries, data flow, or operational behavior change.
+- Update software-facing guides under `docs/` when implemented behavior is currently only implicit in code or tests.
+- Update engineering workflow/governance docs under `engineering/` when contributor process, validation expectations, or implementation tracking changes.
 - Update `README.md` when local setup, platform prerequisites, or common workflows change.
 - Update the relevant `specifications/omlox/*.md` notes when MQTT, WebSocket, RPC, or OMLOX behavior guidance changes outside the REST contract.
 

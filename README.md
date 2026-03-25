@@ -47,10 +47,15 @@ Notes:
 - `just test-int` runs integration tests (Docker required)
 - `just compose-logs` tails compose services
 
-## Project docs
+## Software docs
+- `docs/index.md`
 - `docs/architecture.md`
 - `docs/configuration.md`
-- `docs/testing.md`
 - `docs/auth.md`
-- `docs/openapi-governance.md`
-- `docs/implementation-plan.md`
+- `docs/rpc.md`
+
+## Engineering docs
+- `engineering/index.md`
+- `engineering/testing.md`
+- `engineering/openapi-governance.md`
+- `engineering/implementation-plan.md`
