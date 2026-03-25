@@ -1,0 +1,9 @@
+FROM golang:1.26-alpine
+RUN apk add --no-cache bash build-base proj-dev
+WORKDIR /src
+COPY . .
+RUN rm -f /usr/bin/pkg-config /usr/bin/pkgconf /usr/local/bin/pkg-config /usr/local/bin/pkgconf
+RUN PATH="/src/tools/bin:$PATH" PKG_CONFIG="/src/tools/bin/pkg-config" go test ./internal/transform ./internal/hub
+
+FROM alpine:3.22
+CMD ["true"]

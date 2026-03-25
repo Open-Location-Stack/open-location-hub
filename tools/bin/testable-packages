@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="${1:-test}"
+non_proj_pattern='^(github.com/formation-res/open-rtls-hub/(cmd/hub|internal/httpapi/handlers|internal/hub|internal/transform|tests/integration))$'
+test_only_pattern='^(github.com/formation-res/open-rtls-hub/tests/integration)$'
+
+emit_packages() {
+  local pattern="${1:-}"
+  local packages
+  packages="$(go list ./...)"
+  if [[ -n "$pattern" ]]; then
+    packages="$(printf '%s\n' "$packages" | grep -Ev "$pattern" || true)"
+  fi
+  printf '%s' "$packages" | tr '\n' ' '
+}
+
+if PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config" pkg-config --exists proj; then
+  if [[ "$mode" == "build" || "$mode" == "lint" ]]; then
+    emit_packages "$test_only_pattern"
+  else
+    emit_packages
+  fi
+  exit 0
+fi
+
+if [[ "$(go env GOOS)" == "darwin" ]]; then
+  echo "PROJ unavailable on macOS; skipping CRS-dependent packages for host tests" >&2
+  if [[ "$mode" == "build" || "$mode" == "lint" ]]; then
+    emit_packages "$non_proj_pattern|$test_only_pattern"
+  else
+    emit_packages "$non_proj_pattern"
+  fi
+  exit 0
+fi
+
+echo "missing PROJ development libraries" >&2
+echo "macOS: brew install pkgconf proj" >&2
+echo "Debian/Ubuntu: sudo apt-get install -y pkg-config libproj-dev proj-data" >&2
+exit 1

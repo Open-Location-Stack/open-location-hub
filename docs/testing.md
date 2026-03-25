@@ -40,5 +40,8 @@ The CRS end-to-end suite uses Mosquitto-backed publication checks to verify that
 
 - `just generate` must run after OpenAPI changes so generated handler interfaces stay aligned.
 - `just check` reruns tests and build validation, so use it as the final gate before commit.
-- CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary; the repo includes a `tools/bin/pkg-config` shim for Homebrew-style installs, and the Docker build installs PROJ directly.
+- CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary.
+- On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there.
+- Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.
+- direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
 - Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md).

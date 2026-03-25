@@ -36,8 +36,11 @@ Debian/Ubuntu:
 
 Notes:
 - `just bootstrap` installs the pinned Go code generators used by this repo
+- On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there
 - Docker builds install the required PROJ packages inside the image, so containerized workflows do not depend on host-installed PROJ headers
-- `just test` and `just check` compile CGO-backed projection code, so missing `pkg-config` or `libproj` headers will fail the build
+- Linux and Docker builds are the expected path for CRS behavior and its verification
+- direct `go test`/`go build` invocations should also set `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not globally available on your shell path
+- the repo-local `tools/bin/pkg-config` shim emits a one-time warning on macOS when it is used so the fallback path is visible
 
 ## Key commands
 - `just check` runs formatting, lint, tests, and build

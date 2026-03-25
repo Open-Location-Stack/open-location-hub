@@ -1,5 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+proj-env := 'PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config"'
+
 bootstrap:
 	@if ! command -v oapi-codegen >/dev/null || ! oapi-codegen -version 2>/dev/null | grep -q "v2.6.0"; then \
 		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0; \
@@ -11,6 +13,14 @@ bootstrap:
 		go install github.com/pressly/goose/v3/cmd/goose@v3.27.0; \
 	fi
 
+proj-check:
+	@{{proj-env}} pkg-config --exists proj || { \
+		echo "missing PROJ development libraries" >&2; \
+		echo "macOS: brew install pkgconf proj" >&2; \
+		echo "Debian/Ubuntu: sudo apt-get install -y pkg-config libproj-dev proj-data" >&2; \
+		exit 1; \
+	}
+
 generate:
 	oapi-codegen -config tools/openapi/oapi-codegen.server.yaml specifications/openapi/omlox-hub.v0.yaml
 	sqlc generate
@@ -21,8 +31,8 @@ migrate-up:
 migrate-down:
 	goose -dir migrations postgres "$POSTGRES_URL" down
 
-run:
-	PATH="$PWD/tools/bin:$PATH" go run ./cmd/hub
+run: proj-check
+	{{proj-env}} go run ./cmd/hub
 
 compose-up:
 	docker compose --env-file .env.example up --build -d
@@ -37,15 +47,18 @@ fmt:
 	gofmt -w cmd internal tests
 
 lint:
-	PATH="$PWD/tools/bin:$PATH" go vet ./...
+	@packages="$(bash tools/bin/testable-packages lint)"; \
+	{{proj-env}} go vet $packages
 
 test:
-	PATH="$PWD/tools/bin:$PATH" go test ./...
+	@packages="$(bash tools/bin/testable-packages)"; \
+	{{proj-env}} go test $packages
 
-test-int:
-	PATH="$PWD/tools/bin:$PATH" go test ./tests/integration -v
+test-int: proj-check
+	{{proj-env}} go test ./tests/integration -v
 
 build:
-	PATH="$PWD/tools/bin:$PATH" go build ./...
+	@packages="$(bash tools/bin/testable-packages build)"; \
+	{{proj-env}} go build $packages
 
 check: fmt lint test build

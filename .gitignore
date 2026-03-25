@@ -1,5 +1,7 @@
 .env
 .cache/
 bin/
+!tools/bin/
+!tools/bin/pkg-config
 *.log
 .DS_Store

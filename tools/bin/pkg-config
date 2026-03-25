@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+for candidate in /usr/bin/pkg-config /usr/local/bin/pkg-config /opt/homebrew/bin/pkg-config /opt/homebrew/bin/pkgconf; do
+  if [[ -x "$candidate" ]]; then
+    candidate_real="$(python3 - <<'PY' "$candidate"
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+    script_real="$(python3 - <<'PY' "$script_path"
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
+)"
+    if [[ "$candidate_real" != "$script_real" ]]; then
+      exec "$candidate" "$@"
+    fi
+  fi
+done
+
+warn_macos_once() {
+  [[ "$(uname -s 2>/dev/null || true)" == "Darwin" ]] || return 0
+  local cache_root marker_dir marker
+  cache_root="${XDG_CACHE_HOME:-${HOME:-}/.cache}"
+  if [[ -z "$cache_root" ]]; then
+    cache_root="${TMPDIR:-/tmp}"
+  fi
+  marker_dir="$cache_root/open-rtls-hub"
+  marker="$marker_dir/pkg-config-macos-warning-v1"
+  mkdir -p "$marker_dir" 2>/dev/null || return 0
+  if [[ ! -f "$marker" ]]; then
+    cat >&2 <<'EOF'
+warning: using the repo-local pkg-config shim for PROJ on macOS
+warning: host builds may skip CRS-dependent packages until Homebrew proj is installed
+EOF
+    : >"$marker" 2>/dev/null || true
+  fi
+}
+
+find_first_existing() {
+  local path
+  for path in "$@"; do
+    [[ -n "$path" ]] || continue
+    if [[ -e "$path" ]]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
+brew_prefix() {
+  if command -v brew >/dev/null 2>&1; then
+    brew --prefix proj 2>/dev/null || true
+  fi
+}
+
+brew_cellar_versions() {
+  local cellar keg
+  if ! command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+  cellar="$(brew --cellar proj 2>/dev/null || true)"
+  [[ -d "$cellar" ]] || return 0
+  for keg in "$cellar"/*; do
+    [[ -d "$keg" ]] || continue
+    printf '%s\n' "$keg"
+  done
+}
+
+want_cflags=0
+want_libs=0
+want_modversion=0
+want_exists=0
+package=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --cflags) want_cflags=1 ;;
+    --libs) want_libs=1 ;;
+    --modversion) want_modversion=1 ;;
+    --exists) want_exists=1 ;;
+    --*) ;;
+    *) package="$arg" ;;
+  esac
+done
+
+if [[ "$package" != "proj" ]]; then
+  echo "pkg-config shim only supports proj; got '$package'" >&2
+  exit 1
+fi
+
+warn_macos_once
+
+candidate_prefixes=()
+if [[ -n "${PROJ_PREFIX:-}" ]]; then
+  candidate_prefixes+=("${PROJ_PREFIX}")
+fi
+if prefix="$(brew_prefix)"; [[ -n "$prefix" ]]; then
+  candidate_prefixes+=("$prefix")
+fi
+while IFS= read -r prefix; do
+  [[ -n "$prefix" ]] || continue
+  candidate_prefixes+=("$prefix")
+done < <(brew_cellar_versions)
+candidate_prefixes+=(/opt/homebrew/opt/proj /usr/local/opt/proj /opt/homebrew /usr/local /usr)
+
+for prefix in "${candidate_prefixes[@]}"; do
+  [[ -n "$prefix" ]] || continue
+  include_dir="$(find_first_existing "$prefix/include" "$prefix/include/proj")" || continue
+  header_path="$(find_first_existing "$prefix/include/proj.h" "$prefix/include/proj/proj.h")" || continue
+  lib_dir="$(find_first_existing "$prefix/lib" "$prefix/lib64")" || continue
+  lib_path="$(find_first_existing "$lib_dir/libproj.dylib" "$lib_dir/libproj.so" "$lib_dir/libproj.a")" || continue
+  proj_pc="$(find_first_existing "$lib_dir/pkgconfig/proj.pc" "$prefix/share/pkgconfig/proj.pc" "$prefix/libdata/pkgconfig/proj.pc" || true)"
+  include_dir="${header_path%/proj.h}"
+  include_dir="${include_dir%/proj}"
+  if [[ -f "$header_path" && -f "$lib_path" ]]; then
+    include_flag="-I$include_dir"
+    lib_flag="-L$lib_dir -lproj"
+    if [[ $want_modversion -eq 1 ]]; then
+      if [[ -n "$proj_pc" ]]; then
+        sed -n 's/^Version:[[:space:]]*//p' "$proj_pc" | head -n1
+      elif [[ -f "$prefix/share/doc/proj/VERSION" ]]; then
+        cat "$prefix/share/doc/proj/VERSION"
+      elif [[ "$prefix" == *"/Cellar/proj/"* ]]; then
+        basename "$prefix"
+      else
+        echo "9"
+      fi
+      exit 0
+    fi
+    if [[ $want_exists -eq 1 ]]; then
+      exit 0
+    fi
+    out=()
+    [[ $want_cflags -eq 1 ]] && out+=("$include_flag")
+    [[ $want_libs -eq 1 ]] && out+=("$lib_flag")
+    printf '%s\n' "${out[*]}"
+    exit 0
+  fi
+done
+
+echo "could not locate PROJ headers and libraries" >&2
+exit 1

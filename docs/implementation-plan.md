@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests plus repository inspection. A full `just test` and `just check` pass still remains blocked on local PROJ headers/libs in the current macOS environment.
+This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there.
 
 ## Current Status
 
@@ -28,7 +28,9 @@ This plan reflects the current repository state as verified on 2026-03-25 with t
   - it does not combine multiple simultaneous proximity observations into a richer confidence model
   - it does not yet share logic with trackable locating rules or fence tolerance behavior
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
-- macOS-specific validation is still incomplete in the current verified state because local PROJ headers/libs were not yet available to complete `just test` and `just check`; finish a full Homebrew-based validation pass and document any platform-specific fixes if needed.
+- PROJ installation on macOS currently relies on a shimmed host setup. In practice that means coordinate-transformation behavior is not a verified macOS build path in the current repository state.
+- Linux and Docker builds use native PROJ packages and are expected to work normally.
+- CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit backpressure policy, retry accounting, or dead-letter handling.
 - RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.

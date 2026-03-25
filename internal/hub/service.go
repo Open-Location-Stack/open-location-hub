@@ -160,7 +160,7 @@ func (s *Service) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zon
 	if err != nil {
 		return gen.Zone{}, translateDBError(err)
 	}
-	zone, err := decodePayload[gen.Zone](row.Payload)
+	zone, err = decodePayload[gen.Zone](row.Payload)
 	if err == nil {
 		s.invalidateZoneTransform(zone.Id.String())
 	}
@@ -191,7 +191,7 @@ func (s *Service) UpdateZone(ctx context.Context, id openapi_types.UUID, body js
 	if err != nil {
 		return gen.Zone{}, translateDBError(err)
 	}
-	zone, err := decodePayload[gen.Zone](row.Payload)
+	zone, err = decodePayload[gen.Zone](row.Payload)
 	if err == nil {
 		s.invalidateZoneTransform(zone.Id.String())
 	}
