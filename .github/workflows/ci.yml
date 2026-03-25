@@ -12,6 +12,7 @@ jobs:
       OAPI_CODEGEN_VERSION: v2.6.0
       SQLC_VERSION: v1.30.0
       GOOSE_VERSION: v3.27.0
+      PROJ_APT_PACKAGES: pkg-config libproj-dev proj-data
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +23,17 @@ jobs:
 
       - name: Install just
         uses: extractions/setup-just@v2
+
+      - name: Cache apt package archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-proj-${{ env.PROJ_APT_PACKAGES }}
+
+      - name: Install PROJ build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $PROJ_APT_PACKAGES
 
       - name: Cache Go tool binaries
         uses: actions/cache@v4

@@ -27,12 +27,14 @@ Use for requests to scaffold or evolve this Go service harness.
    - `docs/architecture.md` when runtime flow or component boundaries changed
    - `README.md` when native build/runtime prerequisites, local setup steps, or platform-specific package dependencies changed
 9. If the change is documentation-heavy or spans multiple doc surfaces, use the sibling `project-documentation-standards` skill.
-10. Finish with `just test` and `just check`.
+10. Before pushing, verify the touched paths with the repo workflow expected for the change. Do not push on assumption alone.
+11. Finish with `just test` and `just check`.
 
 ## Guardrails
 - Do not hand-edit generated files unless explicitly bootstrapping placeholders.
 - Prefer environment variables over hardcoded config.
 - Keep docs and scaffolding aligned with actual `just` workflows.
+- Treat validation as a release gate for pushes: if required checks cannot be run, stop and report the blocker instead of pushing an unverified change.
 - Do not leave exported Go surface changes undocumented.
 - Do not leave REST contract changes with bare or ambiguous descriptions when the intent can be documented clearly.
 - When native dependencies change, keep the README's build dependency section accurate for both macOS/Homebrew and Debian/Ubuntu-style Linux.

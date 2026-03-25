@@ -20,6 +20,7 @@ Use this skill when the task materially touches documentation, including:
 2. Update docs in the same change. Do not defer documentation to a follow-up.
 3. Keep documentation aligned with the verified current repository state, not aspirational behavior.
 4. When behavior is partial, inferred, or intentionally incomplete, document that limitation explicitly.
+5. Before pushing a documentation-bearing change, run the relevant repository validation steps for the touched surfaces or stop and report the blocker.
 
 ## Go Documentation
 
@@ -63,4 +64,4 @@ Use this skill when the task materially touches documentation, including:
   2. `just generate`
   3. `just test`
   4. `just check`
-- If local environment issues block validation, document the blocker precisely and keep the docs honest about the verified state.
+- If local environment issues block validation, do not push on assumption. Document the blocker precisely and keep the docs honest about the verified state.

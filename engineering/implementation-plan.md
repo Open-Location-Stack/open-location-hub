@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there.
+This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -35,6 +35,7 @@ The repository documentation is now split by audience: software/runtime document
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
 - PROJ installation on macOS currently relies on a shimmed host setup. In practice that means coordinate-transformation behavior is not a verified macOS build path in the current repository state.
 - Linux and Docker builds use native PROJ packages and are expected to work normally.
+- GitHub Actions Ubuntu runners now explicitly install `pkg-config`, `libproj-dev`, and `proj-data` before `just lint`, `just test`, and `just build`, matching the documented Linux dependency model, and cache apt archives between runs.
 - CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
