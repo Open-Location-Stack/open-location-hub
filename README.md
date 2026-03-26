@@ -56,6 +56,8 @@ Notes:
 - the repo-local `tools/bin/pkg-config` shim emits a one-time warning on macOS when it is used so the fallback path is visible
 
 ## Key commands
+- `just lint` runs `go vet`, `staticcheck`, `govulncheck`, `go mod tidy`, and generated-file cleanliness checks
+- `just test-race` runs the Go race detector across the repo's testable packages
 - `just check` runs formatting, lint, tests, and build
 - `just test-int` runs integration tests (Docker required)
 - `just compose-logs` tails compose services

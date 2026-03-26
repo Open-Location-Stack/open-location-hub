@@ -9,6 +9,7 @@ For contract, scaffolding, or integration changes, run the repo workflow in this
 ```bash
 just bootstrap
 just generate
+just test-race
 just test
 just check
 ```
@@ -22,6 +23,30 @@ just test
 
 Covers config parsing/defaults, auth verification behavior, and MQTT topic mapping.
 Covers CRS/georeferencing round trips, randomized globe-wide coordinate conversion cases, service-level publication behavior, and RPC bridge validation such as local built-in methods, aggregation behavior, and per-method authorization.
+
+## Race detector
+Run the standard race-detector suite:
+
+```bash
+just test-race
+```
+
+This reuses the repository's `tools/bin/testable-packages` selection so it
+tracks the same PROJ-dependent package rules as `just test`.
+
+## Lint and cleanliness
+Run the contributor lint gate:
+
+```bash
+just lint
+```
+
+The lint stack now verifies:
+- `go vet`
+- `staticcheck`
+- `govulncheck`
+- `go mod tidy` leaves [go.mod](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/go.mod) and [go.sum](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/go.sum) unchanged
+- `just generate` leaves [internal/httpapi/gen/api.gen.go](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/internal/httpapi/gen/api.gen.go) and [internal/storage/postgres/sqlcgen](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/internal/storage/postgres/sqlcgen) unchanged
 
 ## Integration tests
 Run integration tests with Docker/Testcontainers:
@@ -40,7 +65,8 @@ The CRS end-to-end suite uses Mosquitto-backed publication checks to verify that
 ## Notes
 
 - `just generate` must run after OpenAPI changes so generated handler interfaces stay aligned.
-- `just check` reruns tests and build validation, so use it as the final gate before commit.
+- `just check` reruns formatting, lint, tests, and build validation, so use it as the final gate before commit.
+- CI runs `just lint`, `just test`, and `just test-race`; the lint step now includes static analysis, vuln scanning, module tidiness, and generated-file cleanliness.
 - CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary.
 - On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there.
 - Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.

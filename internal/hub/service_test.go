@@ -622,24 +622,6 @@ func (c *memoryCache) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func decodePublishedLocation(t *testing.T, payload []byte) gen.Location {
-	t.Helper()
-	var location gen.Location
-	if err := json.Unmarshal(payload, &location); err != nil {
-		t.Fatalf("decode location failed: %v", err)
-	}
-	return location
-}
-
-func decodePublishedMotion(t *testing.T, payload []byte) gen.TrackableMotion {
-	t.Helper()
-	var motion gen.TrackableMotion
-	if err := json.Unmarshal(payload, &motion); err != nil {
-		t.Fatalf("decode motion failed: %v", err)
-	}
-	return motion
-}
-
 func decodeEventLocation(t *testing.T, event Event) gen.Location {
 	t.Helper()
 	envelope, err := Decode[LocationEnvelope](event)

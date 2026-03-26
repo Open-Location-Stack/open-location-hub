@@ -54,7 +54,11 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 
 // SetNX stores a byte payload only when the key does not yet exist.
 func (c *Client) SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	return c.inner.SetNX(ctx, key, value, ttl).Result()
+	err := c.inner.SetArgs(ctx, key, value, redis.SetArgs{Mode: "NX", TTL: ttl}).Err()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // Delete removes a key from the cache.

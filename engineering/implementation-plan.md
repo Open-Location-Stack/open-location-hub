@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, a local `just check` run, a `go test -race` pass attempt across the repo's testable packages, package-level coverage sampling, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, cache, and `just` installation.
+This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, a local `just check` run, a `just test-race` pass across the repo's testable packages, package-level coverage sampling, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, unit-test, race-test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, cache, and `just` installation. The contributor lint stack now also installs and pins `staticcheck` v0.7.0 and `govulncheck` v1.1.4.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -25,6 +25,7 @@ The repository documentation is now split by audience: software/runtime document
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization.
 - The integration test harness now keeps HTTP response bodies open for decode assertions and retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
+- The repository quality gates now include a dedicated `just test-race` target plus a deeper `just lint` stack that runs `go vet`, `staticcheck`, `govulncheck`, `go mod tidy`, and generated-file cleanliness checks for the OpenAPI and `sqlc` outputs.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
@@ -45,8 +46,7 @@ The repository documentation is now split by audience: software/runtime document
 - RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
-- The repository quality gates currently stop at `gofmt`, `go vet`, package tests, and build verification; race-detector coverage, broader static analysis, vulnerability scanning, and `go mod tidy` enforcement are not yet part of the standard workflow.
-- The current RPC test suite is not yet race-clean because bridge startup launches announcement work concurrently with unsynchronized fake MQTT publisher mutation in tests; this does not currently fail the default workflow because `-race` is not part of `just check` or CI.
+- The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
 - HTTP request decoding currently trusts unbounded request bodies and does not consistently reject trailing JSON tokens after the first payload decode.
 - Process lifecycle handling is still partly background-context based; the runtime entrypoint does not yet drive all long-lived goroutines from a single signal-aware root context and still uses `panic` for early config/logger initialization failures.
 - Coverage remains uneven around runtime adapters and entrypoints; the REST handler layer, process wiring, MQTT client edges, observability package, and storage/Valkey adapters still need more direct tests.
@@ -94,7 +94,6 @@ Delivered:
 - Unit coverage now includes method discovery, local handler dispatch, `_all_within_timeout`, `_return_first_error`, invalid-parameter handling, and per-method authorization checks.
 
 Residual work:
-- Make the RPC bridge and its test doubles race-clean, including announcement-loop interactions and mixed local/external publish-response scenarios, and add race-detector coverage for the package in the standard verification flow.
 - Add Mosquitto-backed end-to-end coverage for retained announcements, reconnect re-announcement behavior, and mixed local/external handler scenarios.
 - Implement one or more real `com.omlox.core.xcmd` adapters for supported provider/core integrations.
 - Extend RPC auditability and operational diagnostics beyond the current structured logs.
@@ -118,7 +117,7 @@ Residual work:
 Scope:
 - Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, Valkey, MQTT, and RPC.
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
-- Add stronger Go quality gates to the standard workflow and CI, including race-detector coverage, broader static analysis, vulnerability scanning, and module-hygiene enforcement for generated and dependency state.
+- Evaluate whether repository scale and rule count now justify consolidating the current explicit lint commands under `golangci-lint` or a comparable aggregator without obscuring which checks actually gate CI.
 - Refactor runtime lifecycle management so startup and shutdown run through a single signal-aware root context, background goroutines can be cancelled deterministically, and fatal initialization failures use consistent structured error exits instead of early panics.
 - Harden the HTTP adapter against malformed or abusive request bodies by enforcing body-size ceilings, rejecting trailing JSON tokens, and making handler-level decode behavior more explicit.
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.

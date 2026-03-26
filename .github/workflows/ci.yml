@@ -12,6 +12,8 @@ jobs:
       OAPI_CODEGEN_VERSION: v2.6.0
       SQLC_VERSION: v1.30.0
       GOOSE_VERSION: v3.27.0
+      STATICCHECK_VERSION: v0.7.0
+      GOVULNCHECK_VERSION: v1.1.4
       PROJ_APT_PACKAGES: pkg-config libproj-dev proj-data
     steps:
       - uses: actions/checkout@v6
@@ -39,7 +41,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}
+          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
 
       - name: Bootstrap tools
         run: just bootstrap
@@ -54,6 +56,9 @@ jobs:
 
       - name: Unit tests
         run: just test
+
+      - name: Race tests
+        run: just test-race
 
       - name: Build
         run: just build

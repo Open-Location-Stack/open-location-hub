@@ -225,7 +225,6 @@ func newStaticAuthenticator(cfg config.AuthConfig) (Authenticator, error) {
 }
 
 func (a *staticAuthenticator) Authenticate(_ context.Context, token string) (*Principal, error) {
-	var lastErr error
 	for _, keyfn := range a.parsers {
 		claims := jwt.MapClaims{}
 		options := []jwt.ParserOption{
@@ -242,11 +241,9 @@ func (a *staticAuthenticator) Authenticate(_ context.Context, token string) (*Pr
 		parser := jwt.NewParser(options...)
 		parsed, err := parser.ParseWithClaims(token, claims, keyfn)
 		if err != nil {
-			lastErr = err
 			continue
 		}
 		if !parsed.Valid {
-			lastErr = errors.New("invalid token")
 			continue
 		}
 		rawClaims := map[string]any{}
@@ -254,13 +251,9 @@ func (a *staticAuthenticator) Authenticate(_ context.Context, token string) (*Pr
 			rawClaims[k] = v
 		}
 		if !audienceAllowed(extractAudience(rawClaims), a.cfg.Audience) {
-			lastErr = errors.New("audience mismatch")
 			continue
 		}
 		return principalFromClaims(rawClaims, a.cfg), nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("token verification failed")
 	}
 	return nil, unauthorized("invalid bearer token")
 }

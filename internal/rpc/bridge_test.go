@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,23 +16,41 @@ import (
 )
 
 type fakeMQTT struct {
+	mu       sync.RWMutex
 	handlers map[string]mqtt.MessageHandler
 	publish  func(topic string, payload any, retained bool)
 }
 
 func (f *fakeMQTT) PublishJSON(_ context.Context, topic string, payload any, retained bool) error {
-	if f.publish != nil {
-		f.publish(topic, payload, retained)
+	f.mu.RLock()
+	publish := f.publish
+	f.mu.RUnlock()
+	if publish != nil {
+		publish(topic, payload, retained)
 	}
 	return nil
 }
 
 func (f *fakeMQTT) Subscribe(filter string, handler mqtt.MessageHandler) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.handlers == nil {
 		f.handlers = map[string]mqtt.MessageHandler{}
 	}
 	f.handlers[filter] = handler
 	return nil
+}
+
+func (f *fakeMQTT) setPublish(fn func(topic string, payload any, retained bool)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.publish = fn
+}
+
+func (f *fakeMQTT) handler(filter string) mqtt.MessageHandler {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.handlers[filter]
 }
 
 func TestAvailableMethodsTracksLocalAndExternalAnnouncements(t *testing.T) {
@@ -46,7 +65,7 @@ func TestAvailableMethodsTracksLocalAndExternalAnnouncements(t *testing.T) {
 		"id":          "handler-a",
 		"method_name": "com.vendor.echo",
 	})
-	if err := fake.handlers[mqtt.TopicRPCAvailableWildcard()](context.Background(), mqtt.TopicRPCAvailable("com.vendor.echo"), payload); err != nil {
+	if err := fake.handler(mqtt.TopicRPCAvailableWildcard())(context.Background(), mqtt.TopicRPCAvailable("com.vendor.echo"), payload); err != nil {
 		t.Fatalf("available handler failed: %v", err)
 	}
 
@@ -91,7 +110,7 @@ func TestInvokeBridgesExternalMethodAndReturnsFirstSuccess(t *testing.T) {
 	t.Cleanup(func() { _ = bridge.Close() })
 
 	announce(t, fake, "com.vendor.echo", "handler-a")
-	fake.publish = func(topic string, payload any, retained bool) {
+	fake.setPublish(func(topic string, payload any, retained bool) {
 		if retained {
 			return
 		}
@@ -103,11 +122,11 @@ func TestInvokeBridgesExternalMethodAndReturnsFirstSuccess(t *testing.T) {
 			"result":  map[string]any{"ok": true},
 		}
 		raw, _ := json.Marshal(response)
-		_ = fake.handlers[mqtt.TopicRPCResponseWildcard()](context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
+		_ = fake.handler(mqtt.TopicRPCResponseWildcard())(context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
 		if topic != mqtt.TopicRPCRequest("com.vendor.echo") {
 			t.Fatalf("unexpected publish topic %s", topic)
 		}
-	}
+	})
 
 	request := testRequest(t, "com.vendor.echo")
 	mode := gen.UnderscoreReturnFirstSuccess
@@ -152,7 +171,7 @@ func TestInvokeAllWithinTimeoutCollectsAllResponses(t *testing.T) {
 	t.Cleanup(func() { _ = bridge.Close() })
 
 	announce(t, fake, "com.vendor.echo", "handler-a")
-	fake.publish = func(_ string, payload any, retained bool) {
+	fake.setPublish(func(_ string, payload any, retained bool) {
 		if retained {
 			return
 		}
@@ -163,9 +182,9 @@ func TestInvokeAllWithinTimeoutCollectsAllResponses(t *testing.T) {
 			{"jsonrpc": "2.0", "id": rawID(t, req.Id), "result": map[string]any{"from": "b"}},
 		} {
 			raw, _ := json.Marshal(body)
-			_ = fake.handlers[mqtt.TopicRPCResponseWildcard()](context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
+			_ = fake.handler(mqtt.TopicRPCResponseWildcard())(context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
 		}
-	}
+	})
 
 	request := testRequest(t, "com.vendor.echo")
 	mode := gen.UnderscoreAllWithinTimeout
@@ -200,7 +219,7 @@ func TestInvokeReturnFirstErrorPrefersErrorPayload(t *testing.T) {
 	t.Cleanup(func() { _ = bridge.Close() })
 
 	announce(t, fake, "com.vendor.echo", "handler-a")
-	fake.publish = func(_ string, payload any, retained bool) {
+	fake.setPublish(func(_ string, payload any, retained bool) {
 		if retained {
 			return
 		}
@@ -211,8 +230,8 @@ func TestInvokeReturnFirstErrorPrefersErrorPayload(t *testing.T) {
 			"id":      rawID(t, req.Id),
 			"error":   map[string]any{"code": -32090, "message": "boom"},
 		})
-		_ = fake.handlers[mqtt.TopicRPCResponseWildcard()](context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
-	}
+		_ = fake.handler(mqtt.TopicRPCResponseWildcard())(context.Background(), mqtt.TopicRPCResponse(req.Method, callerID), raw)
+	})
 
 	request := testRequest(t, "com.vendor.echo")
 	mode := gen.UnderscoreReturnFirstError
@@ -283,7 +302,7 @@ func announce(t *testing.T, fake *fakeMQTT, method, handlerID string) {
 		"id":          handlerID,
 		"method_name": method,
 	})
-	if err := fake.handlers[mqtt.TopicRPCAvailableWildcard()](context.Background(), mqtt.TopicRPCAvailable(method), payload); err != nil {
+	if err := fake.handler(mqtt.TopicRPCAvailableWildcard())(context.Background(), mqtt.TopicRPCAvailable(method), payload); err != nil {
 		t.Fatalf("announce failed: %v", err)
 	}
 }

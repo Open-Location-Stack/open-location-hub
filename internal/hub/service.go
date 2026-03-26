@@ -1446,17 +1446,7 @@ func normalizeProvider(body gen.LocationProviderWrite, forcedID string) (gen.Loc
 	if strings.TrimSpace(body.Id) == "" || strings.TrimSpace(body.Type) == "" {
 		return gen.LocationProvider{}, nil, badRequest("provider id and type are required")
 	}
-	provider := gen.LocationProvider{
-		ExitDelay:        body.ExitDelay,
-		ExitTolerance:    body.ExitTolerance,
-		FenceTimeout:     body.FenceTimeout,
-		Id:               body.Id,
-		Name:             body.Name,
-		Properties:       body.Properties,
-		Sensors:          body.Sensors,
-		ToleranceTimeout: body.ToleranceTimeout,
-		Type:             body.Type,
-	}
+	provider := gen.LocationProvider(body)
 	payload, err := json.Marshal(provider)
 	return provider, payload, err
 }

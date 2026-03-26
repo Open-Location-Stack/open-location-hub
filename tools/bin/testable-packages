@@ -4,6 +4,7 @@ set -euo pipefail
 mode="${1:-test}"
 non_proj_pattern='^(github.com/formation-res/open-rtls-hub/(cmd/hub|internal/httpapi/handlers|internal/hub|internal/transform|tests/integration))$'
 test_only_pattern='^(github.com/formation-res/open-rtls-hub/tests/integration)$'
+generated_pattern='^(github.com/formation-res/open-rtls-hub/(internal/httpapi/gen|internal/storage/postgres/sqlcgen))$'
 
 emit_packages() {
   local pattern="${1:-}"
@@ -18,6 +19,8 @@ emit_packages() {
 if PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config" pkg-config --exists proj; then
   if [[ "$mode" == "build" || "$mode" == "lint" ]]; then
     emit_packages "$test_only_pattern"
+  elif [[ "$mode" == "analyze" ]]; then
+    emit_packages "$test_only_pattern|$generated_pattern"
   else
     emit_packages
   fi
@@ -28,6 +31,8 @@ if [[ "$(go env GOOS)" == "darwin" ]]; then
   echo "PROJ unavailable on macOS; skipping CRS-dependent packages for host tests" >&2
   if [[ "$mode" == "build" || "$mode" == "lint" ]]; then
     emit_packages "$non_proj_pattern|$test_only_pattern"
+  elif [[ "$mode" == "analyze" ]]; then
+    emit_packages "$non_proj_pattern|$test_only_pattern|$generated_pattern"
   else
     emit_packages "$non_proj_pattern"
   fi

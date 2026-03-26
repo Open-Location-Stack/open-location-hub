@@ -1,6 +1,8 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 proj-env := 'PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config"'
+staticcheck-version := "v0.7.0"
+govulncheck-version := "v1.1.4"
 
 bootstrap:
 	@if ! command -v oapi-codegen >/dev/null || ! oapi-codegen -version 2>/dev/null | grep -q "v2.6.0"; then \
@@ -11,6 +13,12 @@ bootstrap:
 	fi
 	@if ! command -v goose >/dev/null || ! goose -version 2>/dev/null | grep -q "v3.27.0"; then \
 		go install github.com/pressly/goose/v3/cmd/goose@v3.27.0; \
+	fi
+	@if ! command -v staticcheck >/dev/null || ! staticcheck -version 2>/dev/null | grep -q "{{staticcheck-version}}"; then \
+		go install honnef.co/go/tools/cmd/staticcheck@{{staticcheck-version}}; \
+	fi
+	@if ! command -v govulncheck >/dev/null || ! govulncheck -version 2>/dev/null | grep -q "{{govulncheck-version}}"; then \
+		go install golang.org/x/vuln/cmd/govulncheck@{{govulncheck-version}}; \
 	fi
 
 proj-check:
@@ -46,13 +54,28 @@ compose-logs:
 fmt:
 	gofmt -w cmd internal tests
 
-lint:
+lint-generated:
+	just generate
+	git diff --exit-code -- internal/httpapi/gen/api.gen.go internal/storage/postgres/sqlcgen
+
+lint-mod:
+	go mod tidy
+	git diff --exit-code -- go.mod go.sum
+
+lint: lint-generated lint-mod
 	@packages="$(bash tools/bin/testable-packages lint)"; \
-	{{proj-env}} go vet $packages
+	analysis_packages="$(bash tools/bin/testable-packages analyze)"; \
+	{{proj-env}} go vet $packages; \
+	{{proj-env}} staticcheck $analysis_packages; \
+	{{proj-env}} govulncheck $analysis_packages
 
 test:
 	@packages="$(bash tools/bin/testable-packages)"; \
 	{{proj-env}} go test $packages
+
+test-race:
+	@packages="$(bash tools/bin/testable-packages)"; \
+	{{proj-env}} go test -race $packages
 
 test-int: proj-check
 	{{proj-env}} go test ./tests/integration -v

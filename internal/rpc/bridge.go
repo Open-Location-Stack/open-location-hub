@@ -91,10 +91,8 @@ type availabilityEntry struct {
 }
 
 type pendingRequest struct {
-	method       string
-	responses    chan json.RawMessage
-	malformed    int
-	malformedErr json.RawMessage
+	method    string
+	responses chan json.RawMessage
 }
 
 // Bridge tracks available RPC handlers, serves local OMLOX methods, and
