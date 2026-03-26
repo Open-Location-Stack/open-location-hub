@@ -24,6 +24,12 @@ This repository implements an OpenAPI-first OMLOX-compatible RTLS hub in Go.
 - If implementation diverges from existing docs, fix the docs before closing the task.
 - If behavior is intentionally left partial, document the limitation and the likely next step.
 
+## Git Workflow Guardrails
+- Do not run state-changing Git commands in parallel. In particular, keep `git add`, `git commit`, `git merge`, `git rebase`, `git stash`, and `git push` serialized.
+- Avoid running Git reads that touch the index, such as `git status` or `git diff`, in parallel with state-changing Git commands.
+- If a Git command fails with an `index.lock` error, first check for an active Git process; only remove the lock file when no Git process is still running for this repository.
+- Prefer one Git command per tool invocation whenever lock contention is possible.
+
 ## Auth Expectations
 Support these modes:
 - `oidc`: external token providers through OIDC discovery/JWKS
