@@ -14,6 +14,8 @@ import (
 )
 
 func TestStaticAuthenticatorAcceptsToken(t *testing.T) {
+	t.Parallel()
+
 	priv, pubPEM := makeKeypair(t)
 	cfg := config.AuthConfig{
 		Mode:                "static",
@@ -52,6 +54,8 @@ func TestStaticAuthenticatorAcceptsToken(t *testing.T) {
 }
 
 func TestPrincipalFromClaimsExtractsOwnedResources(t *testing.T) {
+	t.Parallel()
+
 	principal := principalFromClaims(map[string]any{
 		"sub":    "test",
 		"groups": []any{"reader"},

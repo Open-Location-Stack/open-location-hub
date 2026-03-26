@@ -3,12 +3,16 @@ package auth
 import "testing"
 
 func TestOwnedResourceKey(t *testing.T) {
+	t.Parallel()
+
 	if got := ownedResourceKey("providerId"); got != "provider_ids" {
 		t.Fatalf("unexpected key %q", got)
 	}
 }
 
 func TestMatchPattern(t *testing.T) {
+	t.Parallel()
+
 	params, ok := matchPattern("/v2/providers/:providerId", "/v2/providers/provider-1")
 	if !ok {
 		t.Fatal("expected path to match")
@@ -19,6 +23,8 @@ func TestMatchPattern(t *testing.T) {
 }
 
 func TestOwnsAll(t *testing.T) {
+	t.Parallel()
+
 	principal := &Principal{
 		OwnedResources: map[string]map[string]struct{}{
 			"provider_ids": {"provider-1": {}},
@@ -30,6 +36,8 @@ func TestOwnsAll(t *testing.T) {
 }
 
 func TestValidateRuleRejectsOwnPermissionWithoutIdentifier(t *testing.T) {
+	t.Parallel()
+
 	err := validateRule("/v2/zones", map[Permission]struct{}{CreateOwn: {}})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -37,6 +45,8 @@ func TestValidateRuleRejectsOwnPermissionWithoutIdentifier(t *testing.T) {
 }
 
 func TestBestMatchingRulePrefersSpecificRoute(t *testing.T) {
+	t.Parallel()
+
 	rule, _, ok := bestMatchingRule([]Rule{
 		{Pattern: "/v2/*"},
 		{Pattern: "/v2/providers/:providerId"},
@@ -50,6 +60,8 @@ func TestBestMatchingRulePrefersSpecificRoute(t *testing.T) {
 }
 
 func TestMethodAllowedSupportsExactAndWildcardPatterns(t *testing.T) {
+	t.Parallel()
+
 	rules := []MethodRule{
 		{Pattern: "com.omlox.identify"},
 		{Pattern: "com.vendor.*"},
@@ -66,6 +78,8 @@ func TestMethodAllowedSupportsExactAndWildcardPatterns(t *testing.T) {
 }
 
 func TestAuthorizeWebSocketTopicSupportsExactAndWildcardPatterns(t *testing.T) {
+	t.Parallel()
+
 	registry := &Registry{
 		roles: map[string]rolePolicy{
 			"reader": {

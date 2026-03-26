@@ -16,6 +16,8 @@ const (
 )
 
 func TestCRSTransformerRoundTripSpecialCases(t *testing.T) {
+	t.Parallel()
+
 	transformer := NewCRSTransformer()
 	cases := []struct {
 		name string
@@ -33,6 +35,8 @@ func TestCRSTransformerRoundTripSpecialCases(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			crs := projectedCRSForLonLat(tc.lon, tc.lat)
 			wgs := point2D(t, tc.lon, tc.lat)
 			projected, err := transformer.FromWGS84(crs, wgs)
@@ -49,6 +53,8 @@ func TestCRSTransformerRoundTripSpecialCases(t *testing.T) {
 }
 
 func TestCRSTransformerRandomGlobalRoundTrips(t *testing.T) {
+	t.Parallel()
+
 	transformer := NewCRSTransformer()
 	rng := rand.New(rand.NewSource(42))
 	for i := 0; i < 250; i++ {
@@ -69,6 +75,8 @@ func TestCRSTransformerRandomGlobalRoundTrips(t *testing.T) {
 }
 
 func TestLocalTransformerRoundTripTwoPointSimilarity(t *testing.T) {
+	t.Parallel()
+
 	zone := syntheticZone(t, 47.3744, 8.5411, 32, 15, 1.0, 0)
 	transformer, err := NewLocalTransformer(zone)
 	if err != nil {
@@ -87,6 +95,8 @@ func TestLocalTransformerRoundTripTwoPointSimilarity(t *testing.T) {
 }
 
 func TestLocalTransformerRoundTripOverdeterminedWithNoise(t *testing.T) {
+	t.Parallel()
+
 	zone := syntheticZoneWithNoise(t, -33.4489, -70.6693, 20, -35, 0.95, 0.15, 0.15)
 	transformer, err := NewLocalTransformer(zone)
 	if err != nil {
@@ -105,6 +115,8 @@ func TestLocalTransformerRoundTripOverdeterminedWithNoise(t *testing.T) {
 }
 
 func TestLocalTransformerRandomSyntheticZones(t *testing.T) {
+	t.Parallel()
+
 	rng := rand.New(rand.NewSource(84))
 	for i := 0; i < 100; i++ {
 		lat := rng.Float64()*120 - 60
@@ -135,6 +147,8 @@ func TestLocalTransformerRandomSyntheticZones(t *testing.T) {
 }
 
 func TestNewLocalTransformerRejectsInvalidGroundControlPoints(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name string
 		zone gen.Zone
@@ -157,6 +171,8 @@ func TestNewLocalTransformerRejectsInvalidGroundControlPoints(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			if _, err := NewLocalTransformer(tc.zone); err == nil {
 				t.Fatal("expected invalid ground control points to fail")
 			}
@@ -165,6 +181,8 @@ func TestNewLocalTransformerRejectsInvalidGroundControlPoints(t *testing.T) {
 }
 
 func TestCacheInvalidatesByZoneID(t *testing.T) {
+	t.Parallel()
+
 	cache := NewCache()
 	zone := syntheticZone(t, 47.3744, 8.5411, 0, 0, 1, 0)
 	first, err := cache.Get(zone)
@@ -189,6 +207,8 @@ func TestCacheInvalidatesByZoneID(t *testing.T) {
 }
 
 func TestProjectedCRSForLonLatUsesUPSAtPoles(t *testing.T) {
+	t.Parallel()
+
 	if got := projectedCRSForLonLat(20, 85); got != "EPSG:32661" {
 		t.Fatalf("expected north UPS, got %s", got)
 	}
@@ -325,6 +345,8 @@ func assertPointClose(t *testing.T, want, got gen.Point, tolerance float64) {
 }
 
 func TestCRSTransformerRejectsUnsupportedCRS(t *testing.T) {
+	t.Parallel()
+
 	transformer := NewCRSTransformer()
 	if _, err := transformer.ToWGS84("EPSG:999999", point2D(t, 0, 0)); err == nil {
 		t.Fatal("expected unsupported CRS to fail")
@@ -332,6 +354,8 @@ func TestCRSTransformerRejectsUnsupportedCRS(t *testing.T) {
 }
 
 func TestZoneFixtureProjectedCRSStableAcrossHemispheres(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		lon  float64
 		lat  float64

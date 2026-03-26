@@ -17,6 +17,8 @@ import (
 )
 
 func TestNormalizeZoneRequiresGroundControlPointsWhenConfigurationIsComplete(t *testing.T) {
+	t.Parallel()
+
 	_, _, err := normalizeZone(json.RawMessage(`{"type":"uwb","name":"zone-a"}`), [16]byte{})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -24,6 +26,8 @@ func TestNormalizeZoneRequiresGroundControlPointsWhenConfigurationIsComplete(t *
 }
 
 func TestNormalizeFenceRequiresZoneIDForLocalCRS(t *testing.T) {
+	t.Parallel()
+
 	_, _, err := normalizeFence(json.RawMessage(`{"crs":"local","region":{"type":"Point","coordinates":[1,2]}}`), [16]byte{})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -31,6 +35,8 @@ func TestNormalizeFenceRequiresZoneIDForLocalCRS(t *testing.T) {
 }
 
 func TestFenceContainsPointForPointFence(t *testing.T) {
+	t.Parallel()
+
 	var region gen.Fence_Region
 	point := gen.Point{Type: "Point"}
 	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{10, 20}); err != nil {
@@ -50,6 +56,8 @@ func TestFenceContainsPointForPointFence(t *testing.T) {
 }
 
 func TestNormalizeZoneRejectsInvalidProximityResolutionProperties(t *testing.T) {
+	t.Parallel()
+
 	_, _, err := normalizeZone(json.RawMessage(`{
 		"type":"rfid",
 		"position":{"type":"Point","coordinates":[1,2]},
@@ -61,6 +69,8 @@ func TestNormalizeZoneRejectsInvalidProximityResolutionProperties(t *testing.T) 
 }
 
 func TestResolveProximityCandidateRejectsUnknownZone(t *testing.T) {
+	t.Parallel()
+
 	_, err := resolveProximityCandidate(gen.Proximity{
 		ProviderId:   "provider-a",
 		ProviderType: "rfid",
@@ -72,6 +82,8 @@ func TestResolveProximityCandidateRejectsUnknownZone(t *testing.T) {
 }
 
 func TestResolveProximityCandidateRequiresPosition(t *testing.T) {
+	t.Parallel()
+
 	zone := gen.Zone{Id: uuidAsOpenAPI(uuid.New()), Type: "rfid"}
 	_, err := resolveProximityCandidate(gen.Proximity{
 		ProviderId:   "provider-a",
@@ -84,6 +96,8 @@ func TestResolveProximityCandidateRequiresPosition(t *testing.T) {
 }
 
 func TestResolveProximityCandidateRejectsNonProximityZoneType(t *testing.T) {
+	t.Parallel()
+
 	_, err := resolveProximityCandidate(gen.Proximity{
 		ProviderId:   "provider-a",
 		ProviderType: "uwb",
@@ -95,6 +109,8 @@ func TestResolveProximityCandidateRejectsNonProximityZoneType(t *testing.T) {
 }
 
 func TestResolveProximitySticksWithinBoundaryGrace(t *testing.T) {
+	t.Parallel()
+
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 	currentZone := testZone(t, uuid.New(), "rfid", [2]float32{0, 0}, float32Ptr(3), nil)
 	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float32{5, 0}, float32Ptr(3), nil)
@@ -121,6 +137,8 @@ func TestResolveProximitySticksWithinBoundaryGrace(t *testing.T) {
 }
 
 func TestResolveProximitySwitchesAfterGraceExpires(t *testing.T) {
+	t.Parallel()
+
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 	currentZone := testZone(t, uuid.New(), "rfid", [2]float32{0, 0}, float32Ptr(3), nil)
 	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float32{5, 0}, float32Ptr(3), nil)
@@ -147,6 +165,8 @@ func TestResolveProximitySwitchesAfterGraceExpires(t *testing.T) {
 }
 
 func TestProximityPolicyForZoneAppliesOverrides(t *testing.T) {
+	t.Parallel()
+
 	defaults := testPolicy()
 	defaults.ExitGraceDuration = 10 * time.Second
 	props := gen.ExtensionProperties{
@@ -165,6 +185,8 @@ func TestProximityPolicyForZoneAppliesOverrides(t *testing.T) {
 }
 
 func TestDeriveLocationFromProximityAddsResolutionMetadata(t *testing.T) {
+	t.Parallel()
+
 	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, nil, nil)
 	props := gen.ExtensionProperties{"raw": "value"}
 	location := deriveLocationFromProximity(gen.Proximity{
@@ -191,12 +213,16 @@ func TestDeriveLocationFromProximityAddsResolutionMetadata(t *testing.T) {
 }
 
 func TestValidateLocationAllowsOmittedCRS(t *testing.T) {
+	t.Parallel()
+
 	if err := validateLocation(testLocation(t, nil)); err != nil {
 		t.Fatalf("expected omitted CRS to pass, got %v", err)
 	}
 }
 
 func TestValidateLocationAllowsLocalCRS(t *testing.T) {
+	t.Parallel()
+
 	crs := "local"
 	if err := validateLocation(testLocation(t, &crs)); err != nil {
 		t.Fatalf("expected local CRS to pass, got %v", err)
@@ -204,6 +230,8 @@ func TestValidateLocationAllowsLocalCRS(t *testing.T) {
 }
 
 func TestValidateLocationAllowsEPSG4326CRS(t *testing.T) {
+	t.Parallel()
+
 	crs := "EPSG:4326"
 	if err := validateLocation(testLocation(t, &crs)); err != nil {
 		t.Fatalf("expected EPSG:4326 CRS to pass, got %v", err)
@@ -211,6 +239,8 @@ func TestValidateLocationAllowsEPSG4326CRS(t *testing.T) {
 }
 
 func TestValidateLocationRejectsUnsupportedCRS(t *testing.T) {
+	t.Parallel()
+
 	crs := "WGS84"
 	err := validateLocation(testLocation(t, &crs))
 	var httpErr *HTTPError
@@ -220,6 +250,8 @@ func TestValidateLocationRejectsUnsupportedCRS(t *testing.T) {
 }
 
 func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
+	t.Parallel()
+
 	cache := newMemoryCache()
 	service := &Service{
 		cache: cache,
@@ -256,6 +288,8 @@ func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
 }
 
 func TestRecordLocationStoresTrackableLatestStateWithTTL(t *testing.T) {
+	t.Parallel()
+
 	cache := newMemoryCache()
 	service := &Service{
 		cache: cache,
@@ -288,6 +322,8 @@ func TestRecordLocationStoresTrackableLatestStateWithTTL(t *testing.T) {
 }
 
 func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
+	t.Parallel()
+
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 	cache := newMemoryCache()
 	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, float32Ptr(2), nil)
@@ -341,6 +377,8 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 }
 
 func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
+	t.Parallel()
+
 	bus := NewEventBus()
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
@@ -371,6 +409,8 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 }
 
 func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing.T) {
+	t.Parallel()
+
 	bus := NewEventBus()
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
@@ -401,6 +441,8 @@ func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing
 }
 
 func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
+	t.Parallel()
+
 	bus := NewEventBus()
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
@@ -425,6 +467,8 @@ func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
 }
 
 func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
+	t.Parallel()
+
 	bus := NewEventBus()
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
@@ -456,6 +500,8 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 }
 
 func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
+	t.Parallel()
+
 	cache := newMemoryCache()
 	service := &Service{
 		cache: cache,

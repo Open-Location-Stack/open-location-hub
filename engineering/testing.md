@@ -23,6 +23,7 @@ just test
 
 Covers config parsing/defaults, auth verification behavior, and MQTT topic mapping.
 Covers CRS/georeferencing round trips, randomized globe-wide coordinate conversion cases, service-level publication behavior, and RPC bridge validation such as local built-in methods, aggregation behavior, and per-method authorization.
+The unit-test packages now avoid shared process-global test state so `t.Parallel()` can be used broadly, including the runtime-entry and config suites.
 
 ## Race detector
 Run the standard race-detector suite:
@@ -58,6 +59,7 @@ just test-int
 The suite boots Postgres, Valkey, and Mosquitto containers and performs migration smoke checks.
 If Docker is unavailable, tests should skip.
 The integration harness now retries migration startup briefly so hosted CI runners tolerate transient Postgres readiness and connection-reset races during container boot.
+The Docker-backed integration tests now use unique per-test image references for Dockerfile builds so `t.Parallel()` can run without sharing `latest`-tag image state across tests.
 
 The auth end-to-end suite also boots Dex, fetches a bearer token over the token endpoint, and proves that the hub accepts or rejects requests with `401` and `403` as expected.
 The CRS end-to-end suite uses Mosquitto-backed publication checks to verify that local and WGS84 topics carry true derived variants and that unavailable derived topics are suppressed.

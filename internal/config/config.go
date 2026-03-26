@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+type lookupEnvFunc func(string) (string, bool)
+
 // Config contains the hub runtime configuration loaded from environment
 // variables.
 type Config struct {
@@ -56,44 +58,48 @@ type AuthConfig struct {
 
 // FromEnv loads Config from environment variables and validates the result.
 func FromEnv() (Config, error) {
+	return fromLookupEnv(os.LookupEnv)
+}
+
+func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	cfg := Config{
-		HTTPListenAddr:                        env("HTTP_LISTEN_ADDR", ":8080"),
-		HTTPRequestBodyLimitBytes:             int64Env("HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
-		LogLevel:                              env("LOG_LEVEL", "info"),
-		PostgresURL:                           env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
-		ValkeyURL:                             env("VALKEY_URL", "redis://localhost:6379/0"),
-		MQTTBrokerURL:                         env("MQTT_BROKER_URL", "tcp://localhost:1883"),
-		WebSocketWriteTimeout:                 durationEnv("WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
-		WebSocketOutboundBuffer:               intEnv("WEBSOCKET_OUTBOUND_BUFFER", 32),
-		StateLocationTTL:                      durationEnv("STATE_LOCATION_TTL", 10*time.Minute),
-		StateProximityTTL:                     durationEnv("STATE_PROXIMITY_TTL", 5*time.Minute),
-		StateDedupTTL:                         durationEnv("STATE_DEDUP_TTL", 2*time.Minute),
-		RPCTimeout:                            durationEnv("RPC_TIMEOUT", 5*time.Second),
-		RPCAnnouncementInterval:               durationEnv("RPC_ANNOUNCEMENT_INTERVAL", time.Minute),
-		RPCHandlerID:                          env("RPC_HANDLER_ID", "open-rtls-hub"),
-		CollisionsEnabled:                     boolEnv("COLLISIONS_ENABLED", false),
-		CollisionStateTTL:                     durationEnv("COLLISION_STATE_TTL", 2*time.Minute),
-		CollisionCollidingDebounce:            durationEnv("COLLISION_COLLIDING_DEBOUNCE", 5*time.Second),
-		ProximityResolutionEntryConfidenceMin: floatEnv("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
-		ProximityResolutionExitGraceDuration:  durationEnv("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
-		ProximityResolutionBoundaryGrace:      floatEnv("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
-		ProximityResolutionMinDwellDuration:   durationEnv("PROXIMITY_RESOLUTION_MIN_DWELL_DURATION", 5*time.Second),
-		ProximityResolutionPositionMode:       env("PROXIMITY_RESOLUTION_POSITION_MODE", "zone_position"),
-		ProximityResolutionFallbackRadius:     floatEnv("PROXIMITY_RESOLUTION_FALLBACK_RADIUS", 0),
-		ProximityResolutionStaleStateTTL:      durationEnv("PROXIMITY_RESOLUTION_STALE_STATE_TTL", 10*time.Minute),
+		HTTPListenAddr:                        envWithLookup(lookup, "HTTP_LISTEN_ADDR", ":8080"),
+		HTTPRequestBodyLimitBytes:             int64EnvWithLookup(lookup, "HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
+		LogLevel:                              envWithLookup(lookup, "LOG_LEVEL", "info"),
+		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
+		ValkeyURL:                             envWithLookup(lookup, "VALKEY_URL", "redis://localhost:6379/0"),
+		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
+		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
+		WebSocketOutboundBuffer:               intEnvWithLookup(lookup, "WEBSOCKET_OUTBOUND_BUFFER", 32),
+		StateLocationTTL:                      durationEnvWithLookup(lookup, "STATE_LOCATION_TTL", 10*time.Minute),
+		StateProximityTTL:                     durationEnvWithLookup(lookup, "STATE_PROXIMITY_TTL", 5*time.Minute),
+		StateDedupTTL:                         durationEnvWithLookup(lookup, "STATE_DEDUP_TTL", 2*time.Minute),
+		RPCTimeout:                            durationEnvWithLookup(lookup, "RPC_TIMEOUT", 5*time.Second),
+		RPCAnnouncementInterval:               durationEnvWithLookup(lookup, "RPC_ANNOUNCEMENT_INTERVAL", time.Minute),
+		RPCHandlerID:                          envWithLookup(lookup, "RPC_HANDLER_ID", "open-rtls-hub"),
+		CollisionsEnabled:                     boolEnvWithLookup(lookup, "COLLISIONS_ENABLED", false),
+		CollisionStateTTL:                     durationEnvWithLookup(lookup, "COLLISION_STATE_TTL", 2*time.Minute),
+		CollisionCollidingDebounce:            durationEnvWithLookup(lookup, "COLLISION_COLLIDING_DEBOUNCE", 5*time.Second),
+		ProximityResolutionEntryConfidenceMin: floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
+		ProximityResolutionExitGraceDuration:  durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
+		ProximityResolutionBoundaryGrace:      floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
+		ProximityResolutionMinDwellDuration:   durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_MIN_DWELL_DURATION", 5*time.Second),
+		ProximityResolutionPositionMode:       envWithLookup(lookup, "PROXIMITY_RESOLUTION_POSITION_MODE", "zone_position"),
+		ProximityResolutionFallbackRadius:     floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_FALLBACK_RADIUS", 0),
+		ProximityResolutionStaleStateTTL:      durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_STALE_STATE_TTL", 10*time.Minute),
 		Auth: AuthConfig{
-			Mode:                env("AUTH_MODE", "none"),
-			Audience:            csvEnv("AUTH_AUDIENCE", "open-rtls-hub"),
-			Issuer:              env("AUTH_ISSUER", ""),
-			AllowedAlgs:         csvEnv("AUTH_ALLOWED_ALGS", "RS256"),
-			ClockSkew:           durationEnv("AUTH_CLOCK_SKEW", 30*time.Second),
-			StaticPublicKeys:    csvEnv("AUTH_STATIC_PUBLIC_KEYS", ""),
-			OIDCJWKSRefreshTTL:  durationEnv("AUTH_OIDC_REFRESH_TTL", 10*time.Minute),
-			HTTPTimeout:         durationEnv("AUTH_HTTP_TIMEOUT", 5*time.Second),
-			PermissionsFile:     env("AUTH_PERMISSIONS_FILE", "config/auth/permissions.yaml"),
-			RolesClaim:          env("AUTH_ROLES_CLAIM", "groups"),
-			OwnedResourcesClaim: env("AUTH_OWNED_RESOURCES_CLAIM", "owned_resources"),
-			Enabled:             boolEnv("AUTH_ENABLED", true),
+			Mode:                envWithLookup(lookup, "AUTH_MODE", "none"),
+			Audience:            csvEnvWithLookup(lookup, "AUTH_AUDIENCE", "open-rtls-hub"),
+			Issuer:              envWithLookup(lookup, "AUTH_ISSUER", ""),
+			AllowedAlgs:         csvEnvWithLookup(lookup, "AUTH_ALLOWED_ALGS", "RS256"),
+			ClockSkew:           durationEnvWithLookup(lookup, "AUTH_CLOCK_SKEW", 30*time.Second),
+			StaticPublicKeys:    csvEnvWithLookup(lookup, "AUTH_STATIC_PUBLIC_KEYS", ""),
+			OIDCJWKSRefreshTTL:  durationEnvWithLookup(lookup, "AUTH_OIDC_REFRESH_TTL", 10*time.Minute),
+			HTTPTimeout:         durationEnvWithLookup(lookup, "AUTH_HTTP_TIMEOUT", 5*time.Second),
+			PermissionsFile:     envWithLookup(lookup, "AUTH_PERMISSIONS_FILE", "config/auth/permissions.yaml"),
+			RolesClaim:          envWithLookup(lookup, "AUTH_ROLES_CLAIM", "groups"),
+			OwnedResourcesClaim: envWithLookup(lookup, "AUTH_OWNED_RESOURCES_CLAIM", "owned_resources"),
+			Enabled:             boolEnvWithLookup(lookup, "AUTH_ENABLED", true),
 		},
 	}
 
@@ -203,15 +209,15 @@ func clean(in []string) []string {
 	return out
 }
 
-func env(k, d string) string {
-	if v, ok := os.LookupEnv(k); ok {
+func envWithLookup(lookup lookupEnvFunc, k, d string) string {
+	if v, ok := lookup(k); ok {
 		return v
 	}
 	return d
 }
 
-func csvEnv(k, d string) []string {
-	v := env(k, d)
+func csvEnvWithLookup(lookup lookupEnvFunc, k, d string) []string {
+	v := envWithLookup(lookup, k, d)
 	if v == "" {
 		return nil
 	}
@@ -222,8 +228,8 @@ func csvEnv(k, d string) []string {
 	return parts
 }
 
-func durationEnv(k string, d time.Duration) time.Duration {
-	v := env(k, "")
+func durationEnvWithLookup(lookup lookupEnvFunc, k string, d time.Duration) time.Duration {
+	v := envWithLookup(lookup, k, "")
 	if v == "" {
 		return d
 	}
@@ -234,8 +240,8 @@ func durationEnv(k string, d time.Duration) time.Duration {
 	return x
 }
 
-func boolEnv(k string, d bool) bool {
-	v := env(k, "")
+func boolEnvWithLookup(lookup lookupEnvFunc, k string, d bool) bool {
+	v := envWithLookup(lookup, k, "")
 	if v == "" {
 		return d
 	}
@@ -246,8 +252,8 @@ func boolEnv(k string, d bool) bool {
 	return x
 }
 
-func floatEnv(k string, d float64) float64 {
-	v := env(k, "")
+func floatEnvWithLookup(lookup lookupEnvFunc, k string, d float64) float64 {
+	v := envWithLookup(lookup, k, "")
 	if v == "" {
 		return d
 	}
@@ -258,8 +264,8 @@ func floatEnv(k string, d float64) float64 {
 	return x
 }
 
-func intEnv(k string, d int) int {
-	v := env(k, "")
+func intEnvWithLookup(lookup lookupEnvFunc, k string, d int) int {
+	v := envWithLookup(lookup, k, "")
 	if v == "" {
 		return d
 	}
@@ -270,8 +276,8 @@ func intEnv(k string, d int) int {
 	return x
 }
 
-func int64Env(k string, d int64) int64 {
-	v := env(k, "")
+func int64EnvWithLookup(lookup lookupEnvFunc, k string, d int64) int64 {
+	v := envWithLookup(lookup, k, "")
 	if v == "" {
 		return d
 	}

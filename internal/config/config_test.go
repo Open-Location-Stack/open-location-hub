@@ -2,9 +2,19 @@ package config
 
 import "testing"
 
+func configFromMap(values map[string]string) (Config, error) {
+	return fromLookupEnv(func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+}
+
 func TestDefaults(t *testing.T) {
-	t.Setenv("AUTH_MODE", "none")
-	cfg, err := FromEnv()
+	t.Parallel()
+
+	cfg, err := configFromMap(map[string]string{
+		"AUTH_MODE": "none",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,37 +48,49 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestOIDCRequiresIssuer(t *testing.T) {
-	t.Setenv("AUTH_MODE", "oidc")
-	t.Setenv("AUTH_ISSUER", "")
-	_, err := FromEnv()
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":   "oidc",
+		"AUTH_ISSUER": "",
+	})
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
 }
 
 func TestEnabledAuthRequiresPermissionsFile(t *testing.T) {
-	t.Setenv("AUTH_MODE", "static")
-	t.Setenv("AUTH_STATIC_PUBLIC_KEYS", "key")
-	t.Setenv("AUTH_PERMISSIONS_FILE", "")
-	_, err := FromEnv()
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":               "static",
+		"AUTH_STATIC_PUBLIC_KEYS": "key",
+		"AUTH_PERMISSIONS_FILE":   "",
+	})
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
 }
 
 func TestTransientStateSettingsMustBePositive(t *testing.T) {
-	t.Setenv("AUTH_MODE", "none")
-	t.Setenv("STATE_LOCATION_TTL", "0s")
-	_, err := FromEnv()
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":          "none",
+		"STATE_LOCATION_TTL": "0s",
+	})
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
 }
 
 func TestRequestBodyLimitMustBePositive(t *testing.T) {
-	t.Setenv("AUTH_MODE", "none")
-	t.Setenv("HTTP_REQUEST_BODY_LIMIT_BYTES", "0")
-	_, err := FromEnv()
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":                     "none",
+		"HTTP_REQUEST_BODY_LIMIT_BYTES": "0",
+	})
 	if err == nil {
 		t.Fatal("expected validation error")
 	}

@@ -21,6 +21,8 @@ type wsMessage struct {
 }
 
 func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -67,6 +69,8 @@ func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
 }
 
 func TestWebSocketRejectsDisabledCollisionTopic(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)

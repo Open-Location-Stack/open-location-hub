@@ -11,6 +11,8 @@ import (
 )
 
 func TestAddOnConnectListenerRunsImmediatelyWhenConnected(t *testing.T) {
+	t.Parallel()
+
 	client := &Client{inner: &fakePahoClient{connected: true}}
 
 	called := make(chan struct{}, 1)
@@ -26,6 +28,8 @@ func TestAddOnConnectListenerRunsImmediatelyWhenConnected(t *testing.T) {
 }
 
 func TestSubscribeDefersBrokerSubscriptionUntilConnected(t *testing.T) {
+	t.Parallel()
+
 	client := &Client{inner: &fakePahoClient{connected: false}}
 
 	called := false
@@ -45,6 +49,8 @@ func TestSubscribeDefersBrokerSubscriptionUntilConnected(t *testing.T) {
 }
 
 func TestSubscribeReturnsBrokerErrorWhenConnected(t *testing.T) {
+	t.Parallel()
+
 	wantErr := errors.New("subscribe failed")
 	inner := &fakePahoClient{
 		connected: true,
@@ -62,6 +68,8 @@ func TestSubscribeReturnsBrokerErrorWhenConnected(t *testing.T) {
 }
 
 func TestPublishJSONReturnsMarshalError(t *testing.T) {
+	t.Parallel()
+
 	client := &Client{}
 	err := client.PublishJSON(context.Background(), "topic", map[string]any{"invalid": make(chan int)}, false)
 	if err == nil {
@@ -71,6 +79,8 @@ func TestPublishJSONReturnsMarshalError(t *testing.T) {
 
 func TestPublishRawTimeoutAndError(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
+		t.Parallel()
+
 		client := &Client{inner: &fakePahoClient{
 			publishToken: fakeToken{waitTimeout: false},
 		}}
@@ -81,6 +91,8 @@ func TestPublishRawTimeoutAndError(t *testing.T) {
 	})
 
 	t.Run("broker error", func(t *testing.T) {
+		t.Parallel()
+
 		wantErr := errors.New("publish failed")
 		client := &Client{inner: &fakePahoClient{
 			publishToken: fakeToken{waitTimeout: true, err: wantErr},
@@ -93,6 +105,8 @@ func TestPublishRawTimeoutAndError(t *testing.T) {
 }
 
 func TestResubscribeRunsHandlersAndHooksOnConnect(t *testing.T) {
+	t.Parallel()
+
 	inner := &fakePahoClient{
 		connected:      true,
 		subscribeToken: fakeToken{waitTimeout: true},
@@ -130,6 +144,8 @@ func TestResubscribeRunsHandlersAndHooksOnConnect(t *testing.T) {
 }
 
 func TestSubscribeTimeoutReturnsContextualError(t *testing.T) {
+	t.Parallel()
+
 	client := &Client{
 		logger: zap.NewNop(),
 		inner:  &fakePahoClient{},
@@ -141,6 +157,8 @@ func TestSubscribeTimeoutReturnsContextualError(t *testing.T) {
 }
 
 func TestCloseDisconnectsConnectedClient(t *testing.T) {
+	t.Parallel()
+
 	inner := &fakePahoClient{connected: true}
 	client := &Client{inner: inner}
 
@@ -153,6 +171,8 @@ func TestCloseDisconnectsConnectedClient(t *testing.T) {
 }
 
 func TestTopicMapping(t *testing.T) {
+	t.Parallel()
+
 	if got := TopicLocationPub("abc"); got != "/omlox/json/location_updates/pub/abc" {
 		t.Fatalf("unexpected topic: %s", got)
 	}

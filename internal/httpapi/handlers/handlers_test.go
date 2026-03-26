@@ -19,6 +19,8 @@ import (
 const testRequestBodyLimitBytes int64 = 64
 
 func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
+	t.Parallel()
+
 	zoneID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	trackableID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	fenceID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
@@ -162,6 +164,8 @@ func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -177,6 +181,8 @@ func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
 }
 
 func TestHandlerDirectBodiesCoverRawAndTypedEndpoints(t *testing.T) {
+	t.Parallel()
+
 	fenceID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
 	svc := &fakeService{
 		processLocationsFn: func(context.Context, []gen.Location) error {
@@ -287,6 +293,8 @@ func TestHandlerDirectBodiesCoverRawAndTypedEndpoints(t *testing.T) {
 }
 
 func TestDecodeJSONBodyAcceptsSingleDocument(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodPost, "/v2/trackables", strings.NewReader(`{"type":"asset"}`))
 	rec := httptest.NewRecorder()
 
@@ -301,6 +309,8 @@ func TestDecodeJSONBodyAcceptsSingleDocument(t *testing.T) {
 }
 
 func TestReadRawBodyAcceptsArbitraryJSON(t *testing.T) {
+	t.Parallel()
+
 	input := `{"type":"Polygon","coordinates":[[[1,2],[3,4],[1,2]]],"extension":{"unknown":true}}`
 	req := httptest.NewRequest(http.MethodPost, "/v2/fences", strings.NewReader(input))
 	rec := httptest.NewRecorder()

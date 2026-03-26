@@ -49,10 +49,25 @@ type runtimeCloser interface {
 	Close() error
 }
 
-var (
-	loadConfig  = config.FromEnv
-	newLogger   = observability.NewLogger
-	openQueries = func(ctx context.Context, dsn string) (sqlcgen.Querier, runtimeCloser, error) {
+type runtimeDeps struct {
+	loadConfig           func() (config.Config, error)
+	newLogger            func(string) (*zap.Logger, func(), error)
+	openQueries          func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error)
+	newCache             func(string) (*valkey.Client, func(), error)
+	newMQTT              func(*zap.Logger, string) (mqttRuntimeClient, error)
+	newAuthenticator     func(context.Context, config.AuthConfig) (auth.Authenticator, error)
+	loadRegistry         func(string) (*auth.Registry, error)
+	newEventBus          func() *hub.EventBus
+	newService           func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service
+	eventPublisherHandle func(mqttRuntimeClient) func(context.Context, hub.Event) error
+	newRPCBridge         func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error)
+	newHTTPServer        func(string, http.Handler) httpServer
+}
+
+var defaultRuntime = runtimeDeps{
+	loadConfig: config.FromEnv,
+	newLogger:  observability.NewLogger,
+	openQueries: func(ctx context.Context, dsn string) (sqlcgen.Querier, runtimeCloser, error) {
 		pool, err := postgres.NewPool(ctx, dsn)
 		if err != nil {
 			return nil, nil, err
@@ -61,35 +76,37 @@ var (
 			pool.Close()
 			return nil
 		}), nil
-	}
-	newCache = func(addr string) (*valkey.Client, func(), error) {
+	},
+	newCache: func(addr string) (*valkey.Client, func(), error) {
 		cache := valkey.NewClient(addr)
 		return cache, func() { _ = cache.Close() }, nil
-	}
-	newMQTT = func(logger *zap.Logger, brokerURL string) (mqttRuntimeClient, error) {
-		return mqtt.NewClient(logger, brokerURL)
-	}
-	newAuthenticator     = auth.NewAuthenticator
-	loadRegistry         = auth.LoadRegistry
-	newEventBus          = hub.NewEventBus
-	newService           = hub.New
-	eventPublisherHandle = func(client mqttRuntimeClient) func(context.Context, hub.Event) error {
+	},
+	newMQTT:          authlessNewMQTT,
+	newAuthenticator: auth.NewAuthenticator,
+	loadRegistry:     auth.LoadRegistry,
+	newEventBus:      hub.NewEventBus,
+	newService:       hub.New,
+	eventPublisherHandle: func(client mqttRuntimeClient) func(context.Context, hub.Event) error {
 		if concrete, ok := client.(*mqtt.Client); ok {
 			return mqtt.NewEventPublisher(concrete).Handle
 		}
 		return func(context.Context, hub.Event) error { return nil }
-	}
-	newRPCBridge = func(logger *zap.Logger, publisher rpc.Publisher, cfg rpc.Config) (rpcRuntimeBridge, error) {
+	},
+	newRPCBridge: func(logger *zap.Logger, publisher rpc.Publisher, cfg rpc.Config) (rpcRuntimeBridge, error) {
 		return rpc.NewBridge(logger, publisher, cfg)
-	}
-	newHTTPServer = func(addr string, handler http.Handler) httpServer {
+	},
+	newHTTPServer: func(addr string, handler http.Handler) httpServer {
 		return &http.Server{
 			Addr:              addr,
 			Handler:           handler,
 			ReadHeaderTimeout: 5 * time.Second,
 		}
-	}
-)
+	},
+}
+
+func authlessNewMQTT(logger *zap.Logger, brokerURL string) (mqttRuntimeClient, error) {
+	return mqtt.NewClient(logger, brokerURL)
+}
 
 type runtimeCloserFunc func() error
 
@@ -106,49 +123,53 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	cfg, err := loadConfig()
+	return runWithRuntime(ctx, defaultRuntime)
+}
+
+func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
+	cfg, err := rt.loadConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	logger, cleanupLogger, err := newLogger(cfg.LogLevel)
+	logger, cleanupLogger, err := rt.newLogger(cfg.LogLevel)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	defer cleanupLogger()
 
-	queries, closeQueries, err := openQueries(ctx, cfg.PostgresURL)
+	queries, closeQueries, err := rt.openQueries(ctx, cfg.PostgresURL)
 	if err != nil {
 		return fmt.Errorf("postgres init failed: %w", err)
 	}
 	defer func() { _ = closeQueries.Close() }()
 
-	cache, closeCache, err := newCache(cfg.ValkeyURL)
+	cache, closeCache, err := rt.newCache(cfg.ValkeyURL)
 	if err != nil {
 		return fmt.Errorf("cache init failed: %w", err)
 	}
 	defer closeCache()
 
-	mq, err := newMQTT(logger, cfg.MQTTBrokerURL)
+	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL)
 	if err != nil {
 		return fmt.Errorf("mqtt init failed: %w", err)
 	}
 	defer func() { _ = mq.Close() }()
 
-	authenticator, err := newAuthenticator(ctx, cfg.Auth)
+	authenticator, err := rt.newAuthenticator(ctx, cfg.Auth)
 	if err != nil {
 		return fmt.Errorf("auth init failed: %w", err)
 	}
 	var registry *auth.Registry
 	if cfg.Auth.Enabled && cfg.Auth.Mode != "none" {
-		registry, err = loadRegistry(cfg.Auth.PermissionsFile)
+		registry, err = rt.loadRegistry(cfg.Auth.PermissionsFile)
 		if err != nil {
 			return fmt.Errorf("auth permissions init failed: %w", err)
 		}
 	}
 
-	eventBus := newEventBus()
-	service := newService(logger, queries, cache, eventBus, hub.Config{
+	eventBus := rt.newEventBus()
+	service := rt.newService(logger, queries, cache, eventBus, hub.Config{
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
@@ -168,7 +189,7 @@ func run(ctx context.Context) error {
 		var ch <-chan hub.Event
 		var unsubscribeMQTTPublisher func()
 		ch, unsubscribeMQTTPublisher = eventBus.Subscribe(128)
-		mqttPublisherDone := runEventPublisher(ctx, logger, ch, eventPublisherHandle(mq))
+		mqttPublisherDone := runEventPublisher(ctx, logger, ch, rt.eventPublisherHandle(mq))
 		cleanupMQTTPublisher = func() {
 			unsubscribeMQTTPublisher()
 			<-mqttPublisherDone
@@ -177,7 +198,7 @@ func run(ctx context.Context) error {
 	if cleanupMQTTPublisher != nil {
 		defer cleanupMQTTPublisher()
 	}
-	rpcBridge, err := newRPCBridge(logger, mq, rpc.Config{
+	rpcBridge, err := rt.newRPCBridge(logger, mq, rpc.Config{
 		Timeout:              cfg.RPCTimeout,
 		HandlerID:            cfg.RPCHandlerID,
 		AnnouncementInterval: cfg.RPCAnnouncementInterval,
@@ -239,7 +260,7 @@ func run(ctx context.Context) error {
 	wsHub := ws.New(logger, service, eventBus, authenticator, registry, cfg.Auth, cfg.WebSocketWriteTimeout, cfg.WebSocketOutboundBuffer, cfg.CollisionsEnabled)
 	r.Get("/v2/ws/socket", wsHub.Handle)
 
-	srv := newHTTPServer(cfg.HTTPListenAddr, r)
+	srv := rt.newHTTPServer(cfg.HTTPListenAddr, r)
 
 	serverErrCh := make(chan error, 1)
 	serverDone := make(chan struct{})

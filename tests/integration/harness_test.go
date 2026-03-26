@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/docker/go-connections/nat"
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
@@ -25,6 +26,8 @@ import (
 )
 
 func TestDexBackedAuthorization(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -114,8 +117,8 @@ func TestDexBackedAuthorization(t *testing.T) {
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    repoPath(t, "."),
 			Dockerfile: "Dockerfile",
-			Repo:       "open-rtls-hub-e2e",
-			Tag:        "latest",
+			Repo:       testImageRepo(t, "open-rtls-hub-e2e"),
+			Tag:        testImageTag(),
 		},
 		ExposedPorts: []string{"8080/tcp"},
 		Networks:     []string{network.Name},
@@ -199,6 +202,18 @@ func repoPath(t *testing.T, rel string) string {
 	_, thisFile, _, _ := runtime.Caller(0)
 	base := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
 	return filepath.Join(base, rel)
+}
+
+func testImageRepo(t *testing.T, prefix string) string {
+	t.Helper()
+
+	name := strings.ToLower(t.Name())
+	name = strings.NewReplacer("/", "-", "_", "-", " ", "-").Replace(name)
+	return fmt.Sprintf("%s-%s", prefix, name)
+}
+
+func testImageTag() string {
+	return uuid.NewString()
 }
 
 func runMigrations(t *testing.T, ctx context.Context, dsn string) {

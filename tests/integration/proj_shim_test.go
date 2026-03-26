@@ -8,6 +8,8 @@ import (
 )
 
 func TestProjPkgConfigShimBuildsInDockerWithoutSystemPkgConfig(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker build unavailable: %v", r)
@@ -20,8 +22,8 @@ func TestProjPkgConfigShimBuildsInDockerWithoutSystemPkgConfig(t *testing.T) {
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    repoPath(t, "."),
 			Dockerfile: "tests/integration/dockerfiles/Dockerfile.proj-shim",
-			Repo:       "open-rtls-hub-proj-shim",
-			Tag:        "latest",
+			Repo:       testImageRepo(t, "open-rtls-hub-proj-shim"),
+			Tag:        testImageTag(),
 		},
 	}
 

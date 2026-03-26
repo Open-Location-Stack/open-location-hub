@@ -54,6 +54,8 @@ func (f *fakeMQTT) handler(filter string) mqtt.MessageHandler {
 }
 
 func TestAvailableMethodsTracksLocalAndExternalAnnouncements(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMQTT{}
 	bridge, err := NewBridge(zap.NewNop(), fake, Config{Timeout: time.Second})
 	if err != nil {
@@ -82,6 +84,8 @@ func TestAvailableMethodsTracksLocalAndExternalAnnouncements(t *testing.T) {
 }
 
 func TestInvokeReturnsLocalPingSuccess(t *testing.T) {
+	t.Parallel()
+
 	bridge, err := NewBridge(zap.NewNop(), nil, Config{Timeout: time.Second})
 	if err != nil {
 		t.Fatalf("bridge init failed: %v", err)
@@ -102,6 +106,8 @@ func TestInvokeReturnsLocalPingSuccess(t *testing.T) {
 }
 
 func TestInvokeBridgesExternalMethodAndReturnsFirstSuccess(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMQTT{}
 	bridge, err := NewBridge(zap.NewNop(), fake, Config{Timeout: time.Second})
 	if err != nil {
@@ -142,6 +148,8 @@ func TestInvokeBridgesExternalMethodAndReturnsFirstSuccess(t *testing.T) {
 }
 
 func TestInvokeRejectsInvalidAggregationCombination(t *testing.T) {
+	t.Parallel()
+
 	bridge, err := NewBridge(zap.NewNop(), nil, Config{Timeout: time.Second})
 	if err != nil {
 		t.Fatalf("bridge init failed: %v", err)
@@ -163,6 +171,8 @@ func TestInvokeRejectsInvalidAggregationCombination(t *testing.T) {
 }
 
 func TestInvokeAllWithinTimeoutCollectsAllResponses(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMQTT{}
 	bridge, err := NewBridge(zap.NewNop(), fake, Config{Timeout: 50 * time.Millisecond})
 	if err != nil {
@@ -211,6 +221,8 @@ func TestInvokeAllWithinTimeoutCollectsAllResponses(t *testing.T) {
 }
 
 func TestInvokeReturnFirstErrorPrefersErrorPayload(t *testing.T) {
+	t.Parallel()
+
 	fake := &fakeMQTT{}
 	bridge, err := NewBridge(zap.NewNop(), fake, Config{Timeout: time.Second})
 	if err != nil {
@@ -244,6 +256,8 @@ func TestInvokeReturnFirstErrorPrefersErrorPayload(t *testing.T) {
 }
 
 func TestInvokeRejectsUnauthorizedMethod(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "permissions.yaml")
 	if err := os.WriteFile(path, []byte(`
@@ -280,6 +294,8 @@ reader@example.com:
 }
 
 func TestInvokeXCMDWithoutAdapterReturnsDeterministicError(t *testing.T) {
+	t.Parallel()
+
 	bridge, err := NewBridge(zap.NewNop(), nil, Config{Timeout: time.Second})
 	if err != nil {
 		t.Fatalf("bridge init failed: %v", err)

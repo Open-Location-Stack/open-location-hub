@@ -17,6 +17,8 @@ import (
 )
 
 func TestUnknownEventReturnsProtocolError(t *testing.T) {
+	t.Parallel()
+
 	client, cleanup := startTestHub(t, hub.NewEventBus(), false)
 	defer cleanup()
 
@@ -28,6 +30,8 @@ func TestUnknownEventReturnsProtocolError(t *testing.T) {
 }
 
 func TestCollisionSubscribeReturnsDisabledError(t *testing.T) {
+	t.Parallel()
+
 	client, cleanup := startTestHub(t, hub.NewEventBus(), false)
 	defer cleanup()
 
@@ -42,6 +46,8 @@ func TestCollisionSubscribeReturnsDisabledError(t *testing.T) {
 }
 
 func TestBusEventReachesSubscribedClient(t *testing.T) {
+	t.Parallel()
+
 	bus := hub.NewEventBus()
 	client, cleanup := startTestHub(t, bus, true)
 	defer cleanup()
@@ -73,6 +79,8 @@ func TestBusEventReachesSubscribedClient(t *testing.T) {
 }
 
 func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
+	t.Parallel()
+
 	bus := hub.NewEventBus()
 	client, cleanup := startTestHub(t, bus, true)
 	writeWS(t, client, map[string]any{"event": "subscribe", "topic": topicLocationUpdates})
@@ -98,6 +106,8 @@ func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 }
 
 func TestSendWrapperSafeDuringConcurrentClose(t *testing.T) {
+	t.Parallel()
+
 	bus := hub.NewEventBus()
 	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 1, true)
 	server2 := httptest.NewServer(http.HandlerFunc(h.Handle))

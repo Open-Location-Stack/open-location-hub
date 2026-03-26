@@ -23,6 +23,8 @@ import (
 )
 
 func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
+	t.Parallel()
+
 	ctx, appBaseURL, brokerURL := startHubNoAuth(t)
 	subscriber, messages := mqttSubscriber(t, brokerURL,
 		mqtt.TopicLocationLocal("provider-local"),
@@ -101,6 +103,8 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 }
 
 func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) {
+	t.Parallel()
+
 	_, appBaseURL, brokerURL := startHubNoAuth(t)
 	subscriber, messages := mqttSubscriber(t, brokerURL,
 		mqtt.TopicLocationLocal("provider-missing"),
@@ -198,8 +202,8 @@ func startHubNoAuth(t *testing.T) (context.Context, string, string) {
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    repoPath(t, "."),
 			Dockerfile: "Dockerfile",
-			Repo:       "open-rtls-hub-e2e-transform",
-			Tag:        "latest",
+			Repo:       testImageRepo(t, "open-rtls-hub-e2e-transform"),
+			Tag:        testImageTag(),
 		},
 		ExposedPorts: []string{"8080/tcp"},
 		Networks:     []string{network.Name},
