@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,25 +24,36 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/ws"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
+const shutdownTimeout = 10 * time.Second
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "open-rtls-hub: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
 	cfg, err := config.FromEnv()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	logger, cleanupLogger, err := observability.NewLogger(cfg.LogLevel)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("init logger: %w", err)
 	}
 	defer cleanupLogger()
 
-	ctx := context.Background()
-
 	pg, err := postgres.NewPool(ctx, cfg.PostgresURL)
 	if err != nil {
-		logger.Fatal("postgres init failed", observability.Error(err))
+		return fmt.Errorf("postgres init failed: %w", err)
 	}
 	defer pg.Close()
 
@@ -50,19 +62,19 @@ func main() {
 
 	mq, err := mqtt.NewClient(logger, cfg.MQTTBrokerURL)
 	if err != nil {
-		logger.Fatal("mqtt init failed", observability.Error(err))
+		return fmt.Errorf("mqtt init failed: %w", err)
 	}
 	defer func() { _ = mq.Close() }()
 
 	authenticator, err := auth.NewAuthenticator(ctx, cfg.Auth)
 	if err != nil {
-		logger.Fatal("auth init failed", observability.Error(err))
+		return fmt.Errorf("auth init failed: %w", err)
 	}
 	var registry *auth.Registry
 	if cfg.Auth.Enabled && cfg.Auth.Mode != "none" {
 		registry, err = auth.LoadRegistry(cfg.Auth.PermissionsFile)
 		if err != nil {
-			logger.Fatal("auth permissions init failed", observability.Error(err))
+			return fmt.Errorf("auth permissions init failed: %w", err)
 		}
 	}
 
@@ -84,15 +96,19 @@ func main() {
 		ProximityResolutionStaleStateTTL:      cfg.ProximityResolutionStaleStateTTL,
 	})
 	mqttPublisher := mqtt.NewEventPublisher(mq)
+	var cleanupMQTTPublisher func()
 	if eventBus != nil {
-		ch, _ := eventBus.Subscribe(128)
-		go func() {
-			for event := range ch {
-				if err := mqttPublisher.Handle(context.Background(), event); err != nil {
-					logger.Warn("mqtt event publish failed", observability.Error(err))
-				}
-			}
-		}()
+		var ch <-chan hub.Event
+		var unsubscribeMQTTPublisher func()
+		ch, unsubscribeMQTTPublisher = eventBus.Subscribe(128)
+		mqttPublisherDone := runEventPublisher(ctx, logger, ch, mqttPublisher.Handle)
+		cleanupMQTTPublisher = func() {
+			unsubscribeMQTTPublisher()
+			<-mqttPublisherDone
+		}
+	}
+	if cleanupMQTTPublisher != nil {
+		defer cleanupMQTTPublisher()
 	}
 	rpcBridge, err := rpc.NewBridge(logger, mq, rpc.Config{
 		Timeout:              cfg.RPCTimeout,
@@ -105,7 +121,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		logger.Fatal("rpc bridge init failed", observability.Error(err))
+		return fmt.Errorf("rpc bridge init failed: %w", err)
 	}
 	defer func() { _ = rpcBridge.Close() }()
 
@@ -120,7 +136,7 @@ func main() {
 		}
 		return service.ProcessLocations(ctx, []gen.Location{single})
 	}); err != nil {
-		logger.Fatal("mqtt location subscription failed", observability.Error(err))
+		return fmt.Errorf("mqtt location subscription failed: %w", err)
 	}
 
 	if err := mq.Subscribe(mqtt.TopicProximityWildcard(), func(ctx context.Context, _ string, payload []byte) error {
@@ -134,7 +150,7 @@ func main() {
 		}
 		return service.ProcessProximities(ctx, []gen.Proximity{single})
 	}); err != nil {
-		logger.Fatal("mqtt proximity subscription failed", observability.Error(err))
+		return fmt.Errorf("mqtt proximity subscription failed: %w", err)
 	}
 
 	r := chi.NewRouter()
@@ -162,20 +178,50 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	serverErrCh := make(chan error, 1)
+	serverDone := make(chan struct{})
 	go func() {
+		defer close(serverDone)
 		logger.Info("http server starting", observability.String("addr", cfg.HTTPListenAddr))
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("http server failed", observability.Error(err))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrCh <- err
 		}
 	}()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	select {
+	case err := <-serverErrCh:
+		return fmt.Errorf("http server failed: %w", err)
+	case <-ctx.Done():
+		logger.Info("shutdown requested", observability.Error(ctx.Err()))
+	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown failed", observability.Error(err))
+		return fmt.Errorf("shutdown failed: %w", err)
 	}
+	<-serverDone
+
+	return nil
+}
+
+func runEventPublisher(ctx context.Context, logger *zap.Logger, events <-chan hub.Event, publish func(context.Context, hub.Event) error) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-events:
+				if !ok {
+					return
+				}
+				if err := publish(ctx, event); err != nil && !errors.Is(err, context.Canceled) {
+					logger.Warn("mqtt event publish failed", observability.Error(err))
+				}
+			}
+		}
+	}()
+	return done
 }

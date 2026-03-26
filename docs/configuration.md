@@ -2,6 +2,11 @@
 
 All runtime configuration is environment-driven.
 
+Runtime lifecycle behavior:
+- the hub process now runs from a single signal-aware root context created from `SIGINT` and `SIGTERM`
+- startup failures return structured process errors instead of panicking during early config or logger initialization
+- graceful shutdown uses a bounded timeout so HTTP shutdown and internal event-publisher fan-out can complete deterministically after a stop signal
+
 ## Core
 - `HTTP_LISTEN_ADDR` (default `:8080`)
 - `HTTP_REQUEST_BODY_LIMIT_BYTES` (default `4194304`)
