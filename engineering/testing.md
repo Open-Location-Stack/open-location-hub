@@ -60,15 +60,17 @@ The suite boots Postgres, Valkey, and Mosquitto containers and performs migratio
 If Docker is unavailable, tests should skip.
 The integration harness now retries migration startup briefly so hosted CI runners tolerate transient Postgres readiness and connection-reset races during container boot.
 The Docker-backed integration tests now use unique per-test image references for Dockerfile builds so `t.Parallel()` can run without sharing `latest`-tag image state across tests.
+The shared hub application image is now built once per integration test process and reused across scenarios so full-suite parallel runs do not overwhelm local Docker VMs with redundant identical builds.
 
 The auth end-to-end suite also boots Dex, fetches a bearer token over the token endpoint, and proves that the hub accepts or rejects requests with `401` and `403` as expected.
 The CRS end-to-end suite uses Mosquitto-backed publication checks to verify that local and WGS84 topics carry true derived variants and that unavailable derived topics are suppressed.
+The integration suite now also includes shared-hub scenario coverage for high-traffic paths: concurrent REST location publishers with simultaneous MQTT and WebSocket subscribers, mixed REST and MQTT ingest against one running hub instance, and a ten-object movement scenario that traverses multiple arranged geofences while asserting both trackable-motion updates and fence entry/exit accuracy.
 
 ## Notes
 
 - `just generate` must run after OpenAPI changes so generated handler interfaces stay aligned.
 - `just check` reruns formatting, lint, tests, and build validation, so use it as the final gate before commit.
-- CI runs `just lint`, `just test`, and `just test-race`; the lint step now includes static analysis, vuln scanning, module tidiness, and generated-file cleanliness.
+- CI now splits the regular verification path and the race-detector path into separate GitHub Actions jobs so the slower `just test` and `just test-race` stages run concurrently; the regular verification job still runs generation checks, lint, unit/integration tests, and build validation.
 - CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary.
 - On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there.
 - Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.

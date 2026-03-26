@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build-test:
+  verify:
     runs-on: ubuntu-latest
     env:
       OAPI_CODEGEN_VERSION: v2.6.0
@@ -48,8 +48,36 @@ jobs:
       - name: Unit tests
         run: just test
 
+  race:
+    runs-on: ubuntu-latest
+    env:
+      OAPI_CODEGEN_VERSION: v2.6.0
+      SQLC_VERSION: v1.30.0
+      GOOSE_VERSION: v3.27.0
+      STATICCHECK_VERSION: v0.7.0
+      GOVULNCHECK_VERSION: v1.1.4
+      APT_PACKAGES: just pkg-config libproj-dev proj-data
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Ubuntu build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $APT_PACKAGES
+
+      - name: Cache Go tool binaries
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin
+          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
+
+      - name: Bootstrap tools
+        run: just bootstrap
+
       - name: Race tests
         run: just test-race
-
-      - name: Build
-        run: just build

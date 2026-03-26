@@ -199,12 +199,7 @@ func startHubNoAuth(t *testing.T) (context.Context, string, string) {
 	runMigrations(t, ctx, dsn)
 
 	appReq := testcontainers.ContainerRequest{
-		FromDockerfile: testcontainers.FromDockerfile{
-			Context:    repoPath(t, "."),
-			Dockerfile: "Dockerfile",
-			Repo:       testImageRepo(t, "open-rtls-hub-e2e-transform"),
-			Tag:        testImageTag(),
-		},
+		Image:        sharedHubImage(t),
 		ExposedPorts: []string{"8080/tcp"},
 		Networks:     []string{network.Name},
 		NetworkAliases: map[string][]string{

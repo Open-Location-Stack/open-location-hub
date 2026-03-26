@@ -9,6 +9,7 @@ The repository documentation is now split by audience: software/runtime document
 ### Completed and verified
 - Project harness is in place: `justfile`, `Dockerfile`, `docker-compose.yml`, and runtime bootstrap in `cmd/hub/main.go`.
 - The repository dependency baseline has been refreshed to current stable compatible Go module releases, and CI now targets the latest stable GitHub Action major tags for checkout, Go setup, and cache while installing `just` from Ubuntu packages.
+- GitHub Actions now splits the regular verification path and the race-detector path into parallel jobs so the slowest repository checks do not serialize wall-clock time on every push or pull request.
 - The normative OpenAPI contract exists in `specifications/openapi/omlox-hub.v0.yaml`, and generated server/types are present under `internal/httpapi/gen`.
 - Public Go packages now include package-level and exported-symbol doc comments so `go doc` renders the operational API surface more usefully for maintainers.
 - Repository-local Codex skills now explicitly require documentation updates during implementation work and provide a dedicated documentation skill for Go doc, OpenAPI, and implementation-facing docs.
@@ -22,8 +23,8 @@ The repository documentation is now split by audience: software/runtime document
 - The mandatory OMLOX WebSocket surface is implemented at `GET /v2/ws/socket`, including wrapper events, runtime subscription IDs, topic fan-out, `params.token` authentication, dedicated WebSocket topic permissions, GeoJSON topic variants, and disabled-feature errors for collision topic access when collisions are turned off.
 - Collision support now exists as an explicitly optional feature controlled by `COLLISIONS_ENABLED`; when enabled, the hub emits bounded single-hub trackable-versus-trackable collision events in WGS84.
 - RPC now operates as a control-plane surface: `GET /v2/rpc/available` and `PUT /v2/rpc` support hub-owned methods, MQTT-bridged methods, retained method discovery, and the `_all_within_timeout`, `_return_first_success`, and `_return_first_error` aggregation modes.
-- Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, and Dex-backed end-to-end authorization, with `t.Parallel()` now enabled across the test suites after removing the remaining shared runtime-seam and process-env test coupling.
-- The integration test harness now keeps HTTP response bodies open for decode assertions, retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners, and uses unique per-test Docker image references so concurrent integration runs do not contend on shared `latest` tags.
+- Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, Dex-backed end-to-end authorization, and shared-hub traffic scenarios including multi-geofence movement validation, with `t.Parallel()` now enabled across the test suites after removing the remaining shared runtime-seam and process-env test coupling.
+- The integration test harness now keeps HTTP response bodies open for decode assertions, retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners, auto-aligns Testcontainers with the active Docker context when local runtimes use non-default Unix sockets, and reuses one shared hub app image per integration test process so concurrent runs do not contend on redundant identical builds.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
 - The repository quality gates now include a dedicated `just test-race` target plus a deeper `just lint` stack that runs `go vet`, `staticcheck`, `govulncheck`, `go mod tidy`, and generated-file cleanliness checks for the OpenAPI and `sqlc` outputs.
 - Test execution now favors parallelism across packages, tests, and selected subtests because the remaining environment and runtime-entry tests were refactored to use injected test-local dependencies instead of shared process-global state.
@@ -42,7 +43,7 @@ The repository documentation is now split by audience: software/runtime document
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
 - PROJ installation on macOS currently relies on a shimmed host setup. In practice that means coordinate-transformation behavior is not a verified macOS build path in the current repository state.
 - Linux and Docker builds use native PROJ packages and are expected to work normally.
-- GitHub Actions Ubuntu runners now explicitly install `just`, `pkg-config`, `libproj-dev`, and `proj-data` before `just lint`, `just test`, and `just build`, matching the documented Linux dependency model.
+- GitHub Actions Ubuntu runners now explicitly install `just`, `pkg-config`, `libproj-dev`, and `proj-data` before the regular verification and race-test jobs, matching the documented Linux dependency model.
 - CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
@@ -76,6 +77,7 @@ Delivered:
 - CRS transformation uses PROJ-backed named CRS conversion plus zone `ground_control_points` fitting for local georeferencing.
 - Proximity-derived locations still originate in local zone coordinates, but georeferenced zones now also emit derived WGS84 publication.
 - Service-level and end-to-end tests cover round-trip transformation behavior, randomized and edge-case coordinate conversion, topic suppression when a derived variant is unavailable, and Mosquitto-backed live publish/subscribe assertions.
+- Shared-hub scenario tests now cover concurrent REST location publishers with simultaneous MQTT and WebSocket subscribers, mixed REST and MQTT ingest against one running hub instance, and a ten-object path traversal across multiple arranged geofences so the highest-volume traffic shapes are exercised beyond isolated single-publisher flows while also checking fence entry/exit accuracy and latest motion updates.
 
 ### Phase 3: MQTT bridge baseline
 Delivered:
