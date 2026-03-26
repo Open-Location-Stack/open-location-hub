@@ -147,9 +147,10 @@ func main() {
 	})
 
 	h := handlers.New(handlers.Dependencies{
-		Logger:  logger,
-		Service: service,
-		RPC:     rpcBridge,
+		Logger:                logger,
+		Service:               service,
+		RPC:                   rpcBridge,
+		RequestBodyLimitBytes: cfg.HTTPRequestBodyLimitBytes,
 	})
 	gen.HandlerFromMux(h, r)
 	wsHub := ws.New(logger, service, eventBus, authenticator, registry, cfg.Auth, cfg.WebSocketWriteTimeout, cfg.WebSocketOutboundBuffer, cfg.CollisionsEnabled)

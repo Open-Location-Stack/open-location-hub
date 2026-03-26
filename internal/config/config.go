@@ -12,6 +12,7 @@ import (
 // variables.
 type Config struct {
 	HTTPListenAddr                        string
+	HTTPRequestBodyLimitBytes             int64
 	LogLevel                              string
 	PostgresURL                           string
 	ValkeyURL                             string
@@ -57,6 +58,7 @@ type AuthConfig struct {
 func FromEnv() (Config, error) {
 	cfg := Config{
 		HTTPListenAddr:                        env("HTTP_LISTEN_ADDR", ":8080"),
+		HTTPRequestBodyLimitBytes:             int64Env("HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
 		LogLevel:                              env("LOG_LEVEL", "info"),
 		PostgresURL:                           env("POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
 		ValkeyURL:                             env("VALKEY_URL", "redis://localhost:6379/0"),
@@ -103,6 +105,9 @@ func FromEnv() (Config, error) {
 	}
 	if cfg.WebSocketWriteTimeout <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_WRITE_TIMEOUT must be > 0")
+	}
+	if cfg.HTTPRequestBodyLimitBytes <= 0 {
+		return Config{}, fmt.Errorf("HTTP_REQUEST_BODY_LIMIT_BYTES must be > 0")
 	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")
@@ -259,6 +264,18 @@ func intEnv(k string, d int) int {
 		return d
 	}
 	x, err := strconv.Atoi(v)
+	if err != nil {
+		return d
+	}
+	return x
+}
+
+func int64Env(k string, d int64) int64 {
+	v := env(k, "")
+	if v == "" {
+		return d
+	}
+	x, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
 		return d
 	}

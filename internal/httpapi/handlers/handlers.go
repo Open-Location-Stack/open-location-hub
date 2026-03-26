@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
@@ -13,9 +14,10 @@ import (
 
 // Dependencies groups the runtime collaborators required by Handler.
 type Dependencies struct {
-	Logger  *zap.Logger
-	Service *hub.Service
-	RPC     *rpc.Bridge
+	Logger                *zap.Logger
+	Service               *hub.Service
+	RPC                   *rpc.Bridge
+	RequestBodyLimitBytes int64
 }
 
 // Handler implements the generated OpenAPI server interface.
@@ -34,7 +36,7 @@ func (h *Handler) ListZones(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateZone(w http.ResponseWriter, r *http.Request) {
-	body, err := readRawBody(r)
+	body, err := readRawBody(w, r, h.deps.RequestBodyLimitBytes)
 	if err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
@@ -49,7 +51,7 @@ func (h *Handler) GetZone(w http.ResponseWriter, r *http.Request, id gen.ZoneId)
 }
 
 func (h *Handler) UpdateZone(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
-	body, err := readRawBody(r)
+	body, err := readRawBody(w, r, h.deps.RequestBodyLimitBytes)
 	if err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
@@ -70,7 +72,7 @@ func (h *Handler) ListTrackables(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateTrackable(w http.ResponseWriter, r *http.Request) {
 	var body gen.TrackableWrite
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -85,7 +87,7 @@ func (h *Handler) GetTrackable(w http.ResponseWriter, r *http.Request, id gen.Tr
 
 func (h *Handler) UpdateTrackable(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
 	var body gen.TrackableWrite
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -105,7 +107,7 @@ func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateProvider(w http.ResponseWriter, r *http.Request) {
 	var body gen.LocationProviderWrite
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -120,7 +122,7 @@ func (h *Handler) GetProvider(w http.ResponseWriter, r *http.Request, id gen.Pro
 
 func (h *Handler) UpdateProvider(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
 	var body gen.LocationProviderWrite
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -135,7 +137,7 @@ func (h *Handler) DeleteProvider(w http.ResponseWriter, r *http.Request, id gen.
 
 func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 	var body []gen.Location
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -145,7 +147,7 @@ func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
 	var body []gen.Proximity
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -159,7 +161,7 @@ func (h *Handler) ListFences(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) CreateFence(w http.ResponseWriter, r *http.Request) {
-	body, err := readRawBody(r)
+	body, err := readRawBody(w, r, h.deps.RequestBodyLimitBytes)
 	if err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
@@ -174,7 +176,7 @@ func (h *Handler) GetFence(w http.ResponseWriter, r *http.Request, id gen.FenceI
 }
 
 func (h *Handler) UpdateFence(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
-	body, err := readRawBody(r)
+	body, err := readRawBody(w, r, h.deps.RequestBodyLimitBytes)
 	if err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
@@ -195,7 +197,7 @@ func (h *Handler) GetRPCAvailable(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) PutRPC(w http.ResponseWriter, r *http.Request) {
 	var body gen.JsonRpcRequest
-	if err := decodeJSONBody(r, &body); err != nil {
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
@@ -213,19 +215,34 @@ func (h *Handler) PutRPC(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(response)
 }
 
-func decodeJSONBody(r *http.Request, dst any) error {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst any) error {
+	if err := decodeSingleJSONDocument(w, r, limit, dst); err != nil {
 		return &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
 	}
 	return nil
 }
 
-func readRawBody(r *http.Request) (json.RawMessage, error) {
+func readRawBody(w http.ResponseWriter, r *http.Request, limit int64) (json.RawMessage, error) {
 	var raw json.RawMessage
-	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+	if err := decodeSingleJSONDocument(w, r, limit, &raw); err != nil {
 		return nil, &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
 	}
 	return raw, nil
+}
+
+func decodeSingleJSONDocument(w http.ResponseWriter, r *http.Request, limit int64, dst any) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("unexpected trailing JSON content")
+		}
+		return err
+	}
+	return nil
 }
 
 func writeAcceptedOrError(w http.ResponseWriter, err error) {

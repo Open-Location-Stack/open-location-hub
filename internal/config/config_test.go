@@ -11,6 +11,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.HTTPListenAddr != ":8080" {
 		t.Fatalf("unexpected listen addr: %s", cfg.HTTPListenAddr)
 	}
+	if cfg.HTTPRequestBodyLimitBytes != 4*1024*1024 {
+		t.Fatalf("unexpected request body limit: %d", cfg.HTTPRequestBodyLimitBytes)
+	}
 	if cfg.Auth.PermissionsFile != "config/auth/permissions.yaml" {
 		t.Fatalf("unexpected permissions file: %s", cfg.Auth.PermissionsFile)
 	}
@@ -56,6 +59,15 @@ func TestEnabledAuthRequiresPermissionsFile(t *testing.T) {
 func TestTransientStateSettingsMustBePositive(t *testing.T) {
 	t.Setenv("AUTH_MODE", "none")
 	t.Setenv("STATE_LOCATION_TTL", "0s")
+	_, err := FromEnv()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestRequestBodyLimitMustBePositive(t *testing.T) {
+	t.Setenv("AUTH_MODE", "none")
+	t.Setenv("HTTP_REQUEST_BODY_LIMIT_BYTES", "0")
 	_, err := FromEnv()
 	if err == nil {
 		t.Fatal("expected validation error")

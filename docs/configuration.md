@@ -4,12 +4,18 @@ All runtime configuration is environment-driven.
 
 ## Core
 - `HTTP_LISTEN_ADDR` (default `:8080`)
+- `HTTP_REQUEST_BODY_LIMIT_BYTES` (default `4194304`)
 - `LOG_LEVEL` (default `info`)
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
 - `VALKEY_URL` (default `redis://localhost:6379/0`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
+
+HTTP request decoding behavior:
+- JSON request bodies are capped by `HTTP_REQUEST_BODY_LIMIT_BYTES` before decode work proceeds
+- the REST/RPC handler layer accepts exactly one JSON document per request body and rejects trailing JSON tokens
+- unknown JSON object fields remain allowed so forwards-compatible clients are not rejected solely for extension data
 
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)

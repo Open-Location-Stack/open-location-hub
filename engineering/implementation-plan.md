@@ -26,6 +26,7 @@ The repository documentation is now split by audience: software/runtime document
 - The integration test harness now keeps HTTP response bodies open for decode assertions and retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners.
 - The OpenAPI contract now includes clearer tag, operation, parameter, response, and schema descriptions for the current REST and RPC surface.
 - The repository quality gates now include a dedicated `just test-race` target plus a deeper `just lint` stack that runs `go vet`, `staticcheck`, `govulncheck`, `go mod tidy`, and generated-file cleanliness checks for the OpenAPI and `sqlc` outputs.
+- The handwritten REST/RPC handler layer now hardens JSON request decoding with a shared body-size ceiling, single-document enforcement, and helper-level tests while still allowing unknown object fields for extension compatibility.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
@@ -47,7 +48,6 @@ The repository documentation is now split by audience: software/runtime document
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
-- HTTP request decoding currently trusts unbounded request bodies and does not consistently reject trailing JSON tokens after the first payload decode.
 - Process lifecycle handling is still partly background-context based; the runtime entrypoint does not yet drive all long-lived goroutines from a single signal-aware root context and still uses `panic` for early config/logger initialization failures.
 - Coverage remains uneven around runtime adapters and entrypoints; the REST handler layer, process wiring, MQTT client edges, observability package, and storage/Valkey adapters still need more direct tests.
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
@@ -119,7 +119,6 @@ Scope:
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
 - Evaluate whether repository scale and rule count now justify consolidating the current explicit lint commands under `golangci-lint` or a comparable aggregator without obscuring which checks actually gate CI.
 - Refactor runtime lifecycle management so startup and shutdown run through a single signal-aware root context, background goroutines can be cancelled deterministically, and fatal initialization failures use consistent structured error exits instead of early panics.
-- Harden the HTTP adapter against malformed or abusive request bodies by enforcing body-size ceilings, rejecting trailing JSON tokens, and making handler-level decode behavior more explicit.
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.
 - Establish baseline performance checks for CRUD, ingest, MQTT publication, and RPC fan-out/fan-in behavior.
 - Raise direct test coverage around runtime adapters and entrypoints, especially the REST handler layer, MQTT client edges, and process wiring, so regressions at package boundaries are caught earlier.
