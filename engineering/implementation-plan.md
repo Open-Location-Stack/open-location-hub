@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, cache, and `just` installation.
+This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, a local `just check` run, a `go test -race` pass attempt across the repo's testable packages, package-level coverage sampling, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, cache, and `just` installation.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -45,6 +45,11 @@ The repository documentation is now split by audience: software/runtime document
 - RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
+- The repository quality gates currently stop at `gofmt`, `go vet`, package tests, and build verification; race-detector coverage, broader static analysis, vulnerability scanning, and `go mod tidy` enforcement are not yet part of the standard workflow.
+- The current RPC test suite is not yet race-clean because bridge startup launches announcement work concurrently with unsynchronized fake MQTT publisher mutation in tests; this does not currently fail the default workflow because `-race` is not part of `just check` or CI.
+- HTTP request decoding currently trusts unbounded request bodies and does not consistently reject trailing JSON tokens after the first payload decode.
+- Process lifecycle handling is still partly background-context based; the runtime entrypoint does not yet drive all long-lived goroutines from a single signal-aware root context and still uses `panic` for early config/logger initialization failures.
+- Coverage remains uneven around runtime adapters and entrypoints; the REST handler layer, process wiring, MQTT client edges, observability package, and storage/Valkey adapters still need more direct tests.
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
 - Collision support is intentionally bounded and configuration-gated; it does not yet model cross-hub correlation, richer polygon semantics, or broader OMLOX collision behaviors beyond trackable-versus-trackable detection.
 - Federation between OMLOX hubs is not yet modeled in configuration, auth, data provenance, or runtime behavior, so current deployments are effectively single-hub topologies.
@@ -89,6 +94,7 @@ Delivered:
 - Unit coverage now includes method discovery, local handler dispatch, `_all_within_timeout`, `_return_first_error`, invalid-parameter handling, and per-method authorization checks.
 
 Residual work:
+- Make the RPC bridge and its test doubles race-clean, including announcement-loop interactions and mixed local/external publish-response scenarios, and add race-detector coverage for the package in the standard verification flow.
 - Add Mosquitto-backed end-to-end coverage for retained announcements, reconnect re-announcement behavior, and mixed local/external handler scenarios.
 - Implement one or more real `com.omlox.core.xcmd` adapters for supported provider/core integrations.
 - Extend RPC auditability and operational diagnostics beyond the current structured logs.
@@ -112,11 +118,15 @@ Residual work:
 Scope:
 - Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, Valkey, MQTT, and RPC.
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
+- Add stronger Go quality gates to the standard workflow and CI, including race-detector coverage, broader static analysis, vulnerability scanning, and module-hygiene enforcement for generated and dependency state.
+- Refactor runtime lifecycle management so startup and shutdown run through a single signal-aware root context, background goroutines can be cancelled deterministically, and fatal initialization failures use consistent structured error exits instead of early panics.
+- Harden the HTTP adapter against malformed or abusive request bodies by enforcing body-size ceilings, rejecting trailing JSON tokens, and making handler-level decode behavior more explicit.
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.
 - Establish baseline performance checks for CRUD, ingest, MQTT publication, and RPC fan-out/fan-in behavior.
+- Raise direct test coverage around runtime adapters and entrypoints, especially the REST handler layer, MQTT client edges, and process wiring, so regressions at package boundaries are caught earlier.
 
 Exit criteria:
-- The hub can be operated with clear visibility into failures, dependency health, and expected throughput characteristics.
+- The hub can be operated with clear visibility into failures, dependency health, expected throughput characteristics, and repository quality checks that exercise concurrency and adapter-boundary failure modes.
 
 ### Additional implementation depth
 Scope:
@@ -199,6 +209,7 @@ To move this repository toward feature-complete status for the intended product 
 The next documentation work should focus on current implemented behavior that is still under-documented in the software-facing docs under `docs/`.
 
 - Add a runtime and operations guide covering startup assumptions, dependency expectations, Docker versus host-native workflows, readiness expectations, and the current observability limits.
+- Add a contributor-quality guide covering the required `just` workflow, what CI currently enforces, when to run race-detector and deeper static-analysis checks locally, and how generated-code/module-hygiene checks are expected to stay clean.
 - Add an ingest and CRS guide covering accepted location and proximity inputs, local versus WGS84 derivation behavior, ground control point expectations, and the current macOS versus Linux/Docker verification caveat.
 - Expand MQTT and RPC documentation to cover inbound and outbound topic responsibilities, retained method announcements, aggregation modes, the auth boundary, and the current `com.omlox.core.xcmd` adapter limitation.
 - Add a data and behavior model guide covering the canonical JSON payload storage model, current query and filter limitations, proximity-resolution behavior and limits, and the current fence-processing simplifications.
