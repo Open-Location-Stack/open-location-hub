@@ -28,6 +28,7 @@ The repository documentation is now split by audience: software/runtime document
 - The repository quality gates now include a dedicated `just test-race` target plus a deeper `just lint` stack that runs `go vet`, `staticcheck`, `govulncheck`, `go mod tidy`, and generated-file cleanliness checks for the OpenAPI and `sqlc` outputs.
 - The handwritten REST/RPC handler layer now hardens JSON request decoding with a shared body-size ceiling, single-document enforcement, and helper-level tests while still allowing unknown object fields for extension compatibility.
 - The runtime entrypoint now uses a `run(ctx)` lifecycle with `signal.NotifyContext`, structured early-startup error returns instead of config/logger panics, and deterministic shutdown of the HTTP server plus the MQTT event-publisher goroutine from one root context.
+- Adapter and runtime coverage is now broader: route-level `httptest` coverage exercises the REST handler surface across CRUD, ingest, fence, and RPC paths; the MQTT client has direct tests for reconnect hooks, publish/subscribe timeouts, broker errors, and disconnect behavior; and `cmd/hub` now has startup/shutdown smoke coverage plus startup failure-path assertions via injectable runtime seams.
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
@@ -49,7 +50,7 @@ The repository documentation is now split by audience: software/runtime document
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
-- Coverage remains uneven around runtime adapters and entrypoints; the REST handler layer, process wiring, MQTT client edges, observability package, and storage/Valkey adapters still need more direct tests.
+- Coverage is still lighter in observability and storage/Valkey adapter packages than in the core service and RPC packages, but the previous blind spots around the REST handler layer, MQTT client edges, and process wiring now have direct failure-path coverage.
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
 - Collision support is intentionally bounded and configuration-gated; it does not yet model cross-hub correlation, richer polygon semantics, or broader OMLOX collision behaviors beyond trackable-versus-trackable detection.
 - Federation between OMLOX hubs is not yet modeled in configuration, auth, data provenance, or runtime behavior, so current deployments are effectively single-hub topologies.
@@ -121,6 +122,7 @@ Scope:
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.
 - Establish baseline performance checks for CRUD, ingest, MQTT publication, and RPC fan-out/fan-in behavior.
 - Raise direct test coverage around runtime adapters and entrypoints, especially the REST handler layer, MQTT client edges, and process wiring, so regressions at package boundaries are caught earlier.
+- Extend the same style of boundary-focused tests to observability logging middleware and the storage/Valkey adapters so the remaining low-coverage runtime packages have comparable regression resistance.
 
 Exit criteria:
 - The hub can be operated with clear visibility into failures, dependency health, expected throughput characteristics, and repository quality checks that exercise concurrency and adapter-boundary failure modes.

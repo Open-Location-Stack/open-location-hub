@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,16 +9,47 @@ import (
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
-	"github.com/formation-res/open-rtls-hub/internal/rpc"
 	"go.uber.org/zap"
 )
 
 // Dependencies groups the runtime collaborators required by Handler.
 type Dependencies struct {
 	Logger                *zap.Logger
-	Service               *hub.Service
-	RPC                   *rpc.Bridge
+	Service               Service
+	RPC                   RPCBridge
 	RequestBodyLimitBytes int64
+}
+
+// Service captures the hub operations exposed over the REST adapter.
+type Service interface {
+	ListZones(ctx context.Context) ([]gen.Zone, error)
+	CreateZone(ctx context.Context, body json.RawMessage) (gen.Zone, error)
+	GetZone(ctx context.Context, id gen.ZoneId) (gen.Zone, error)
+	UpdateZone(ctx context.Context, id gen.ZoneId, body json.RawMessage) (gen.Zone, error)
+	DeleteZone(ctx context.Context, id gen.ZoneId) error
+	ListTrackables(ctx context.Context) ([]gen.Trackable, error)
+	CreateTrackable(ctx context.Context, body gen.TrackableWrite) (gen.Trackable, error)
+	GetTrackable(ctx context.Context, id gen.TrackableId) (gen.Trackable, error)
+	UpdateTrackable(ctx context.Context, id gen.TrackableId, body gen.TrackableWrite) (gen.Trackable, error)
+	DeleteTrackable(ctx context.Context, id gen.TrackableId) error
+	ListProviders(ctx context.Context) ([]gen.LocationProvider, error)
+	CreateProvider(ctx context.Context, body gen.LocationProviderWrite) (gen.LocationProvider, error)
+	GetProvider(ctx context.Context, id gen.ProviderId) (gen.LocationProvider, error)
+	UpdateProvider(ctx context.Context, id gen.ProviderId, body gen.LocationProviderWrite) (gen.LocationProvider, error)
+	DeleteProvider(ctx context.Context, id gen.ProviderId) error
+	ProcessLocations(ctx context.Context, locations []gen.Location) error
+	ProcessProximities(ctx context.Context, proximities []gen.Proximity) error
+	ListFences(ctx context.Context) ([]gen.Fence, error)
+	CreateFence(ctx context.Context, body json.RawMessage) (gen.Fence, error)
+	GetFence(ctx context.Context, id gen.FenceId) (gen.Fence, error)
+	UpdateFence(ctx context.Context, id gen.FenceId, body json.RawMessage) (gen.Fence, error)
+	DeleteFence(ctx context.Context, id gen.FenceId) error
+}
+
+// RPCBridge captures the JSON-RPC operations exposed over HTTP.
+type RPCBridge interface {
+	AvailableMethods(ctx context.Context) (gen.RpcAvailableMethods, error)
+	Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.RawMessage, bool, error)
 }
 
 // Handler implements the generated OpenAPI server interface.

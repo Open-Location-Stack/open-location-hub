@@ -2,13 +2,125 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/formation-res/open-rtls-hub/internal/auth"
+	"github.com/formation-res/open-rtls-hub/internal/config"
+	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/mqtt"
+	"github.com/formation-res/open-rtls-hub/internal/rpc"
+	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
+	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"go.uber.org/zap"
 )
+
+func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
+	restore := stubRuntimeForTest(t)
+	defer restore()
+
+	fakeMQTTClient := &fakeRuntimeMQTT{}
+	probeDone := make(chan error, 1)
+	server := &fakeHTTPServer{
+		onListen: func(handler http.Handler) {
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
+				probeDone <- errors.New("health endpoint not wired correctly")
+				return
+			}
+			probeDone <- nil
+		},
+	}
+
+	newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+		return fakeMQTTClient, nil
+	}
+	newHTTPServer = func(_ string, handler http.Handler) httpServer {
+		server.handler = handler
+		return server
+	}
+	newEventBus = func() *hub.EventBus { return nil }
+	newService = func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
+		return &hub.Service{}
+	}
+	newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
+		return fakeRuntimeRPCBridge{}, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ctx)
+	}()
+
+	select {
+	case err := <-probeDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for health probe")
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for run to exit")
+	}
+
+	if !fakeMQTTClient.subscribed(mqtt.TopicLocationPubWildcard()) {
+		t.Fatalf("expected location subscription %q", mqtt.TopicLocationPubWildcard())
+	}
+	if !fakeMQTTClient.subscribed(mqtt.TopicProximityWildcard()) {
+		t.Fatalf("expected proximity subscription %q", mqtt.TopicProximityWildcard())
+	}
+	if !server.shutdownCalled {
+		t.Fatal("expected graceful shutdown")
+	}
+}
+
+func TestRunReturnsMQTTSubscriptionFailure(t *testing.T) {
+	restore := stubRuntimeForTest(t)
+	defer restore()
+
+	wantErr := errors.New("subscribe failed")
+	newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+		return &fakeRuntimeMQTT{subscribeErrByFilter: map[string]error{
+			mqtt.TopicProximityWildcard(): wantErr,
+		}}, nil
+	}
+	newHTTPServer = func(_ string, handler http.Handler) httpServer {
+		_ = handler
+		t.Fatal("server should not start when mqtt subscription fails")
+		return nil
+	}
+	newEventBus = func() *hub.EventBus { return nil }
+	newService = func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
+		return &hub.Service{}
+	}
+	newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
+		return fakeRuntimeRPCBridge{}, nil
+	}
+
+	err := run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "mqtt proximity subscription failed: subscribe failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestRunEventPublisherPublishesEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,4 +183,165 @@ func TestRunEventPublisherStopsOnCanceledContext(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for publisher shutdown after context cancellation")
 	}
+}
+
+func stubRuntimeForTest(t *testing.T) func() {
+	t.Helper()
+
+	prevLoadConfig := loadConfig
+	prevNewLogger := newLogger
+	prevOpenQueries := openQueries
+	prevNewCache := newCache
+	prevNewMQTT := newMQTT
+	prevNewAuthenticator := newAuthenticator
+	prevLoadRegistry := loadRegistry
+	prevNewEventBus := newEventBus
+	prevNewService := newService
+	prevEventPublisherHandle := eventPublisherHandle
+	prevNewRPCBridge := newRPCBridge
+	prevNewHTTPServer := newHTTPServer
+
+	loadConfig = func() (config.Config, error) {
+		return config.Config{
+			HTTPListenAddr:                       ":0",
+			HTTPRequestBodyLimitBytes:            1024,
+			LogLevel:                             "info",
+			PostgresURL:                          "postgres://test",
+			ValkeyURL:                            "redis://localhost:6379/0",
+			MQTTBrokerURL:                        "tcp://localhost:1883",
+			WebSocketWriteTimeout:                time.Second,
+			WebSocketOutboundBuffer:              2,
+			StateLocationTTL:                     time.Minute,
+			StateProximityTTL:                    time.Minute,
+			StateDedupTTL:                        time.Minute,
+			RPCTimeout:                           time.Second,
+			RPCAnnouncementInterval:              time.Minute,
+			RPCHandlerID:                         "hub-test",
+			CollisionStateTTL:                    time.Minute,
+			ProximityResolutionExitGraceDuration: time.Second,
+			ProximityResolutionPositionMode:      "zone_position",
+			ProximityResolutionStaleStateTTL:     time.Minute,
+			Auth: config.AuthConfig{
+				Enabled: false,
+				Mode:    "none",
+			},
+		}, nil
+	}
+	newLogger = func(string) (*zap.Logger, func(), error) {
+		return zap.NewNop(), func() {}, nil
+	}
+	openQueries = func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error) {
+		return nil, runtimeCloserFunc(func() error { return nil }), nil
+	}
+	newCache = func(string) (*valkey.Client, func(), error) {
+		return &valkey.Client{}, func() {}, nil
+	}
+	newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+		return &fakeRuntimeMQTT{}, nil
+	}
+	newAuthenticator = func(context.Context, config.AuthConfig) (auth.Authenticator, error) {
+		return fakeAuthenticator{}, nil
+	}
+	loadRegistry = func(string) (*auth.Registry, error) {
+		return nil, nil
+	}
+	newEventBus = func() *hub.EventBus { return nil }
+	newService = func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
+		return &hub.Service{}
+	}
+	eventPublisherHandle = func(mqttRuntimeClient) func(context.Context, hub.Event) error {
+		return func(context.Context, hub.Event) error { return nil }
+	}
+	newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
+		return fakeRuntimeRPCBridge{}, nil
+	}
+	newHTTPServer = func(_ string, handler http.Handler) httpServer {
+		return &fakeHTTPServer{handler: handler}
+	}
+
+	return func() {
+		loadConfig = prevLoadConfig
+		newLogger = prevNewLogger
+		openQueries = prevOpenQueries
+		newCache = prevNewCache
+		newMQTT = prevNewMQTT
+		newAuthenticator = prevNewAuthenticator
+		loadRegistry = prevLoadRegistry
+		newEventBus = prevNewEventBus
+		newService = prevNewService
+		eventPublisherHandle = prevEventPublisherHandle
+		newRPCBridge = prevNewRPCBridge
+		newHTTPServer = prevNewHTTPServer
+	}
+}
+
+type fakeRuntimeMQTT struct {
+	mu                   sync.Mutex
+	filters              []string
+	subscribeErrByFilter map[string]error
+}
+
+func (f *fakeRuntimeMQTT) PublishJSON(context.Context, string, any, bool) error { return nil }
+func (f *fakeRuntimeMQTT) Subscribe(filter string, handler mqtt.MessageHandler) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.filters = append(f.filters, filter)
+	if handler == nil {
+		return errors.New("missing handler")
+	}
+	return f.subscribeErrByFilter[filter]
+}
+func (f *fakeRuntimeMQTT) AddOnConnectListener(func(context.Context)) {}
+func (f *fakeRuntimeMQTT) Close() error                               { return nil }
+func (f *fakeRuntimeMQTT) subscribed(filter string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, candidate := range f.filters {
+		if candidate == filter {
+			return true
+		}
+	}
+	return false
+}
+
+type fakeRuntimeRPCBridge struct{}
+
+func (fakeRuntimeRPCBridge) AvailableMethods(context.Context) (gen.RpcAvailableMethods, error) {
+	return nil, nil
+}
+func (fakeRuntimeRPCBridge) Invoke(context.Context, gen.JsonRpcRequest) (json.RawMessage, bool, error) {
+	return nil, false, nil
+}
+func (fakeRuntimeRPCBridge) Close() error { return nil }
+
+type fakeAuthenticator struct{}
+
+func (fakeAuthenticator) Authenticate(context.Context, string) (*auth.Principal, error) {
+	return &auth.Principal{}, nil
+}
+
+type fakeHTTPServer struct {
+	onListen       func(http.Handler)
+	handler        http.Handler
+	shutdown       chan struct{}
+	shutdownCalled bool
+}
+
+func (f *fakeHTTPServer) ListenAndServe() error {
+	if f.shutdown == nil {
+		f.shutdown = make(chan struct{})
+	}
+	if f.onListen != nil {
+		f.onListen(f.handler)
+	}
+	<-f.shutdown
+	return http.ErrServerClosed
+}
+
+func (f *fakeHTTPServer) Shutdown(context.Context) error {
+	f.shutdownCalled = true
+	if f.shutdown != nil {
+		close(f.shutdown)
+	}
+	return nil
 }
