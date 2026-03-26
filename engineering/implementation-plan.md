@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-25 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost.
+This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, test, and build steps so CRS-linked packages compile on hosted runners, while caching apt archives to reduce repeated dependency download cost. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, cache, and `just` installation.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -8,6 +8,7 @@ The repository documentation is now split by audience: software/runtime document
 
 ### Completed and verified
 - Project harness is in place: `justfile`, `Dockerfile`, `docker-compose.yml`, and runtime bootstrap in `cmd/hub/main.go`.
+- The repository dependency baseline has been refreshed to current stable compatible Go module releases, and CI now targets the latest stable GitHub Action major tags for checkout, Go setup, cache, and `just`.
 - The normative OpenAPI contract exists in `specifications/openapi/omlox-hub.v0.yaml`, and generated server/types are present under `internal/httpapi/gen`.
 - Public Go packages now include package-level and exported-symbol doc comments so `go doc` renders the operational API surface more usefully for maintainers.
 - Repository-local Codex skills now explicitly require documentation updates during implementation work and provide a dedicated documentation skill for Go doc, OpenAPI, and implementation-facing docs.
