@@ -1,6 +1,6 @@
 # Implementation Plan
 
-This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, a local `just check` run, a `just test-race` pass across the repo's testable packages, package-level coverage sampling, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu PROJ packages before lint, unit-test, race-test, and build steps so CRS-linked packages compile on hosted runners, and installs `just` from a pinned upstream release archive instead of relying on a deprecated Node 20-backed setup action. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, and cache. The contributor lint stack now also installs and pins `staticcheck` v0.7.0 and `govulncheck` v1.1.4.
+This plan reflects the current repository state as verified on 2026-03-26 with targeted Go package tests, repository inspection, a local `just check` run, a `just test-race` pass across the repo's testable packages, package-level coverage sampling, and partial Linux/Docker CRS validation. On macOS, PROJ installation currently requires a repo-local shim, so coordinate transformations are not treated as a verified host-native path there. The GitHub Actions CI workflow now installs native Ubuntu packages for `just`, `pkg-config`, `libproj-dev`, and `proj-data` before lint, unit-test, race-test, and build steps so CRS-linked packages compile on hosted runners without relying on deprecated Node 20-backed setup actions. The Go module graph was refreshed to the latest stable compatible releases in this repository's dependency set, and the workflow action majors were updated to the latest stable tags currently available for checkout, Go setup, and cache. The contributor lint stack now also installs and pins `staticcheck` v0.7.0 and `govulncheck` v1.1.4.
 
 The repository documentation is now split by audience: software/runtime documentation lives under `docs/`, while project-development and contributor-process documentation lives under `engineering/`.
 
@@ -8,7 +8,7 @@ The repository documentation is now split by audience: software/runtime document
 
 ### Completed and verified
 - Project harness is in place: `justfile`, `Dockerfile`, `docker-compose.yml`, and runtime bootstrap in `cmd/hub/main.go`.
-- The repository dependency baseline has been refreshed to current stable compatible Go module releases, and CI now targets the latest stable GitHub Action major tags for checkout, Go setup, and cache while installing `just` from a pinned release archive.
+- The repository dependency baseline has been refreshed to current stable compatible Go module releases, and CI now targets the latest stable GitHub Action major tags for checkout, Go setup, and cache while installing `just` from Ubuntu packages.
 - The normative OpenAPI contract exists in `specifications/openapi/omlox-hub.v0.yaml`, and generated server/types are present under `internal/httpapi/gen`.
 - Public Go packages now include package-level and exported-symbol doc comments so `go doc` renders the operational API surface more usefully for maintainers.
 - Repository-local Codex skills now explicitly require documentation updates during implementation work and provide a dedicated documentation skill for Go doc, OpenAPI, and implementation-facing docs.
@@ -39,7 +39,7 @@ The repository documentation is now split by audience: software/runtime document
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
 - PROJ installation on macOS currently relies on a shimmed host setup. In practice that means coordinate-transformation behavior is not a verified macOS build path in the current repository state.
 - Linux and Docker builds use native PROJ packages and are expected to work normally.
-- GitHub Actions Ubuntu runners now explicitly install `pkg-config`, `libproj-dev`, and `proj-data` before `just lint`, `just test`, and `just build`, matching the documented Linux dependency model.
+- GitHub Actions Ubuntu runners now explicitly install `just`, `pkg-config`, `libproj-dev`, and `proj-data` before `just lint`, `just test`, and `just build`, matching the documented Linux dependency model.
 - CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
