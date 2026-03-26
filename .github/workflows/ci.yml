@@ -45,7 +45,7 @@ jobs:
       - name: Lint
         run: just lint
 
-      - name: Unit tests
+      - name: Tests
         run: just test
 
   race:
