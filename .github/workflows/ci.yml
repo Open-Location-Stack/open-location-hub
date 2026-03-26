@@ -14,6 +14,8 @@ jobs:
       GOOSE_VERSION: v3.27.0
       STATICCHECK_VERSION: v0.7.0
       GOVULNCHECK_VERSION: v1.1.4
+      JUST_VERSION: 1.48.0
+      JUST_LINUX_X86_64_SHA256: a62e100de2922519ff3d6128f580837b4c0e197aa61a6fb448f43e50e7dd9b9b
       PROJ_APT_PACKAGES: pkg-config libproj-dev proj-data
     steps:
       - uses: actions/checkout@v6
@@ -24,13 +26,12 @@ jobs:
           cache: true
 
       - name: Install just
-        uses: extractions/setup-just@v3
-
-      - name: Cache apt package archives
-        uses: actions/cache@v5
-        with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-proj-${{ env.PROJ_APT_PACKAGES }}
+        run: |
+          curl -fsSLo just.tar.gz "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${JUST_LINUX_X86_64_SHA256}  just.tar.gz" | sha256sum --check
+          tar -xzf just.tar.gz just
+          install -m 0755 just "$HOME/.local/bin/just"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install PROJ build dependencies
         run: |
