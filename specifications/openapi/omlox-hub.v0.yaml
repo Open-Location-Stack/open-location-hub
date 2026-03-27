@@ -757,7 +757,7 @@ components:
         id:
           type: string
           format: uuid
-          description: Hub-assigned or client-supplied UUID.
+          description: Hub-assigned or client-supplied UUID. Hub-generated values are UUIDv7 so they remain time-sortable.
         foreign_id:
           type: string
           description: External identifier from an upstream system.
@@ -845,7 +845,7 @@ components:
         id:
           type: string
           format: uuid
-          description: If omitted on create, the hub generates a UUID.
+          description: If omitted on create, the hub generates a time-sortable UUIDv7.
         foreign_id:
           type: string
           description: External identifier from an upstream system.
@@ -893,6 +893,7 @@ components:
         id:
           type: string
           format: uuid
+          description: Hub-generated trackable identifiers are UUIDv7 when the hub creates them.
         type:
           type: string
           enum: [omlox, virtual]
@@ -933,7 +934,7 @@ components:
         id:
           type: string
           format: uuid
-          description: If omitted on create, the hub generates a UUID.
+          description: If omitted on create, the hub generates a time-sortable UUIDv7.
         type:
           type: string
           enum: [omlox, virtual]
@@ -1113,6 +1114,7 @@ components:
         id:
           type: string
           format: uuid
+          description: Hub-generated fence identifiers are UUIDv7 when the hub creates them.
         region:
           oneOf:
             - $ref: '#/components/schemas/Polygon'
@@ -1168,7 +1170,7 @@ components:
         id:
           type: string
           format: uuid
-          description: If omitted on create, the hub generates a UUID.
+          description: If omitted on create, the hub generates a time-sortable UUIDv7.
         region:
           oneOf:
             - $ref: '#/components/schemas/Polygon'
@@ -1214,6 +1216,7 @@ components:
         id:
           type: string
           format: uuid
+          description: Hub-generated fence event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
         fence_id:
           type: string
           format: uuid
@@ -1245,6 +1248,7 @@ components:
         id:
           type: string
           format: uuid
+          description: Hub-generated collision event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
         object_type:
           type: string
         position:

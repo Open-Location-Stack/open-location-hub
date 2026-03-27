@@ -12,6 +12,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/auth"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -310,6 +311,29 @@ func TestInvokeXCMDWithoutAdapterReturnsDeterministicError(t *testing.T) {
 		t.Fatalf("invoke failed: %v", err)
 	}
 	assertErrorCode(t, raw, errCodeUnsupported)
+}
+
+func TestEnsureCallerIDGeneratesVersion7ID(t *testing.T) {
+	t.Parallel()
+
+	bridge, err := NewBridge(zap.NewNop(), nil, Config{Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("bridge init failed: %v", err)
+	}
+	t.Cleanup(func() { _ = bridge.Close() })
+
+	request := gen.JsonRpcRequest{}
+	callerID := bridge.ensureCallerID(&request)
+	parsed, err := uuid.Parse(callerID)
+	if err != nil {
+		t.Fatalf("caller id parse failed: %v", err)
+	}
+	if got := parsed.Version(); got != 7 {
+		t.Fatalf("expected UUIDv7, got version %d", got)
+	}
+	if request.Params == nil || request.Params.UnderscoreCallerId == nil || *request.Params.UnderscoreCallerId != callerID {
+		t.Fatal("expected caller id to be written back to request params")
+	}
 }
 
 func announce(t *testing.T, fake *fakeMQTT, method, handlerID string) {

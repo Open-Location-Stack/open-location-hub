@@ -12,8 +12,8 @@ import (
 
 	"github.com/formation-res/open-rtls-hub/internal/auth"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-rtls-hub/internal/ids"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -593,7 +593,7 @@ func (b *Bridge) collectResponses(ctx context.Context, request gen.JsonRpcReques
 }
 
 func (b *Bridge) ensureCallerID(request *gen.JsonRpcRequest) string {
-	callerID := uuid.NewString()
+	callerID := ids.NewString()
 	if request.Params == nil {
 		request.Params = &gen.JsonRpcRequest_Params{}
 	}

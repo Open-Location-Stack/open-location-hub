@@ -22,6 +22,7 @@ Implications:
 - ingest logic is shared across REST, MQTT, and WebSocket
 - MQTT is no longer the only downstream publication path
 - the internal event seam is intended to keep future federation work from depending on MQTT-specific topics
+- hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 
 ## RPC Control Plane
 1. A client calls `GET /v2/rpc/available` or `PUT /v2/rpc` over HTTP.

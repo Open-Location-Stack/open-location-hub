@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-rtls-hub/internal/ids"
 	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
@@ -928,7 +929,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 				event := gen.FenceEvent{
 					EventType:   gen.RegionEntry,
 					FenceId:     fence.Id,
-					Id:          openapi_types.UUID(uuid.New()),
+					Id:          openapi_types.UUID(ids.NewUUID()),
 					ProviderId:  &location.ProviderId,
 					TrackableId: &trackableID,
 					EntryTime:   &now,
@@ -944,7 +945,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 				event := gen.FenceEvent{
 					EventType:   gen.RegionExit,
 					FenceId:     fence.Id,
-					Id:          openapi_types.UUID(uuid.New()),
+					Id:          openapi_types.UUID(ids.NewUUID()),
 					ProviderId:  &location.ProviderId,
 					TrackableId: &trackableID,
 					ExitTime:    &now,
@@ -1096,7 +1097,7 @@ func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackabl
 
 func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float32) gen.CollisionEvent {
 	event := gen.CollisionEvent{
-		Id:            openapi_types.UUID(uuid.New()),
+		Id:            openapi_types.UUID(ids.NewUUID()),
 		CollisionType: kind,
 		CollisionTime: &at,
 		Collisions: []gen.Collision{
@@ -1382,7 +1383,7 @@ func normalizeZone(body json.RawMessage, forcedID uuid.UUID) (gen.Zone, []byte, 
 	}
 	if forcedID == uuid.Nil {
 		if _, ok := doc["id"]; !ok {
-			doc["id"] = uuid.New().String()
+			doc["id"] = ids.NewString()
 		}
 	} else {
 		doc["id"] = forcedID.String()
@@ -1411,7 +1412,7 @@ func normalizeFence(body json.RawMessage, forcedID uuid.UUID) (gen.Fence, []byte
 	}
 	if forcedID == uuid.Nil {
 		if _, ok := doc["id"]; !ok {
-			doc["id"] = uuid.New().String()
+			doc["id"] = ids.NewString()
 		}
 	} else {
 		doc["id"] = forcedID.String()
@@ -1457,7 +1458,7 @@ func normalizeTrackable(body gen.TrackableWrite, forcedID uuid.UUID) (gen.Tracka
 		if body.Id != nil {
 			id = uuid.UUID(*body.Id)
 		} else {
-			id = uuid.New()
+			id = ids.NewUUID()
 		}
 	}
 	if strings.TrimSpace(string(body.Type)) == "" {

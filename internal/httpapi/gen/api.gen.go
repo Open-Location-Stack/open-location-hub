@@ -172,7 +172,9 @@ type Collision struct {
 	Floor *float32 `json:"floor,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
-	Geometry   Polygon            `json:"geometry"`
+	Geometry Polygon `json:"geometry"`
+
+	// Id Hub-generated collision event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
 	Id         openapi_types.UUID `json:"id"`
 	ObjectType string             `json:"object_type"`
 
@@ -229,10 +231,12 @@ type Fence struct {
 	Extrusion     *float32        `json:"extrusion,omitempty"`
 
 	// Floor Optional floor number or level indicator.
-	Floor     *float32           `json:"floor,omitempty"`
-	ForeignId *string            `json:"foreign_id,omitempty"`
-	Id        openapi_types.UUID `json:"id"`
-	Name      *string            `json:"name,omitempty"`
+	Floor     *float32 `json:"floor,omitempty"`
+	ForeignId *string  `json:"foreign_id,omitempty"`
+
+	// Id Hub-generated fence identifiers are UUIDv7 when the hub creates them.
+	Id   openapi_types.UUID `json:"id"`
+	Name *string            `json:"name,omitempty"`
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
@@ -268,7 +272,9 @@ type FenceEvent struct {
 	ExitTime  *time.Time          `json:"exit_time,omitempty"`
 	FenceId   openapi_types.UUID  `json:"fence_id"`
 	ForeignId *string             `json:"foreign_id,omitempty"`
-	Id        openapi_types.UUID  `json:"id"`
+
+	// Id Hub-generated fence event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
+	Id openapi_types.UUID `json:"id"`
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties  *ExtensionProperties `json:"properties,omitempty"`
@@ -602,8 +608,10 @@ type Trackable struct {
 	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
-	Geometry *Polygon           `json:"geometry,omitempty"`
-	Id       openapi_types.UUID `json:"id"`
+	Geometry *Polygon `json:"geometry,omitempty"`
+
+	// Id Hub-generated trackable identifiers are UUIDv7 when the hub creates them.
+	Id openapi_types.UUID `json:"id"`
 
 	// LocatingRules Ordered locating rules applied when multiple candidate locations exist.
 	LocatingRules *[]LocatingRule `json:"locating_rules,omitempty"`
@@ -655,7 +663,7 @@ type TrackableWrite struct {
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
 	Geometry *Polygon `json:"geometry,omitempty"`
 
-	// Id If omitted on create, the hub generates a UUID.
+	// Id If omitted on create, the hub generates a time-sortable UUIDv7.
 	Id *openapi_types.UUID `json:"id,omitempty"`
 
 	// LocatingRules Ordered locating rules applied when multiple candidate locations exist.
@@ -697,7 +705,7 @@ type Zone struct {
 	// GroundControlPoints Local-to-WGS84 reference pairs used for georeferencing local coordinates.
 	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
 
-	// Id Hub-assigned or client-supplied UUID.
+	// Id Hub-assigned or client-supplied UUID. Hub-generated values are UUIDv7 so they remain time-sortable.
 	Id openapi_types.UUID `json:"id"`
 
 	// IncompleteConfiguration When true, the zone may omit fields required for a fully configured zone.

@@ -34,6 +34,50 @@ func TestNormalizeFenceRequiresZoneIDForLocalCRS(t *testing.T) {
 	}
 }
 
+func TestNormalizeZoneGeneratesVersion7ID(t *testing.T) {
+	t.Parallel()
+
+	zone, _, err := normalizeZone(json.RawMessage(`{
+		"type":"uwb",
+		"incomplete_configuration":true
+	}`), [16]byte{})
+	if err != nil {
+		t.Fatalf("normalizeZone failed: %v", err)
+	}
+	if got := uuid.UUID(zone.Id).Version(); got != 7 {
+		t.Fatalf("expected UUIDv7, got version %d", got)
+	}
+}
+
+func TestNormalizeFenceGeneratesVersion7ID(t *testing.T) {
+	t.Parallel()
+
+	fence, _, err := normalizeFence(json.RawMessage(`{
+		"region":{"type":"Point","coordinates":[1,2]},
+		"radius":5
+	}`), [16]byte{})
+	if err != nil {
+		t.Fatalf("normalizeFence failed: %v", err)
+	}
+	if got := uuid.UUID(fence.Id).Version(); got != 7 {
+		t.Fatalf("expected UUIDv7, got version %d", got)
+	}
+}
+
+func TestNormalizeTrackableGeneratesVersion7ID(t *testing.T) {
+	t.Parallel()
+
+	trackable, _, err := normalizeTrackable(gen.TrackableWrite{
+		Type: gen.TrackableWriteTypeOmlox,
+	}, uuid.Nil)
+	if err != nil {
+		t.Fatalf("normalizeTrackable failed: %v", err)
+	}
+	if got := uuid.UUID(trackable.Id).Version(); got != 7 {
+		t.Fatalf("expected UUIDv7, got version %d", got)
+	}
+}
+
 func TestFenceContainsPointForPointFence(t *testing.T) {
 	t.Parallel()
 
