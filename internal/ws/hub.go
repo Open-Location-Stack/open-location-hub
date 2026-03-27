@@ -262,7 +262,6 @@ func (c *connection) close() {
 	c.hub.mu.Lock()
 	delete(c.hub.connections, c)
 	c.hub.mu.Unlock()
-	close(c.send)
 	_ = c.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(c.hub.writeTimeout))
 	_ = c.conn.Close()
 }

@@ -69,6 +69,10 @@ lint: lint-generated lint-mod
 	{{proj-env}} staticcheck $analysis_packages; \
 	{{proj-env}} govulncheck $analysis_packages
 
+test:
+	@packages="$(bash tools/bin/testable-packages)"; \
+	{{proj-env}} go test $packages
+
 test-race:
 	@packages="$(bash tools/bin/testable-packages)"; \
 	{{proj-env}} go test -race $packages
@@ -80,6 +84,4 @@ build:
 	@packages="$(bash tools/bin/testable-packages build)"; \
 	{{proj-env}} go build $packages
 
-check: fmt lint build
-	@packages="$(bash tools/bin/testable-packages)"; \
-	{{proj-env}} go test $packages
+check: fmt lint build test
