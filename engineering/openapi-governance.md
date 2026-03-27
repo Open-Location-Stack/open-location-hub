@@ -17,5 +17,7 @@
 ## Required Workflow
 1. `just bootstrap`
 2. `just generate`
-3. `just test`
-4. `just check`
+3. `just check`
+
+Documentation-only exception:
+- If the change is documentation-only and does not alter the OpenAPI contract, generated outputs, or implementation behavior, do not run repository test gates solely for that documentation edit.

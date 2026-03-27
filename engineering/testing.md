@@ -10,15 +10,24 @@ For contract, scaffolding, or integration changes, run the repo workflow in this
 just bootstrap
 just generate
 just test-race
-just test
 just check
 ```
 
-## Unit tests
-Run all unit tests:
+For documentation-only changes:
 
 ```bash
-just test
+# no test gate required
+```
+
+Use the exception only when the change does not modify code, generated files,
+OpenAPI, SQL, runtime configuration, or any behavior that needs executable
+verification.
+
+## Unit tests
+Run the standard Go test suite through the full repository gate:
+
+```bash
+just check
 ```
 
 Covers config parsing/defaults, auth verification behavior, and MQTT topic mapping.
@@ -33,7 +42,7 @@ just test-race
 ```
 
 This reuses the repository's `tools/bin/testable-packages` selection so it
-tracks the same PROJ-dependent package rules as `just test`.
+tracks the same PROJ-dependent package rules as the standard test run inside `just check`.
 
 ## Lint and cleanliness
 Run the contributor lint gate:
@@ -69,11 +78,12 @@ The integration suite now also includes shared-hub scenario coverage for high-tr
 ## Notes
 
 - `just generate` must run after OpenAPI changes so generated handler interfaces stay aligned.
-- `just check` reruns formatting, lint, tests, and build validation, so use it as the final gate before commit.
-- CI now splits the regular verification path and the race-detector path into separate GitHub Actions jobs so the slower `just test` and `just test-race` stages run concurrently; the regular verification job still runs generation checks, lint, unit/integration tests, and build validation.
+- `just check` is the standard final validation gate and now owns the normal Go test run directly.
+- Documentation-only changes do not require `just check` or `just test-race` unless they also touch executable or generated surfaces.
+- CI now splits the regular verification path and the race-detector path into separate GitHub Actions jobs so the slower standard test and `just test-race` stages run concurrently; the regular verification job still runs generation checks, lint, unit/integration tests, and build validation.
 - CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary.
 - On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there.
 - Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.
-- GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just test`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly and caches apt archives to reduce repeated package download cost.
+- GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly and caches apt archives to reduce repeated package download cost.
 - direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
 - Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md).

@@ -15,8 +15,10 @@ This repository implements an OpenAPI-first OMLOX-compatible RTLS hub in Go.
 ## Required Workflow
 1. `just bootstrap`
 2. `just generate`
-3. `just test`
-4. `just check`
+3. `just check`
+
+Documentation-only exception:
+- If a change only updates documentation and does not change code, generated artifacts, schemas, or runtime configuration, do not run test or check commands just for that documentation update.
 
 ## Documentation Guardrails
 - If runtime behavior changes, update the relevant software docs under `docs/`, the engineering docs under `engineering/`, and `specifications/omlox/` in the same change as needed.
