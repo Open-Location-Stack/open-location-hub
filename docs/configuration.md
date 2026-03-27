@@ -12,7 +12,6 @@ Runtime lifecycle behavior:
 - `HTTP_REQUEST_BODY_LIMIT_BYTES` (default `4194304`)
 - `LOG_LEVEL` (default `info`)
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
-- `VALKEY_URL` (default `redis://localhost:6379/0`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
@@ -26,6 +25,7 @@ HTTP request decoding behavior:
 - `STATE_LOCATION_TTL` (duration, default `10m`)
 - `STATE_PROXIMITY_TTL` (duration, default `5m`)
 - `STATE_DEDUP_TTL` (duration, default `2m`)
+- `METADATA_RECONCILE_INTERVAL` (duration, default `30s`)
 - `RPC_TIMEOUT` (duration, default `5s`)
 - `RPC_ANNOUNCEMENT_INTERVAL` (duration, default `1m`)
 - `RPC_HANDLER_ID` (default `open-rtls-hub`)
@@ -34,10 +34,12 @@ HTTP request decoding behavior:
 - `COLLISION_COLLIDING_DEBOUNCE` (duration, default `5s`)
 
 Stateful ingest behavior:
-- duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed before latest-state and publish fan-out work
-- latest provider-source location state, trackable latest-location state, and fence membership state use the configured location/proximity TTLs for expiry semantics
+- duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed in the in-memory processing state before fan-out work
+- latest provider-source location state, trackable latest-location state, proximity hysteresis state, fence membership state, and collision pair state are all kept in process memory with the configured expiry semantics
+- metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`
 - WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
-- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in Valkey for `COLLISION_STATE_TTL`
+- the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
+- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
 
 RPC behavior:

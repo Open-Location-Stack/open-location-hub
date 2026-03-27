@@ -26,16 +26,6 @@ services:
       timeout: 5s
       retries: 10
 
-  valkey:
-    image: valkey/valkey:8-alpine
-    ports:
-      - "${VALKEY_PORT:-6379}:6379"
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   mosquitto:
     image: eclipse-mosquitto:2.0
     ports:
@@ -57,7 +47,6 @@ services:
     environment:
       HTTP_LISTEN_ADDR: ":8080"
       POSTGRES_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable"
-      VALKEY_URL: "redis://valkey:6379/0"
       MQTT_BROKER_URL: "tcp://mosquitto:1883"
       AUTH_MODE: "oidc"
       AUTH_ISSUER: "http://dex:5556/dex"
@@ -72,8 +61,6 @@ services:
       dex:
         condition: service_healthy
       postgres:
-        condition: service_healthy
-      valkey:
         condition: service_healthy
       mosquitto:
         condition: service_healthy

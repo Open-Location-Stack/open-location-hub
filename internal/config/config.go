@@ -17,13 +17,13 @@ type Config struct {
 	HTTPRequestBodyLimitBytes             int64
 	LogLevel                              string
 	PostgresURL                           string
-	ValkeyURL                             string
 	MQTTBrokerURL                         string
 	WebSocketWriteTimeout                 time.Duration
 	WebSocketOutboundBuffer               int
 	StateLocationTTL                      time.Duration
 	StateProximityTTL                     time.Duration
 	StateDedupTTL                         time.Duration
+	MetadataReconcileInterval             time.Duration
 	RPCTimeout                            time.Duration
 	RPCAnnouncementInterval               time.Duration
 	RPCHandlerID                          string
@@ -67,13 +67,13 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		HTTPRequestBodyLimitBytes:             int64EnvWithLookup(lookup, "HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
 		LogLevel:                              envWithLookup(lookup, "LOG_LEVEL", "info"),
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
-		ValkeyURL:                             envWithLookup(lookup, "VALKEY_URL", "redis://localhost:6379/0"),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
 		WebSocketOutboundBuffer:               intEnvWithLookup(lookup, "WEBSOCKET_OUTBOUND_BUFFER", 32),
 		StateLocationTTL:                      durationEnvWithLookup(lookup, "STATE_LOCATION_TTL", 10*time.Minute),
 		StateProximityTTL:                     durationEnvWithLookup(lookup, "STATE_PROXIMITY_TTL", 5*time.Minute),
 		StateDedupTTL:                         durationEnvWithLookup(lookup, "STATE_DEDUP_TTL", 2*time.Minute),
+		MetadataReconcileInterval:             durationEnvWithLookup(lookup, "METADATA_RECONCILE_INTERVAL", 30*time.Second),
 		RPCTimeout:                            durationEnvWithLookup(lookup, "RPC_TIMEOUT", 5*time.Second),
 		RPCAnnouncementInterval:               durationEnvWithLookup(lookup, "RPC_ANNOUNCEMENT_INTERVAL", time.Minute),
 		RPCHandlerID:                          envWithLookup(lookup, "RPC_HANDLER_ID", "open-rtls-hub"),
@@ -123,6 +123,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.StateDedupTTL <= 0 {
 		return Config{}, fmt.Errorf("STATE_DEDUP_TTL must be > 0")
+	}
+	if cfg.MetadataReconcileInterval <= 0 {
+		return Config{}, fmt.Errorf("METADATA_RECONCILE_INTERVAL must be > 0")
 	}
 	if cfg.RPCTimeout <= 0 {
 		return Config{}, fmt.Errorf("RPC_TIMEOUT must be > 0")

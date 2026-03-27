@@ -33,4 +33,5 @@ This markdown captures the normative API behavior and endpoint shapes directly v
 - `mqtt.md`
 - `mqtt-extension.md`
 - `rpc-extension.md`
+- `metadata-sync-extension.md`
 - `flowcate-reference-extensions.md`

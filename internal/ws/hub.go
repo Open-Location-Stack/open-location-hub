@@ -30,6 +30,7 @@ const (
 	topicFenceGeoJSON     = "fence_events:geojson"
 	topicTrackableMotions = "trackable_motions"
 	topicProximityUpdates = "proximity_updates"
+	topicMetadataChanges  = "metadata_changes"
 )
 
 type wrapper struct {
@@ -112,6 +113,12 @@ type collisionFilter struct {
 	CRS           string
 	ZoneID        string
 	Floor         *float32
+}
+
+type metadataFilter struct {
+	ID        string
+	Type      string
+	Operation string
 }
 
 // New constructs a WebSocket hub and starts bus fan-out.
@@ -411,7 +418,7 @@ func (c *connection) sendError(code int, description string) {
 
 func knownTopic(topic string) bool {
 	switch topic {
-	case topicLocationUpdates, topicLocationGeoJSON, topicCollisionEvents, topicFenceEvents, topicFenceGeoJSON, topicTrackableMotions, topicProximityUpdates:
+	case topicLocationUpdates, topicLocationGeoJSON, topicCollisionEvents, topicFenceEvents, topicFenceGeoJSON, topicTrackableMotions, topicProximityUpdates, topicMetadataChanges:
 		return true
 	default:
 		return false
@@ -430,6 +437,8 @@ func parseFilter(topic string, params map[string]any) (any, error) {
 		return parseCollisionFilter(params), nil
 	case topicProximityUpdates:
 		return struct{}{}, nil
+	case topicMetadataChanges:
+		return parseMetadataFilter(params), nil
 	default:
 		return nil, authErr("unknown topic")
 	}
@@ -500,6 +509,15 @@ func payloadForSubscription(sub subscription, event hub.Event) (json.RawMessage,
 			return nil, false
 		}
 		return marshalPayload([]gen.CollisionEvent{envelope.Event})
+	case topicMetadataChanges:
+		if event.Kind != hub.EventMetadataChange {
+			return nil, false
+		}
+		change, err := hub.Decode[hub.MetadataChange](event)
+		if err != nil || !matchMetadata(sub.filter.(metadataFilter), change) {
+			return nil, false
+		}
+		return marshalPayload([]hub.MetadataChange{change})
 	}
 	return nil, false
 }
@@ -555,6 +573,14 @@ func parseCollisionFilter(params map[string]any) collisionFilter {
 	}
 	filter.Floor = float32Param(params, "floor")
 	return filter
+}
+
+func parseMetadataFilter(params map[string]any) metadataFilter {
+	return metadataFilter{
+		ID:        stringParam(params, "id"),
+		Type:      stringParam(params, "type"),
+		Operation: stringParam(params, "operation"),
+	}
 }
 
 func stringParam(params map[string]any, key string) string {
@@ -670,6 +696,19 @@ func matchCollision(filter collisionFilter, event gen.CollisionEvent) bool {
 				return false
 			}
 		}
+	}
+	return true
+}
+
+func matchMetadata(filter metadataFilter, change hub.MetadataChange) bool {
+	if filter.ID != "" && filter.ID != change.ID {
+		return false
+	}
+	if filter.Type != "" && filter.Type != change.Type {
+		return false
+	}
+	if filter.Operation != "" && filter.Operation != change.Operation {
+		return false
 	}
 	return true
 }

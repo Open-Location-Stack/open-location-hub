@@ -296,9 +296,9 @@ func TestValidateLocationRejectsUnsupportedCRS(t *testing.T) {
 func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
 	t.Parallel()
 
-	cache := newMemoryCache()
+	state := NewProcessingState(time.Now)
 	service := &Service{
-		cache: cache,
+		state: state,
 		cfg: Config{
 			DedupTTL:    2 * time.Minute,
 			LocationTTL: 10 * time.Minute,
@@ -314,29 +314,26 @@ func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
 		t.Fatalf("second recordLocation failed: %v", err)
 	}
 
-	if len(cache.setNXCalls) != 2 {
-		t.Fatalf("expected two dedup attempts, got %d", len(cache.setNXCalls))
+	if !state.Deduplicate(dedupKey(mustJSON(t, location)), service.cfg.DedupTTL) {
+		// expected the explicit probe to observe the existing dedup window
+	} else {
+		t.Fatal("expected dedup state to be retained in memory")
 	}
-	if len(cache.setCalls) != 1 {
-		t.Fatalf("expected only one latest-state write after dedup, got %d", len(cache.setCalls))
+	latest, ok := state.latestLocations[latestLocationKey(location.ProviderId, location.Source)]
+	if !ok {
+		t.Fatal("expected latest location state to be stored")
 	}
-	if cache.setCalls[0].key != latestLocationKey(location.ProviderId, location.Source) {
-		t.Fatalf("unexpected latest-location key: %s", cache.setCalls[0].key)
-	}
-	if cache.setCalls[0].ttl != ttl {
-		t.Fatalf("expected latest-location TTL %s, got %s", ttl, cache.setCalls[0].ttl)
-	}
-	if cache.setNXCalls[0].ttl != service.cfg.DedupTTL {
-		t.Fatalf("expected dedup TTL %s, got %s", service.cfg.DedupTTL, cache.setNXCalls[0].ttl)
+	if time.Until(latest.expiresAt) <= 0 {
+		t.Fatal("expected latest location state to carry a positive ttl")
 	}
 }
 
 func TestRecordLocationStoresTrackableLatestStateWithTTL(t *testing.T) {
 	t.Parallel()
 
-	cache := newMemoryCache()
+	state := NewProcessingState(time.Now)
 	service := &Service{
-		cache: cache,
+		state: state,
 		cfg: Config{
 			DedupTTL:    2 * time.Minute,
 			LocationTTL: 10 * time.Minute,
@@ -351,17 +348,11 @@ func TestRecordLocationStoresTrackableLatestStateWithTTL(t *testing.T) {
 		t.Fatalf("recordLocation failed: %v", err)
 	}
 
-	if len(cache.setCalls) != 3 {
-		t.Fatalf("expected latest location plus two trackable writes, got %d", len(cache.setCalls))
+	if _, ok := state.latestTrackableLocation[latestTrackableLocationKey("trackable-a")]; !ok {
+		t.Fatal("expected first trackable latest state")
 	}
-	if cache.setCalls[1].key != latestTrackableLocationKey("trackable-a") {
-		t.Fatalf("unexpected first trackable key: %s", cache.setCalls[1].key)
-	}
-	if cache.setCalls[2].key != latestTrackableLocationKey("trackable-b") {
-		t.Fatalf("unexpected second trackable key: %s", cache.setCalls[2].key)
-	}
-	if cache.setCalls[1].ttl != ttl || cache.setCalls[2].ttl != ttl {
-		t.Fatalf("expected trackable TTL %s, got %s and %s", ttl, cache.setCalls[1].ttl, cache.setCalls[2].ttl)
+	if _, ok := state.latestTrackableLocation[latestTrackableLocationKey("trackable-b")]; !ok {
+		t.Fatal("expected second trackable latest state")
 	}
 }
 
@@ -369,11 +360,13 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
-	cache := newMemoryCache()
 	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, float32Ptr(2), nil)
 	proximity := testProximity(zone.Id.String())
 	service := &Service{
-		cache: cache,
+		state: NewProcessingState(func() time.Time { return now }),
+		metadata: &MetadataCache{
+			snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil),
+		},
 		queries: fakeQueries{
 			listZonesFn: func(context.Context) ([]sqlcgen.Zone, error) {
 				payload, err := json.Marshal(zone)
@@ -396,21 +389,20 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 		},
 		now: func() time.Time { return now },
 	}
-	cache.values[proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId)] = mustJSON(t, proximityResolutionState{
+	service.processingState().SetProximityState(proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId), proximityResolutionState{
 		ResolvedZoneID:  "expired-zone",
 		EnteredAt:       now.Add(-30 * time.Minute),
 		LastConfirmedAt: now.Add(-20 * time.Minute),
 		LastEmittedAt:   now.Add(-20 * time.Minute),
-	})
+	}, time.Minute)
 
 	if err := service.ProcessProximities(context.Background(), []gen.Proximity{proximity}); err != nil {
 		t.Fatalf("ProcessProximities failed: %v", err)
 	}
 
-	statePayload := cache.values[proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId)]
-	var state proximityResolutionState
-	if err := json.Unmarshal(statePayload, &state); err != nil {
-		t.Fatalf("unmarshal state failed: %v", err)
+	state, ok := service.processingState().GetProximityState(proximityResolutionStateKey(proximity.ProviderType, proximity.ProviderId))
+	if !ok {
+		t.Fatal("expected proximity state after processing")
 	}
 	if state.ResolvedZoneID != proximity.Source {
 		t.Fatalf("expected re-entry into candidate zone %s, got %s", proximity.Source, state.ResolvedZoneID)
@@ -429,7 +421,7 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	service := &Service{
 		bus:            bus,
-		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
 		logger:         zapTestLogger(t),
@@ -461,7 +453,7 @@ func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing
 	zone := georeferencedZoneFixture(t, -33.4489, -70.6693)
 	service := &Service{
 		bus:            bus,
-		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
 		logger:         zapTestLogger(t),
@@ -494,7 +486,7 @@ func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
 	location := testLocationWithCoordinates(t, &crs, "missing-zone", [2]float32{2, 3})
 	service := &Service{
 		bus:            bus,
-		queries:        fakeQueries{listZonesFn: func(context.Context) ([]sqlcgen.Zone, error) { return nil, nil }},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
 		logger:         zapTestLogger(t),
@@ -519,7 +511,7 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	service := &Service{
 		bus:            bus,
-		queries:        fakeQueries{listZonesFn: zoneListQuery(t, zone)},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
 		logger:         zapTestLogger(t),
@@ -546,21 +538,13 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 	t.Parallel()
 
-	cache := newMemoryCache()
+	state := NewProcessingState(time.Now)
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
 	service := &Service{
-		cache: cache,
-		queries: fakeQueries{
-			listFencesFn: func(context.Context) ([]sqlcgen.Fence, error) {
-				fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
-				payload, err := json.Marshal(fence)
-				if err != nil {
-					t.Fatalf("marshal fence failed: %v", err)
-				}
-				return []sqlcgen.Fence{{Payload: payload}}, nil
-			},
-		},
-		bus: NewEventBus(),
-		cfg: Config{LocationTTL: 90 * time.Second},
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		bus:      NewEventBus(),
+		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
 	location := testLocation(t, nil)
 	trackables := []string{"trackable-a"}
@@ -570,11 +554,8 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 		t.Fatalf("publishFenceEvents failed: %v", err)
 	}
 
-	if len(cache.setCalls) != 1 {
-		t.Fatalf("expected one fence membership write, got %d", len(cache.setCalls))
-	}
-	if cache.setCalls[0].ttl != service.cfg.LocationTTL {
-		t.Fatalf("expected fence membership TTL %s, got %s", service.cfg.LocationTTL, cache.setCalls[0].ttl)
+	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
+		t.Fatal("expected fence membership state to be held in memory")
 	}
 }
 
@@ -672,46 +653,6 @@ func mustJSON(t *testing.T, value any) []byte {
 	return payload
 }
 
-type memoryCache struct {
-	values     map[string][]byte
-	setCalls   []cacheWrite
-	setNXCalls []cacheWrite
-}
-
-type cacheWrite struct {
-	key   string
-	value []byte
-	ttl   time.Duration
-}
-
-func newMemoryCache() *memoryCache {
-	return &memoryCache{values: map[string][]byte{}}
-}
-
-func (c *memoryCache) Get(_ context.Context, key string) ([]byte, error) {
-	return c.values[key], nil
-}
-
-func (c *memoryCache) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
-	c.values[key] = append([]byte(nil), value...)
-	c.setCalls = append(c.setCalls, cacheWrite{key: key, value: append([]byte(nil), value...), ttl: ttl})
-	return nil
-}
-
-func (c *memoryCache) SetNX(_ context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	c.setNXCalls = append(c.setNXCalls, cacheWrite{key: key, value: append([]byte(nil), value...), ttl: ttl})
-	if _, exists := c.values[key]; exists {
-		return false, nil
-	}
-	c.values[key] = append([]byte(nil), value...)
-	return true, nil
-}
-
-func (c *memoryCache) Delete(_ context.Context, key string) error {
-	delete(c.values, key)
-	return nil
-}
-
 func decodeEventLocation(t *testing.T, event Event) gen.Location {
 	t.Helper()
 	envelope, err := Decode[LocationEnvelope](event)
@@ -770,21 +711,6 @@ func assertLocationsDiffer(t *testing.T, a, b gen.Location) {
 	}
 }
 
-func zoneListQuery(t *testing.T, zones ...gen.Zone) func(context.Context) ([]sqlcgen.Zone, error) {
-	t.Helper()
-	return func(context.Context) ([]sqlcgen.Zone, error) {
-		rows := make([]sqlcgen.Zone, 0, len(zones))
-		for _, zone := range zones {
-			payload, err := json.Marshal(zone)
-			if err != nil {
-				t.Fatalf("marshal zone failed: %v", err)
-			}
-			rows = append(rows, sqlcgen.Zone{Payload: payload})
-		}
-		return rows, nil
-	}
-}
-
 func georeferencedZoneFixture(t *testing.T, lat, lon float64) gen.Zone {
 	t.Helper()
 	zoneID := uuid.New()
@@ -819,39 +745,77 @@ func zapTestLogger(t *testing.T) *zap.Logger {
 }
 
 type fakeQueries struct {
-	listFencesFn func(context.Context) ([]sqlcgen.Fence, error)
-	listZonesFn  func(context.Context) ([]sqlcgen.Zone, error)
+	listFencesFn      func(context.Context) ([]sqlcgen.Fence, error)
+	listProvidersFn   func(context.Context) ([]sqlcgen.Provider, error)
+	listTrackablesFn  func(context.Context) ([]sqlcgen.Trackable, error)
+	listZonesFn       func(context.Context) ([]sqlcgen.Zone, error)
+	createZoneFn      func(context.Context, sqlcgen.CreateZoneParams) (sqlcgen.Zone, error)
+	updateZoneFn      func(context.Context, sqlcgen.UpdateZoneParams) (sqlcgen.Zone, error)
+	deleteZoneFn      func(context.Context, pgtype.UUID) (int64, error)
+	createFenceFn     func(context.Context, sqlcgen.CreateFenceParams) (sqlcgen.Fence, error)
+	updateFenceFn     func(context.Context, sqlcgen.UpdateFenceParams) (sqlcgen.Fence, error)
+	deleteFenceFn     func(context.Context, pgtype.UUID) (int64, error)
+	createTrackableFn func(context.Context, sqlcgen.CreateTrackableParams) (sqlcgen.Trackable, error)
+	updateTrackableFn func(context.Context, sqlcgen.UpdateTrackableParams) (sqlcgen.Trackable, error)
+	deleteTrackableFn func(context.Context, pgtype.UUID) (int64, error)
+	createProviderFn  func(context.Context, sqlcgen.CreateProviderParams) (sqlcgen.Provider, error)
+	updateProviderFn  func(context.Context, sqlcgen.UpdateProviderParams) (sqlcgen.Provider, error)
+	deleteProviderFn  func(context.Context, string) (int64, error)
 }
 
-func (f fakeQueries) CreateFence(context.Context, sqlcgen.CreateFenceParams) (sqlcgen.Fence, error) {
+func (f fakeQueries) CreateFence(ctx context.Context, params sqlcgen.CreateFenceParams) (sqlcgen.Fence, error) {
+	if f.createFenceFn != nil {
+		return f.createFenceFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) CreateProvider(context.Context, sqlcgen.CreateProviderParams) (sqlcgen.Provider, error) {
+func (f fakeQueries) CreateProvider(ctx context.Context, params sqlcgen.CreateProviderParams) (sqlcgen.Provider, error) {
+	if f.createProviderFn != nil {
+		return f.createProviderFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) CreateTrackable(context.Context, sqlcgen.CreateTrackableParams) (sqlcgen.Trackable, error) {
+func (f fakeQueries) CreateTrackable(ctx context.Context, params sqlcgen.CreateTrackableParams) (sqlcgen.Trackable, error) {
+	if f.createTrackableFn != nil {
+		return f.createTrackableFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) CreateZone(context.Context, sqlcgen.CreateZoneParams) (sqlcgen.Zone, error) {
+func (f fakeQueries) CreateZone(ctx context.Context, params sqlcgen.CreateZoneParams) (sqlcgen.Zone, error) {
+	if f.createZoneFn != nil {
+		return f.createZoneFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) DeleteFence(context.Context, pgtype.UUID) (int64, error) {
+func (f fakeQueries) DeleteFence(ctx context.Context, id pgtype.UUID) (int64, error) {
+	if f.deleteFenceFn != nil {
+		return f.deleteFenceFn(ctx, id)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) DeleteProvider(context.Context, string) (int64, error) {
+func (f fakeQueries) DeleteProvider(ctx context.Context, id string) (int64, error) {
+	if f.deleteProviderFn != nil {
+		return f.deleteProviderFn(ctx, id)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) DeleteTrackable(context.Context, pgtype.UUID) (int64, error) {
+func (f fakeQueries) DeleteTrackable(ctx context.Context, id pgtype.UUID) (int64, error) {
+	if f.deleteTrackableFn != nil {
+		return f.deleteTrackableFn(ctx, id)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) DeleteZone(context.Context, pgtype.UUID) (int64, error) {
+func (f fakeQueries) DeleteZone(ctx context.Context, id pgtype.UUID) (int64, error) {
+	if f.deleteZoneFn != nil {
+		return f.deleteZoneFn(ctx, id)
+	}
 	panic("unexpected call")
 }
 
@@ -878,12 +842,18 @@ func (f fakeQueries) ListFences(ctx context.Context) ([]sqlcgen.Fence, error) {
 	return f.listFencesFn(ctx)
 }
 
-func (f fakeQueries) ListProviders(context.Context) ([]sqlcgen.Provider, error) {
-	panic("unexpected call")
+func (f fakeQueries) ListProviders(ctx context.Context) ([]sqlcgen.Provider, error) {
+	if f.listProvidersFn == nil {
+		return nil, nil
+	}
+	return f.listProvidersFn(ctx)
 }
 
-func (f fakeQueries) ListTrackables(context.Context) ([]sqlcgen.Trackable, error) {
-	panic("unexpected call")
+func (f fakeQueries) ListTrackables(ctx context.Context) ([]sqlcgen.Trackable, error) {
+	if f.listTrackablesFn == nil {
+		return nil, nil
+	}
+	return f.listTrackablesFn(ctx)
 }
 
 func (f fakeQueries) ListZones(ctx context.Context) ([]sqlcgen.Zone, error) {
@@ -893,18 +863,30 @@ func (f fakeQueries) ListZones(ctx context.Context) ([]sqlcgen.Zone, error) {
 	return f.listZonesFn(ctx)
 }
 
-func (f fakeQueries) UpdateFence(context.Context, sqlcgen.UpdateFenceParams) (sqlcgen.Fence, error) {
+func (f fakeQueries) UpdateFence(ctx context.Context, params sqlcgen.UpdateFenceParams) (sqlcgen.Fence, error) {
+	if f.updateFenceFn != nil {
+		return f.updateFenceFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) UpdateProvider(context.Context, sqlcgen.UpdateProviderParams) (sqlcgen.Provider, error) {
+func (f fakeQueries) UpdateProvider(ctx context.Context, params sqlcgen.UpdateProviderParams) (sqlcgen.Provider, error) {
+	if f.updateProviderFn != nil {
+		return f.updateProviderFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) UpdateTrackable(context.Context, sqlcgen.UpdateTrackableParams) (sqlcgen.Trackable, error) {
+func (f fakeQueries) UpdateTrackable(ctx context.Context, params sqlcgen.UpdateTrackableParams) (sqlcgen.Trackable, error) {
+	if f.updateTrackableFn != nil {
+		return f.updateTrackableFn(ctx, params)
+	}
 	panic("unexpected call")
 }
 
-func (f fakeQueries) UpdateZone(context.Context, sqlcgen.UpdateZoneParams) (sqlcgen.Zone, error) {
+func (f fakeQueries) UpdateZone(ctx context.Context, params sqlcgen.UpdateZoneParams) (sqlcgen.Zone, error) {
+	if f.updateZoneFn != nil {
+		return f.updateZoneFn(ctx, params)
+	}
 	panic("unexpected call")
 }

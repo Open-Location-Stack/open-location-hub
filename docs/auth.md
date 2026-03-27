@@ -121,6 +121,16 @@ admin@example.com:
 
 The current implementation supports exact topic names and suffix-style wildcard patterns such as `location_*`.
 
+Subscribe-only topics currently include:
+- `location_updates`
+- `location_updates:geojson`
+- `proximity_updates`
+- `trackable_motions`
+- `fence_events`
+- `fence_events:geojson`
+- `collision_events` when collisions are enabled
+- `metadata_changes` for resource create, update, and delete notifications on zones, fences, trackables, and location providers
+
 ## Ownership Claims
 
 Ownership-aware rules use the claim configured by `AUTH_OWNED_RESOURCES_CLAIM`.

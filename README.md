@@ -14,7 +14,7 @@ While not yet feature complete, the implementation has a rapidly growing test su
 
 - Normative REST contract: `specifications/openapi/omlox-hub.v0.yaml`
 - Go server scaffold with strict handler interface shape
-- Dockerized local runtime for Postgres, Valkey, Mosquitto, and app
+- Dockerized local runtime for Postgres, Mosquitto, and app
 - `just` orchestration for generation, checks, tests, and compose
 - JWT auth modes: `oidc`, `static`, and `hybrid`
 - RBAC and ownership-aware authorization

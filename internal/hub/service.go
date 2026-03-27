@@ -14,7 +14,6 @@ import (
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/ids"
-	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
@@ -24,14 +23,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.uber.org/zap"
 )
-
-// Cache provides the transient storage operations used by the service layer.
-type Cache interface {
-	Get(ctx context.Context, key string) ([]byte, error)
-	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
-	SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
-	Delete(ctx context.Context, key string) error
-}
 
 // Config controls ingest deduplication, TTLs, and proximity resolution
 // behavior.
@@ -46,6 +37,7 @@ type Config struct {
 	ProximityResolutionPositionMode       string
 	ProximityResolutionFallbackRadius     float64
 	ProximityResolutionStaleStateTTL      time.Duration
+	MetadataReconcileInterval             time.Duration
 	CollisionsEnabled                     bool
 	CollisionStateTTL                     time.Duration
 	CollisionCollidingDebounce            time.Duration
@@ -56,12 +48,13 @@ type Config struct {
 type Service struct {
 	logger         *zap.Logger
 	queries        sqlcgen.Querier
-	cache          Cache
 	bus            *EventBus
 	cfg            Config
 	now            func() time.Time
 	crsTransformer *transform.CRSTransformer
 	transformCache *transform.Cache
+	metadata       *MetadataCache
+	state          *ProcessingState
 }
 
 // HTTPError represents an API error that should be rendered with a specific
@@ -76,18 +69,57 @@ func (e *HTTPError) Error() string {
 	return e.Message
 }
 
-// New constructs a Service with the configured dependencies.
-func New(logger *zap.Logger, queries sqlcgen.Querier, cache *valkey.Client, bus *EventBus, cfg Config) *Service {
+// Start launches background maintenance loops for transient state sweeping and
+// metadata reconciliation.
+func (s *Service) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.processingState().StartSweeper(ctx, time.Second)
+	if s.metadata == nil || s.queries == nil {
+		return
+	}
+	ticker := time.NewTicker(s.cfg.MetadataReconcileInterval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.reconcileMetadata(ctx); err != nil && s.logger != nil {
+					s.logger.Warn("metadata reconcile failed", zap.Error(err))
+				}
+			}
+		}
+	}()
+}
+
+// New constructs a Service with the configured dependencies and eagerly loads
+// the in-memory metadata snapshot required by the hot path.
+func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config) (*Service, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	if cfg.MetadataReconcileInterval <= 0 {
+		cfg.MetadataReconcileInterval = 30 * time.Second
+	}
+	metadata, err := NewMetadataCache(context.Background(), queries)
+	if err != nil {
+		return nil, err
+	}
+	nowFn := time.Now
 	return &Service{
 		logger:         logger,
 		queries:        queries,
-		cache:          cache,
 		bus:            bus,
 		cfg:            cfg,
-		now:            time.Now,
+		now:            nowFn,
 		crsTransformer: transform.NewCRSTransformer(),
 		transformCache: transform.NewCache(),
-	}
+		metadata:       metadata,
+		state:          NewProcessingState(nowFn),
+	}, nil
 }
 
 type proximityResolutionPolicy struct {
@@ -127,8 +159,53 @@ type resolvedProximity struct {
 	Sticky bool
 }
 
+func (s *Service) processingState() *ProcessingState {
+	if s.state == nil {
+		s.state = NewProcessingState(s.now)
+	}
+	return s.state
+}
+
+func (s *Service) metadataCache() *MetadataCache {
+	return s.metadata
+}
+
+func (s *Service) reconcileMetadata(ctx context.Context) error {
+	if s.metadata == nil {
+		return nil
+	}
+	changes, err := s.metadata.Reconcile(ctx, s.now().UTC())
+	if err != nil {
+		return err
+	}
+	for _, change := range changes {
+		if change.Type == metadataTypeZone {
+			s.invalidateZoneTransform(change.ID)
+		}
+		s.emitMetadataChange(change)
+	}
+	return nil
+}
+
+func (s *Service) emitMetadataChange(change MetadataChange) {
+	if s.bus == nil {
+		return
+	}
+	event, err := newEvent(EventMetadataChange, ScopeMetadata, change.Timestamp, "", "", "", change)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("metadata change emit failed", zap.Error(err), zap.String("id", change.ID), zap.String("type", change.Type))
+		}
+		return
+	}
+	s.bus.Emit(event)
+}
+
 // ListZones returns all zones known to the hub.
 func (s *Service) ListZones(ctx context.Context) ([]gen.Zone, error) {
+	if cache := s.metadataCache(); cache != nil {
+		return cache.ListZones(), nil
+	}
 	items, err := s.queries.ListZones(ctx)
 	if err != nil {
 		return nil, err
@@ -161,13 +238,28 @@ func (s *Service) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zon
 	}
 	zone, err = decodePayload[gen.Zone](row.Payload)
 	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertZone(zone, payloadSignature(row.Payload))
+		}
 		s.invalidateZoneTransform(zone.Id.String())
+		s.emitMetadataChange(MetadataChange{
+			ID:        zone.Id.String(),
+			Type:      metadataTypeZone,
+			Operation: metadataOperationCreate,
+			Timestamp: s.now().UTC(),
+		})
 	}
 	return zone, err
 }
 
 // GetZone returns a single zone by identifier.
 func (s *Service) GetZone(ctx context.Context, id openapi_types.UUID) (gen.Zone, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if zone, ok := cache.ZoneByID(id.String()); ok {
+			return zone, nil
+		}
+		return gen.Zone{}, notFound("zone not found")
+	}
 	row, err := s.queries.GetZone(ctx, uuidParam(id))
 	if err != nil {
 		return gen.Zone{}, translateDBError(err)
@@ -192,7 +284,16 @@ func (s *Service) UpdateZone(ctx context.Context, id openapi_types.UUID, body js
 	}
 	zone, err = decodePayload[gen.Zone](row.Payload)
 	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertZone(zone, payloadSignature(row.Payload))
+		}
 		s.invalidateZoneTransform(zone.Id.String())
+		s.emitMetadataChange(MetadataChange{
+			ID:        zone.Id.String(),
+			Type:      metadataTypeZone,
+			Operation: metadataOperationUpdate,
+			Timestamp: s.now().UTC(),
+		})
 	}
 	return zone, err
 }
@@ -206,12 +307,24 @@ func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
 	if rows == 0 {
 		return notFound("zone not found")
 	}
+	if cache := s.metadataCache(); cache != nil {
+		cache.DeleteZone(id)
+	}
 	s.invalidateZoneTransform(id.String())
+	s.emitMetadataChange(MetadataChange{
+		ID:        id.String(),
+		Type:      metadataTypeZone,
+		Operation: metadataOperationDelete,
+		Timestamp: s.now().UTC(),
+	})
 	return nil
 }
 
 // ListProviders returns all location providers known to the hub.
 func (s *Service) ListProviders(ctx context.Context) ([]gen.LocationProvider, error) {
+	if cache := s.metadataCache(); cache != nil {
+		return cache.ListProviders(), nil
+	}
 	items, err := s.queries.ListProviders(ctx)
 	if err != nil {
 		return nil, err
@@ -242,11 +355,29 @@ func (s *Service) CreateProvider(ctx context.Context, body gen.LocationProviderW
 	if err != nil {
 		return gen.LocationProvider{}, translateDBError(err)
 	}
-	return decodePayload[gen.LocationProvider](row.Payload)
+	item, err := decodePayload[gen.LocationProvider](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertProvider(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id,
+			Type:      metadataTypeLocationProvider,
+			Operation: metadataOperationCreate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // GetProvider returns a location provider by identifier.
 func (s *Service) GetProvider(ctx context.Context, id string) (gen.LocationProvider, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if item, ok := cache.ProviderByID(id); ok {
+			return item, nil
+		}
+		return gen.LocationProvider{}, notFound("provider not found")
+	}
 	row, err := s.queries.GetProvider(ctx, id)
 	if err != nil {
 		return gen.LocationProvider{}, translateDBError(err)
@@ -269,7 +400,19 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, body gen.Locati
 	if err != nil {
 		return gen.LocationProvider{}, translateDBError(err)
 	}
-	return decodePayload[gen.LocationProvider](row.Payload)
+	item, err := decodePayload[gen.LocationProvider](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertProvider(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id,
+			Type:      metadataTypeLocationProvider,
+			Operation: metadataOperationUpdate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // DeleteProvider removes a location provider by identifier.
@@ -281,11 +424,23 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	if rows == 0 {
 		return notFound("provider not found")
 	}
+	if cache := s.metadataCache(); cache != nil {
+		cache.DeleteProvider(id)
+	}
+	s.emitMetadataChange(MetadataChange{
+		ID:        id,
+		Type:      metadataTypeLocationProvider,
+		Operation: metadataOperationDelete,
+		Timestamp: s.now().UTC(),
+	})
 	return nil
 }
 
 // ListTrackables returns all trackables known to the hub.
 func (s *Service) ListTrackables(ctx context.Context) ([]gen.Trackable, error) {
+	if cache := s.metadataCache(); cache != nil {
+		return cache.ListTrackables(), nil
+	}
 	items, err := s.queries.ListTrackables(ctx)
 	if err != nil {
 		return nil, err
@@ -316,11 +471,29 @@ func (s *Service) CreateTrackable(ctx context.Context, body gen.TrackableWrite) 
 	if err != nil {
 		return gen.Trackable{}, translateDBError(err)
 	}
-	return decodePayload[gen.Trackable](row.Payload)
+	item, err := decodePayload[gen.Trackable](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertTrackable(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id.String(),
+			Type:      metadataTypeTrackable,
+			Operation: metadataOperationCreate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // GetTrackable returns a trackable by identifier.
 func (s *Service) GetTrackable(ctx context.Context, id openapi_types.UUID) (gen.Trackable, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if item, ok := cache.TrackableByID(id.String()); ok {
+			return item, nil
+		}
+		return gen.Trackable{}, notFound("trackable not found")
+	}
 	row, err := s.queries.GetTrackable(ctx, uuidParam(id))
 	if err != nil {
 		return gen.Trackable{}, translateDBError(err)
@@ -343,7 +516,19 @@ func (s *Service) UpdateTrackable(ctx context.Context, id openapi_types.UUID, bo
 	if err != nil {
 		return gen.Trackable{}, translateDBError(err)
 	}
-	return decodePayload[gen.Trackable](row.Payload)
+	item, err := decodePayload[gen.Trackable](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertTrackable(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id.String(),
+			Type:      metadataTypeTrackable,
+			Operation: metadataOperationUpdate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // DeleteTrackable removes a trackable by identifier.
@@ -355,11 +540,23 @@ func (s *Service) DeleteTrackable(ctx context.Context, id openapi_types.UUID) er
 	if rows == 0 {
 		return notFound("trackable not found")
 	}
+	if cache := s.metadataCache(); cache != nil {
+		cache.DeleteTrackable(id)
+	}
+	s.emitMetadataChange(MetadataChange{
+		ID:        id.String(),
+		Type:      metadataTypeTrackable,
+		Operation: metadataOperationDelete,
+		Timestamp: s.now().UTC(),
+	})
 	return nil
 }
 
 // ListFences returns all fences known to the hub.
 func (s *Service) ListFences(ctx context.Context) ([]gen.Fence, error) {
+	if cache := s.metadataCache(); cache != nil {
+		return cache.ListFences(), nil
+	}
 	items, err := s.queries.ListFences(ctx)
 	if err != nil {
 		return nil, err
@@ -390,11 +587,29 @@ func (s *Service) CreateFence(ctx context.Context, body json.RawMessage) (gen.Fe
 	if err != nil {
 		return gen.Fence{}, translateDBError(err)
 	}
-	return decodePayload[gen.Fence](row.Payload)
+	item, err := decodePayload[gen.Fence](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertFence(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id.String(),
+			Type:      metadataTypeFence,
+			Operation: metadataOperationCreate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // GetFence returns a fence by identifier.
 func (s *Service) GetFence(ctx context.Context, id openapi_types.UUID) (gen.Fence, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if item, ok := cache.FenceByID(id.String()); ok {
+			return item, nil
+		}
+		return gen.Fence{}, notFound("fence not found")
+	}
 	row, err := s.queries.GetFence(ctx, uuidParam(id))
 	if err != nil {
 		return gen.Fence{}, translateDBError(err)
@@ -417,7 +632,19 @@ func (s *Service) UpdateFence(ctx context.Context, id openapi_types.UUID, body j
 	if err != nil {
 		return gen.Fence{}, translateDBError(err)
 	}
-	return decodePayload[gen.Fence](row.Payload)
+	item, err := decodePayload[gen.Fence](row.Payload)
+	if err == nil {
+		if cache := s.metadataCache(); cache != nil {
+			cache.UpsertFence(item, payloadSignature(row.Payload))
+		}
+		s.emitMetadataChange(MetadataChange{
+			ID:        item.Id.String(),
+			Type:      metadataTypeFence,
+			Operation: metadataOperationUpdate,
+			Timestamp: s.now().UTC(),
+		})
+	}
+	return item, err
 }
 
 // DeleteFence removes a fence by identifier.
@@ -429,6 +656,15 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 	if rows == 0 {
 		return notFound("fence not found")
 	}
+	if cache := s.metadataCache(); cache != nil {
+		cache.DeleteFence(id)
+	}
+	s.emitMetadataChange(MetadataChange{
+		ID:        id.String(),
+		Type:      metadataTypeFence,
+		Operation: metadataOperationDelete,
+		Timestamp: s.now().UTC(),
+	})
 	return nil
 }
 
@@ -501,9 +737,7 @@ func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proxi
 		return gen.Location{}, err
 	}
 	if clearState {
-		if err := s.cache.Delete(ctx, stateKey); err != nil {
-			return gen.Location{}, err
-		}
+		s.processingState().DeleteProximityState(stateKey)
 	} else if err := s.storeProximityState(ctx, stateKey, resolution.State, resolution.Policy.StaleStateTTL); err != nil {
 		return gen.Location{}, err
 	}
@@ -527,23 +761,18 @@ func (s *Service) defaultProximityResolutionPolicy() proximityResolutionPolicy {
 }
 
 func (s *Service) loadProximityState(ctx context.Context, key string) (proximityResolutionState, error) {
-	payload, err := s.cache.Get(ctx, key)
-	if err != nil || len(payload) == 0 {
-		return proximityResolutionState{}, err
-	}
-	var state proximityResolutionState
-	if err := json.Unmarshal(payload, &state); err != nil {
-		return proximityResolutionState{}, err
+	_ = ctx
+	state, ok := s.processingState().GetProximityState(key)
+	if !ok {
+		return proximityResolutionState{}, nil
 	}
 	return state, nil
 }
 
 func (s *Service) storeProximityState(ctx context.Context, key string, state proximityResolutionState, ttl time.Duration) error {
-	payload, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	return s.cache.Set(ctx, key, payload, ttl)
+	_ = ctx
+	s.processingState().SetProximityState(key, state, ttl)
+	return nil
 }
 
 func resolveProximityCandidate(proximity gen.Proximity, zones []gen.Zone, defaults proximityResolutionPolicy) (resolvedProximity, error) {
@@ -652,21 +881,13 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 	if err != nil {
 		return err
 	}
-	ok, err := s.cache.SetNX(ctx, dedupKey(payload), payload, s.cfg.DedupTTL)
-	if err != nil {
-		return err
-	}
-	if !ok {
+	if !s.processingState().Deduplicate(dedupKey(payload), s.cfg.DedupTTL) {
 		return nil
 	}
-	if err := s.cache.Set(ctx, latestLocationKey(location.ProviderId, location.Source), payload, ttl); err != nil {
-		return err
-	}
+	s.processingState().SetLatestLocation(latestLocationKey(location.ProviderId, location.Source), location, ttl)
 	if location.Trackables != nil {
 		for _, trackableID := range *location.Trackables {
-			if err := s.cache.Set(ctx, latestTrackableLocationKey(trackableID), payload, ttl); err != nil {
-				return err
-			}
+			s.processingState().SetTrackableLocation(latestTrackableLocationKey(trackableID), location, ttl)
 		}
 	}
 	if err := s.publishLocation(ctx, location); err != nil {
@@ -731,7 +952,14 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 	wgsMotions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
 	for _, id := range *location.Trackables {
 		baseMotion := gen.TrackableMotion{Id: id}
-		if parsed, parseErr := uuid.Parse(id); parseErr == nil {
+		if cache := s.metadataCache(); cache != nil {
+			if trackable, ok := cache.TrackableByID(id); ok {
+				baseMotion.Name = trackable.Name
+				baseMotion.Geometry = trackable.Geometry
+				baseMotion.Extrusion = trackable.Extrusion
+				baseMotion.Properties = trackable.Properties
+			}
+		} else if parsed, parseErr := uuid.Parse(id); parseErr == nil {
 			trackable, getErr := s.GetTrackable(ctx, openapi_types.UUID(parsed))
 			if getErr == nil {
 				baseMotion.Name = trackable.Name
@@ -874,6 +1102,12 @@ func (s *Service) locationToLocal(ctx context.Context, wgs84Location gen.Locatio
 }
 
 func (s *Service) zoneForLocationSource(ctx context.Context, location gen.Location) (gen.Zone, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if zone, ok := cache.ZoneBySource(location.Source); ok {
+			return zone, nil
+		}
+		return gen.Zone{}, badRequest("location source did not match a known zone id or foreign_id")
+	}
 	zones, err := s.ListZones(ctx)
 	if err != nil {
 		return gen.Zone{}, err
@@ -915,17 +1149,10 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 			if err != nil {
 				continue
 			}
-			stateKey := fenceMembershipKey(fence.Id.String(), trackableID)
-			prev, err := s.cache.Get(ctx, stateKey)
-			if err != nil {
-				return err
-			}
-			wasInside := string(prev) == "inside"
+			wasInside := s.processingState().IsInsideFence(trackableID, fence.Id.String())
 			switch {
 			case inside && !wasInside:
-				if err := s.cache.Set(ctx, stateKey, []byte("inside"), s.cfg.LocationTTL); err != nil {
-					return err
-				}
+				s.processingState().SetInsideFence(trackableID, fence.Id.String(), s.cfg.LocationTTL)
 				event := gen.FenceEvent{
 					EventType:   gen.RegionEntry,
 					FenceId:     fence.Id,
@@ -939,9 +1166,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					return err
 				}
 			case !inside && wasInside:
-				if err := s.cache.Delete(ctx, stateKey); err != nil {
-					return err
-				}
+				s.processingState().ClearInsideFence(trackableID, fence.Id.String())
 				event := gen.FenceEvent{
 					EventType:   gen.RegionExit,
 					FenceId:     fence.Id,
@@ -987,26 +1212,15 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 		trackables[trackable.Id.String()] = trackable
 	}
 	for _, motion := range motions {
-		if err := s.cache.Set(ctx, latestTrackableMotionKey(motion.Id), mustMarshal(motion), s.cfg.CollisionStateTTL); err != nil {
-			return err
-		}
+		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
 		for otherID, otherTrackable := range trackables {
 			if otherID == motion.Id {
 				continue
 			}
-			payload, err := s.cache.Get(ctx, latestTrackableMotionKey(otherID))
-			if err != nil {
-				return err
-			}
-			if len(payload) == 0 {
-				if err := s.cache.Delete(ctx, collisionPairKey(motion.Id, otherID)); err != nil {
-					return err
-				}
+			otherMotion, ok := s.processingState().GetMotion(otherID)
+			if !ok {
+				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
 				continue
-			}
-			var otherMotion gen.TrackableMotion
-			if err := json.Unmarshal(payload, &otherMotion); err != nil {
-				return err
 			}
 			event, active, err := s.evaluateCollision(motion, trackables[motion.Id], otherMotion, otherTrackable)
 			if err != nil {
@@ -1020,22 +1234,18 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 					}
 					s.bus.Emit(busEvent)
 				}
-				if err := s.cache.Delete(ctx, collisionPairKey(motion.Id, otherID)); err != nil {
-					return err
-				}
+				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
 				continue
 			}
 			if event == nil {
 				continue
 			}
-			if err := s.cache.Set(ctx, collisionPairKey(motion.Id, otherID), mustMarshal(activeCollisionState{
+			s.processingState().SetCollisionState(collisionPairKey(motion.Id, otherID), activeCollisionState{
 				Active:      true,
 				StartTime:   timeValue(event.StartTime),
 				LastSeen:    timeValue(event.CollisionTime),
 				LastEmitted: timeValue(event.CollisionTime),
-			}), s.cfg.CollisionStateTTL); err != nil {
-				return err
-			}
+			}, s.cfg.CollisionStateTTL)
 			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", CollisionEnvelope{Event: *event})
 			if err != nil {
 				return err
@@ -1064,15 +1274,9 @@ func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackabl
 	}
 	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint)
 	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
-	payload, err := s.cache.Get(context.Background(), key)
-	if err != nil {
-		return nil, false, err
-	}
 	var state activeCollisionState
-	if len(payload) != 0 {
-		if err := json.Unmarshal(payload, &state); err != nil {
-			return nil, false, err
-		}
+	if existing, ok := s.processingState().GetCollisionState(key); ok {
+		state = existing
 	}
 	if !colliding {
 		if !state.Active {
@@ -1149,10 +1353,6 @@ func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable,
 	return false, nil, distance
 }
 
-func latestTrackableMotionKey(trackableID string) string {
-	return fmt.Sprintf("hub:trackable-motion:%s", trackableID)
-}
-
 func collisionPairKey(leftID, rightID string) string {
 	ids := []string{leftID, rightID}
 	sort.Strings(ids)
@@ -1201,11 +1401,6 @@ func fenceEventTime(event gen.FenceEvent) time.Time {
 		return *event.ExitTime
 	}
 	return time.Time{}
-}
-
-func mustMarshal(value any) []byte {
-	payload, _ := json.Marshal(value)
-	return payload
 }
 
 func locationGeoJSONFeatureCollection(location gen.Location) (GeoJSONFeatureCollection, error) {
@@ -1587,10 +1782,6 @@ func proximityResolutionStateKey(providerType, providerID string) string {
 func dedupKey(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return "hub:dedup:" + hex.EncodeToString(sum[:])
-}
-
-func fenceMembershipKey(fenceID, trackableID string) string {
-	return fmt.Sprintf("hub:fence:%s:%s", fenceID, trackableID)
 }
 
 func point2D(point gen.Point) ([2]float64, error) {

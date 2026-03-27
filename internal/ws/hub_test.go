@@ -78,6 +78,43 @@ func TestBusEventReachesSubscribedClient(t *testing.T) {
 	}
 }
 
+func TestMetadataChangeEventReachesSubscribedClient(t *testing.T) {
+	t.Parallel()
+
+	bus := hub.NewEventBus()
+	client, cleanup := startTestHub(t, bus, true)
+	defer cleanup()
+
+	writeWS(t, client, map[string]any{"event": "subscribe", "topic": topicMetadataChanges, "params": map[string]any{"type": "zone"}})
+	ack := readWS(t, client)
+	if ack.Event != "subscribed" || ack.SubscriptionID == nil {
+		t.Fatalf("unexpected subscribe ack: %+v", ack)
+	}
+
+	payload, err := json.Marshal(hub.MetadataChange{
+		ID:        "zone-1",
+		Type:      "zone",
+		Operation: "update",
+		Timestamp: time.Date(2026, 3, 27, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("marshal metadata change failed: %v", err)
+	}
+	bus.Emit(hub.Event{Kind: hub.EventMetadataChange, Scope: hub.ScopeMetadata, Payload: payload})
+
+	msg := readWS(t, client)
+	if msg.Event != "message" || msg.Topic != topicMetadataChanges {
+		t.Fatalf("unexpected metadata delivery: %+v", msg)
+	}
+	var body []hub.MetadataChange
+	if err := json.Unmarshal(msg.Payload, &body); err != nil {
+		t.Fatalf("decode metadata payload failed: %v", err)
+	}
+	if len(body) != 1 || body[0].ID != "zone-1" || body[0].Type != "zone" {
+		t.Fatalf("unexpected metadata payload: %+v", body)
+	}
+}
+
 func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 	t.Parallel()
 

@@ -290,6 +290,17 @@ Both patterns should share the same replication model:
 - incremental changes after bootstrap
 - version-aware reconciliation when gaps or outages occur
 
+Repository extension note:
+
+- this repository now exposes a non-OMLOX WebSocket topic `metadata_changes`
+  that can be used as the incremental change signal for centrally controlled
+  metadata
+- the topic is intentionally lightweight and should trigger resource fetch or
+  reconcile behavior rather than acting as the full replication payload
+- this is useful when the central system owns zones, fences, trackables, or
+  providers and edge hubs keep a local in-memory snapshot to stay off the
+  decision-critical ingest path
+
 ### Sync mechanics
 
 Each replicated metadata class should support:

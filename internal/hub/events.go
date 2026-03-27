@@ -17,6 +17,7 @@ const (
 	EventTrackableMotion EventKind = "trackable_motion"
 	EventFenceEvent      EventKind = "fence_event"
 	EventCollisionEvent  EventKind = "collision_event"
+	EventMetadataChange  EventKind = "metadata_change"
 )
 
 // EventScope describes the payload variant carried by an event.
@@ -29,6 +30,13 @@ const (
 	ScopeRaw           EventScope = "raw"
 	ScopeDerived       EventScope = "derived"
 	ScopeCollisionOnly EventScope = "collision"
+	ScopeMetadata      EventScope = "metadata"
+)
+
+const (
+	metadataOperationCreate = "create"
+	metadataOperationUpdate = "update"
+	metadataOperationDelete = "delete"
 )
 
 // GeoJSONFeatureCollection is the WebSocket/MQTT-friendly GeoJSON container
@@ -74,6 +82,15 @@ type TrackableMotionEnvelope struct {
 // CollisionEnvelope wraps a collision event.
 type CollisionEnvelope struct {
 	Event gen.CollisionEvent `json:"event"`
+}
+
+// MetadataChange is the lightweight resource-change notification emitted for
+// metadata replication and subscription surfaces.
+type MetadataChange struct {
+	ID        string    `json:"id"`
+	Type      string    `json:"type"`
+	Operation string    `json:"operation"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // Event is the normalized hub event emitted once and then consumed by

@@ -17,7 +17,6 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/hub"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/rpc"
-	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"go.uber.org/zap"
 )
@@ -50,8 +49,8 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 		return server
 	}
 	rt.newEventBus = func() *hub.EventBus { return nil }
-	rt.newService = func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
-		return &hub.Service{}
+	rt.newService = func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error) {
+		return &hub.Service{}, nil
 	}
 	rt.newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
 		return fakeRuntimeRPCBridge{}, nil
@@ -111,8 +110,8 @@ func TestRunReturnsMQTTSubscriptionFailure(t *testing.T) {
 		return nil
 	}
 	rt.newEventBus = func() *hub.EventBus { return nil }
-	rt.newService = func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
-		return &hub.Service{}
+	rt.newService = func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error) {
+		return &hub.Service{}, nil
 	}
 	rt.newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
 		return fakeRuntimeRPCBridge{}, nil
@@ -201,13 +200,13 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 				HTTPRequestBodyLimitBytes:            1024,
 				LogLevel:                             "info",
 				PostgresURL:                          "postgres://test",
-				ValkeyURL:                            "redis://localhost:6379/0",
 				MQTTBrokerURL:                        "tcp://localhost:1883",
 				WebSocketWriteTimeout:                time.Second,
 				WebSocketOutboundBuffer:              2,
 				StateLocationTTL:                     time.Minute,
 				StateProximityTTL:                    time.Minute,
 				StateDedupTTL:                        time.Minute,
+				MetadataReconcileInterval:            time.Minute,
 				RPCTimeout:                           time.Second,
 				RPCAnnouncementInterval:              time.Minute,
 				RPCHandlerID:                         "hub-test",
@@ -227,9 +226,6 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 		openQueries: func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error) {
 			return nil, runtimeCloserFunc(func() error { return nil }), nil
 		},
-		newCache: func(string) (*valkey.Client, func(), error) {
-			return &valkey.Client{}, func() {}, nil
-		},
 		newMQTT: func(*zap.Logger, string) (mqttRuntimeClient, error) {
 			return &fakeRuntimeMQTT{}, nil
 		},
@@ -240,8 +236,8 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 			return nil, nil
 		},
 		newEventBus: func() *hub.EventBus { return nil },
-		newService: func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service {
-			return &hub.Service{}
+		newService: func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error) {
+			return &hub.Service{}, nil
 		},
 		eventPublisherHandle: func(mqttRuntimeClient) func(context.Context, hub.Event) error {
 			return func(context.Context, hub.Event) error { return nil }

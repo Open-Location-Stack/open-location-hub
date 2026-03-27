@@ -18,7 +18,7 @@ The repository documentation is now split by audience: software/runtime document
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Hub-generated UUIDs for REST-managed resources, derived fence and collision events, and JSON-RPC caller IDs now use UUIDv7 so newly issued identifiers are time-sortable.
 - UUID generation is intentionally centralized behind `internal/ids` so the repository can switch from `github.com/google/uuid` to a future Go standard-library UUIDv7 implementation with a narrowly scoped change once that support is available and stable.
-- Provider ingestion endpoints are implemented for locations and proximities, with Valkey-backed deduplication and transient latest-state storage.
+- Provider ingestion endpoints are implemented for locations and proximities, with in-memory deduplication, latest-state tracking, proximity hysteresis, fence membership, and collision state.
 - Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
 - A shared internal event bus now fans normalized hub events out to MQTT and WebSocket consumers instead of keeping MQTT as the only outbound path.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, trackable-motion, and optional collision publication.
@@ -54,7 +54,7 @@ The repository documentation is now split by audience: software/runtime document
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
-- Coverage is still lighter in observability and storage/Valkey adapter packages than in the core service and RPC packages, but the previous blind spots around the REST handler layer, MQTT client edges, and process wiring now have direct failure-path coverage.
+- Coverage is still lighter in observability and a few storage/runtime edge packages than in the core service and RPC packages, but the previous blind spots around the REST handler layer, MQTT client edges, process wiring, metadata cache diffs, and in-memory processing state now have direct failure-path coverage.
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
 - Collision support is intentionally bounded and configuration-gated; it does not yet model cross-hub correlation, richer polygon semantics, or broader OMLOX collision behaviors beyond trackable-versus-trackable detection.
 - Federation between OMLOX hubs is not yet modeled in configuration, auth, data provenance, or runtime behavior, so current deployments are effectively single-hub topologies.
@@ -73,7 +73,7 @@ Delivered:
 ### Phase 2: Ingestion and transient state baseline
 Delivered:
 - `POST /v2/providers/locations` and `POST /v2/providers/proximities` are implemented.
-- Valkey-backed TTL configuration exists for latest state, proximity-derived state, dedup windows, and RPC timeout.
+- In-memory TTL configuration now governs latest state, proximity-derived state, dedup windows, metadata reconcile cadence, and RPC timeout.
 - Ingestion uses a shared path so HTTP and MQTT inputs exercise the same core logic.
 - Location ingest validation now accepts omitted `crs`, `local`, and named EPSG codes, with runtime transformation determining which derived outputs are publishable.
 - CRS transformation uses PROJ-backed named CRS conversion plus zone `ground_control_points` fitting for local georeferencing.
@@ -109,6 +109,7 @@ Delivered:
 - `GET /v2/ws/socket` is implemented as the OMLOX WebSocket wrapper surface outside the REST OpenAPI contract.
 - WebSocket subscriptions now consume the same normalized event stream as MQTT publication.
 - WebSocket supports `location_updates`, `location_updates:geojson`, `proximity_updates`, `fence_events`, `fence_events:geojson`, `trackable_motions`, and configuration-gated `collision_events`.
+- WebSocket now also supports subscribe-only `metadata_changes` notifications for zones, fences, trackables, and location providers.
 - WebSocket message handling reuses the same location and proximity ingest paths as REST and MQTT.
 - Topic-level WebSocket authorization now exists alongside route-level REST auth and RPC method auth.
 
@@ -121,13 +122,13 @@ Residual work:
 
 ### Phase 6: Production hardening
 Scope:
-- Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, Valkey, MQTT, and RPC.
+- Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, metadata reconcile, MQTT, and RPC.
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
 - Evaluate whether repository scale and rule count now justify consolidating the current explicit lint commands under `golangci-lint` or a comparable aggregator without obscuring which checks actually gate CI.
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.
 - Establish baseline performance checks for CRUD, ingest, MQTT publication, and RPC fan-out/fan-in behavior.
 - Raise direct test coverage around runtime adapters and entrypoints, especially the REST handler layer, MQTT client edges, and process wiring, so regressions at package boundaries are caught earlier.
-- Extend the same style of boundary-focused tests to observability logging middleware and the storage/Valkey adapters so the remaining low-coverage runtime packages have comparable regression resistance.
+- Extend the same style of boundary-focused tests to observability logging middleware and the remaining low-coverage runtime packages so they have comparable regression resistance.
 
 Exit criteria:
 - The hub can be operated with clear visibility into failures, dependency health, expected throughput characteristics, and repository quality checks that exercise concurrency and adapter-boundary failure modes.
@@ -161,6 +162,7 @@ Scope:
 - Add provenance metadata, replay cursors, deduplication keys, and loop suppression for federated events and resources.
 - Extend auth design and implementation for machine-to-machine service identities, multi-issuer trust, per-peer scopes, and propagated ownership or tenancy boundaries.
 - Define cloud-authoritative metadata distribution for facility metadata, zones, fences, and other replicated configuration so on-prem hubs can operate from synchronized local copies.
+- Add a slave-mode deployment option where an instance subscribes to remote metadata updates, applies them into its local PostgreSQL store, and rejects direct local writes for cloud-owned metadata classes while still serving from the local in-memory snapshot.
 - Add operational visibility for peer health, replication lag, retries, reconciliation state, and dead-letter conditions.
 
 Exit criteria:
@@ -171,6 +173,7 @@ Scope:
 - Add snapshot and reconciliation flows for zones, providers, trackables, and fences.
 - Add practical change feeds for CRUD-managed resources so pull-based federation does not depend only on periodic full scans.
 - Add a concrete cloud-to-edge metadata sync model with authoritative ownership, versioning, tombstones, offline cache behavior, and scope-aware rollout by site, tenant, or region.
+- Make the receiving side able to persist remotely subscribed metadata changes into local PostgreSQL so slave-mode hubs can restart from local state, reconcile gaps, and keep ingest/geofence/collision processing off the remote control plane.
 - Federate normalized `Location`, `Proximity`, `FenceEvent`, `TrackableMotion`, and eventual collision-event traffic with idempotent apply semantics on the receiving hub.
 - Define deletion, redaction, tenancy partitioning, and jurisdiction-aware forwarding behavior for regional and aggregate cloud deployments.
 - Constrain RPC federation to explicitly allowed methods and audited forwarding paths once data-plane federation is stable.
@@ -201,7 +204,7 @@ To move this repository toward feature-complete status for the intended product 
    - per-peer scopes for ingest, subscribe, replicate, and RPC
    - propagated ownership, tenant, and region boundaries
 4. Add cloud-authoritative metadata sync so buildings or sites, zones, fences, and related metadata can be managed centrally and synchronized safely to on-prem hubs.
-5. Add resource synchronization support for zones, providers, trackables, and fences, including practical change-feed support.
+5. Add resource synchronization support for zones, providers, trackables, and fences, including practical change-feed support and a slave mode that subscribes to remote metadata updates and persists them into local PostgreSQL.
 6. Add the operational foundations required for federated deployments:
    - peer health and readiness
    - replication lag and retry metrics

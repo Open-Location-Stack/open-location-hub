@@ -16,6 +16,7 @@ Spec references:
   - the hub accepts `message`, `subscribe`, and `unsubscribe` and emits `message`, `subscribed`, `unsubscribed`, and `error`
   - MQTT and WebSocket now consume the same internal hub-event stream
   - `collision_events` is implemented behind the runtime flag `COLLISIONS_ENABLED` and returns `10002` when the topic is requested while disabled
+  - `metadata_changes` exists as a repository-specific extension topic and is documented separately in `metadata-sync-extension.md`
 
 ## Endpoint
 
@@ -414,3 +415,4 @@ Sources:
 - Treat the OMLOX PDF as normative for required behavior.
 - Treat the product-specific additions above as optional extensions unless we explicitly adopt them.
 - If we adopt any product-specific extension, document it separately from the OMLOX core behavior so the distinction stays clear.
+- `metadata_changes` is one such adopted extension in this repository. It is not part of OMLOX core WebSocket behavior and must be treated as an implementation-specific companion topic.

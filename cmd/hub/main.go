@@ -19,7 +19,6 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"github.com/formation-res/open-rtls-hub/internal/rpc"
-	"github.com/formation-res/open-rtls-hub/internal/state/valkey"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/ws"
@@ -53,12 +52,11 @@ type runtimeDeps struct {
 	loadConfig           func() (config.Config, error)
 	newLogger            func(string) (*zap.Logger, func(), error)
 	openQueries          func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error)
-	newCache             func(string) (*valkey.Client, func(), error)
 	newMQTT              func(*zap.Logger, string) (mqttRuntimeClient, error)
 	newAuthenticator     func(context.Context, config.AuthConfig) (auth.Authenticator, error)
 	loadRegistry         func(string) (*auth.Registry, error)
 	newEventBus          func() *hub.EventBus
-	newService           func(*zap.Logger, sqlcgen.Querier, *valkey.Client, *hub.EventBus, hub.Config) *hub.Service
+	newService           func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error)
 	eventPublisherHandle func(mqttRuntimeClient) func(context.Context, hub.Event) error
 	newRPCBridge         func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error)
 	newHTTPServer        func(string, http.Handler) httpServer
@@ -76,10 +74,6 @@ var defaultRuntime = runtimeDeps{
 			pool.Close()
 			return nil
 		}), nil
-	},
-	newCache: func(addr string) (*valkey.Client, func(), error) {
-		cache := valkey.NewClient(addr)
-		return cache, func() { _ = cache.Close() }, nil
 	},
 	newMQTT:          authlessNewMQTT,
 	newAuthenticator: auth.NewAuthenticator,
@@ -144,12 +138,6 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 	defer func() { _ = closeQueries.Close() }()
 
-	cache, closeCache, err := rt.newCache(cfg.ValkeyURL)
-	if err != nil {
-		return fmt.Errorf("cache init failed: %w", err)
-	}
-	defer closeCache()
-
 	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL)
 	if err != nil {
 		return fmt.Errorf("mqtt init failed: %w", err)
@@ -169,10 +157,11 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 
 	eventBus := rt.newEventBus()
-	service := rt.newService(logger, queries, cache, eventBus, hub.Config{
+	service, err := rt.newService(logger, queries, eventBus, hub.Config{
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
+		MetadataReconcileInterval:             cfg.MetadataReconcileInterval,
 		CollisionsEnabled:                     cfg.CollisionsEnabled,
 		CollisionStateTTL:                     cfg.CollisionStateTTL,
 		CollisionCollidingDebounce:            cfg.CollisionCollidingDebounce,
@@ -184,6 +173,10 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		ProximityResolutionFallbackRadius:     cfg.ProximityResolutionFallbackRadius,
 		ProximityResolutionStaleStateTTL:      cfg.ProximityResolutionStaleStateTTL,
 	})
+	if err != nil {
+		return fmt.Errorf("service init failed: %w", err)
+	}
+	service.Start(ctx)
 	var cleanupMQTTPublisher func()
 	if eventBus != nil {
 		var ch <-chan hub.Event

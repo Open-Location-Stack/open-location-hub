@@ -33,6 +33,7 @@ reader@example.com:
     subscribe:
       location_*: true
       fence_events*: true
+      metadata_changes: true
       trackable_motions: true
     publish: {}
 
