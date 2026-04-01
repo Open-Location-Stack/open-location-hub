@@ -165,7 +165,7 @@ func (b *EventBus) Emit(event Event) {
 	}
 }
 
-func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID string, payload any) (Event, error) {
+func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID, originHubID string, payload any) (Event, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return Event{}, err
@@ -181,6 +181,7 @@ func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID,
 		ProviderID:  providerID,
 		TrackableID: trackableID,
 		FenceID:     fenceID,
+		OriginHubID: originHubID,
 		Payload:     raw,
 	}, nil
 }

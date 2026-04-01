@@ -117,7 +117,11 @@ hub handler id, the message `pong`, and a timestamp.
 ### `com.omlox.identify`
 
 Use it to learn what the hub exposes. It returns the service name, build
-version, auth mode, and built-in method list.
+version, auth mode, stable `hub_id`, and built-in method list.
+
+Current hub behavior:
+- `name` is the persisted hub label from Postgres-backed hub metadata
+- `hub_id` is the stable persisted hub UUID used for internal provenance and future federation identity
 
 ### `com.omlox.core.xcmd`
 

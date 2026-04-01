@@ -95,3 +95,30 @@ func TestRequestBodyLimitMustBePositive(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestValidHubIDLoadsSuccessfully(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := configFromMap(map[string]string{
+		"AUTH_MODE": "none",
+		"HUB_ID":    "4f630dd4-e5f2-4398-9970-c63cad9bc109",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HubID != "4f630dd4-e5f2-4398-9970-c63cad9bc109" {
+		t.Fatalf("unexpected hub id: %s", cfg.HubID)
+	}
+}
+
+func TestInvalidHubIDFailsValidation(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE": "none",
+		"HUB_ID":    "not-a-uuid",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}

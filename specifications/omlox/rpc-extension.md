@@ -106,6 +106,7 @@ Purpose:
 Current result shape includes:
 - handler id
 - service name
+- stable hub id
 - build version
 - auth mode
 - built-in method list

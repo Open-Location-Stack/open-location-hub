@@ -51,7 +51,9 @@ The repository documentation is now split by audience: software/runtime document
 - Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
 - MQTT remains useful for local integration, but the intended architecture is that cross-hub federation uses REST and WebSocket rather than MQTT.
-- RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`, but `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
+- RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`; `com.omlox.identify` now reports the persisted hub label and stable `hub_id`, while `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
+- Startup now persists singleton hub metadata in Postgres, bootstraps `HUB_ID` and `HUB_LABEL` from env or sensible defaults on first run, and fails fast on later env-versus-storage mismatches unless `RESET_HUB_ID=true`.
+- The shared internal event bus now populates `origin_hub_id` from persisted hub metadata for all emitted events so provenance is available for downstream consumers and later federation work.
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
 - Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
@@ -59,7 +61,7 @@ The repository documentation is now split by audience: software/runtime document
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
 - Collision support is intentionally bounded and configuration-gated; it does not yet model cross-hub correlation, richer polygon semantics, or broader OMLOX collision behaviors beyond trackable-versus-trackable detection.
 - Federation between OMLOX hubs is not yet modeled in configuration, auth, data provenance, or runtime behavior, so current deployments are effectively single-hub topologies.
-- The runtime does not yet define a stable configured hub UUID for provenance, scoped identity, replay handling, and cross-hub routing.
+- The runtime now persists one stable hub UUID and label locally, but cross-hub provenance propagation, scoped identity rules, replay handling, and routed federation behavior are still not designed end to end.
 - The current auth model covers user and caller authorization for one hub, but hub-to-hub service identities, multi-issuer trust, per-peer scopes, and propagated ownership/provenance rules are not yet designed or enforced.
 
 ## Completed Phases

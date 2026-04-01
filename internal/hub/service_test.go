@@ -435,6 +435,9 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 	events := collectEvents(ch, 2)
 	localPublished := decodeEventLocation(t, eventByScope(t, events, ScopeLocal))
 	wgsPublished := decodeEventLocation(t, eventByScope(t, events, ScopeEPSG4326))
+	if got := eventByScope(t, events, ScopeLocal).OriginHubID; got != "" {
+		t.Fatalf("expected empty origin hub id by default, got %q", got)
+	}
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
 		t.Fatal("expected local publication to stay local")
 	}
@@ -442,6 +445,36 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 		t.Fatal("expected wgs84 publication to use EPSG:4326")
 	}
 	assertLocationsDiffer(t, localPublished, wgsPublished)
+}
+
+func TestPublishLocationEmitsOriginHubIDWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	service := &Service{
+		bus:            bus,
+		cfg:            Config{HubID: "4f630dd4-e5f2-4398-9970-c63cad9bc109"},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 7})
+
+	if err := service.publishLocation(context.Background(), location); err != nil {
+		t.Fatalf("publishLocation failed: %v", err)
+	}
+	events := collectEvents(ch, 2)
+	if got := eventByScope(t, events, ScopeLocal).OriginHubID; got != "4f630dd4-e5f2-4398-9970-c63cad9bc109" {
+		t.Fatalf("unexpected local origin hub id: %q", got)
+	}
+	if got := eventByScope(t, events, ScopeEPSG4326).OriginHubID; got != "4f630dd4-e5f2-4398-9970-c63cad9bc109" {
+		t.Fatalf("unexpected wgs84 origin hub id: %q", got)
+	}
 }
 
 func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing.T) {
@@ -745,6 +778,9 @@ func zapTestLogger(t *testing.T) *zap.Logger {
 }
 
 type fakeQueries struct {
+	getHubMetadataFn  func(context.Context) (sqlcgen.HubMetadatum, error)
+	createHubMetaFn   func(context.Context, sqlcgen.CreateHubMetadataParams) (sqlcgen.HubMetadatum, error)
+	updateHubMetaFn   func(context.Context, sqlcgen.UpdateHubMetadataParams) (sqlcgen.HubMetadatum, error)
 	listFencesFn      func(context.Context) ([]sqlcgen.Fence, error)
 	listProvidersFn   func(context.Context) ([]sqlcgen.Provider, error)
 	listTrackablesFn  func(context.Context) ([]sqlcgen.Trackable, error)
@@ -766,6 +802,13 @@ type fakeQueries struct {
 func (f fakeQueries) CreateFence(ctx context.Context, params sqlcgen.CreateFenceParams) (sqlcgen.Fence, error) {
 	if f.createFenceFn != nil {
 		return f.createFenceFn(ctx, params)
+	}
+	panic("unexpected call")
+}
+
+func (f fakeQueries) CreateHubMetadata(ctx context.Context, params sqlcgen.CreateHubMetadataParams) (sqlcgen.HubMetadatum, error) {
+	if f.createHubMetaFn != nil {
+		return f.createHubMetaFn(ctx, params)
 	}
 	panic("unexpected call")
 }
@@ -823,6 +866,13 @@ func (f fakeQueries) GetFence(context.Context, pgtype.UUID) (sqlcgen.Fence, erro
 	panic("unexpected call")
 }
 
+func (f fakeQueries) GetHubMetadata(ctx context.Context) (sqlcgen.HubMetadatum, error) {
+	if f.getHubMetadataFn != nil {
+		return f.getHubMetadataFn(ctx)
+	}
+	panic("unexpected call")
+}
+
 func (f fakeQueries) GetProvider(context.Context, string) (sqlcgen.Provider, error) {
 	panic("unexpected call")
 }
@@ -866,6 +916,13 @@ func (f fakeQueries) ListZones(ctx context.Context) ([]sqlcgen.Zone, error) {
 func (f fakeQueries) UpdateFence(ctx context.Context, params sqlcgen.UpdateFenceParams) (sqlcgen.Fence, error) {
 	if f.updateFenceFn != nil {
 		return f.updateFenceFn(ctx, params)
+	}
+	panic("unexpected call")
+}
+
+func (f fakeQueries) UpdateHubMetadata(ctx context.Context, params sqlcgen.UpdateHubMetadataParams) (sqlcgen.HubMetadatum, error) {
+	if f.updateHubMetaFn != nil {
+		return f.updateHubMetaFn(ctx, params)
 	}
 	panic("unexpected call")
 }

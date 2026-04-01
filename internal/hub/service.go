@@ -27,6 +27,7 @@ import (
 // Config controls ingest deduplication, TTLs, and proximity resolution
 // behavior.
 type Config struct {
+	HubID                                 string
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
 	DedupTTL                              time.Duration
@@ -191,7 +192,7 @@ func (s *Service) emitMetadataChange(change MetadataChange) {
 	if s.bus == nil {
 		return
 	}
-	event, err := newEvent(EventMetadataChange, ScopeMetadata, change.Timestamp, "", "", "", change)
+	event, err := newEvent(EventMetadataChange, ScopeMetadata, change.Timestamp, "", "", "", s.cfg.HubID, change)
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Warn("metadata change emit failed", zap.Error(err), zap.String("id", change.ID), zap.String("type", change.Type))
@@ -707,7 +708,7 @@ func (s *Service) publishProximity(proximity gen.Proximity) error {
 	if s.bus == nil {
 		return nil
 	}
-	event, err := newEvent(EventProximity, ScopeRaw, proximityTime(proximity), proximity.ProviderId, "", "", ProximityEnvelope{Proximity: proximity})
+	event, err := newEvent(EventProximity, ScopeRaw, proximityTime(proximity), proximity.ProviderId, "", "", s.cfg.HubID, ProximityEnvelope{Proximity: proximity})
 	if err != nil {
 		return err
 	}
@@ -921,7 +922,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		event, err := newEvent(EventLocation, ScopeLocal, locationTime(*variants.Local), variants.Local.ProviderId, "", "", LocationEnvelope{Location: *variants.Local, GeoJSON: feature})
+		event, err := newEvent(EventLocation, ScopeLocal, locationTime(*variants.Local), variants.Local.ProviderId, "", "", s.cfg.HubID, LocationEnvelope{Location: *variants.Local, GeoJSON: feature})
 		if err != nil {
 			return err
 		}
@@ -932,7 +933,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		event, err := newEvent(EventLocation, ScopeEPSG4326, locationTime(*variants.WGS84), variants.WGS84.ProviderId, "", "", LocationEnvelope{Location: *variants.WGS84, GeoJSON: feature})
+		event, err := newEvent(EventLocation, ScopeEPSG4326, locationTime(*variants.WGS84), variants.WGS84.ProviderId, "", "", s.cfg.HubID, LocationEnvelope{Location: *variants.WGS84, GeoJSON: feature})
 		if err != nil {
 			return err
 		}
@@ -971,7 +972,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		if variants.Local != nil {
 			motion := baseMotion
 			motion.Location = *variants.Local
-			event, err := newEvent(EventTrackableMotion, ScopeLocal, locationTime(motion.Location), motion.Location.ProviderId, id, "", TrackableMotionEnvelope{Motion: motion})
+			event, err := newEvent(EventTrackableMotion, ScopeLocal, locationTime(motion.Location), motion.Location.ProviderId, id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
 			if err != nil {
 				return nil, err
 			}
@@ -980,7 +981,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		if variants.WGS84 != nil {
 			motion := baseMotion
 			motion.Location = *variants.WGS84
-			event, err := newEvent(EventTrackableMotion, ScopeEPSG4326, locationTime(motion.Location), motion.Location.ProviderId, id, "", TrackableMotionEnvelope{Motion: motion})
+			event, err := newEvent(EventTrackableMotion, ScopeEPSG4326, locationTime(motion.Location), motion.Location.ProviderId, id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
 			if err != nil {
 				return nil, err
 			}
@@ -1191,7 +1192,7 @@ func (s *Service) publishFenceEvent(_ context.Context, fence gen.Fence, event ge
 		return err
 	}
 	envelope := FenceEventEnvelope{Event: event, Fence: fence, GeoJSON: geo}
-	busEvent, err := newEvent(EventFenceEvent, ScopeDerived, fenceEventTime(event), stringPtrValue(event.ProviderId), stringPtrValue(event.TrackableId), event.FenceId.String(), envelope)
+	busEvent, err := newEvent(EventFenceEvent, ScopeDerived, fenceEventTime(event), stringPtrValue(event.ProviderId), stringPtrValue(event.TrackableId), event.FenceId.String(), s.cfg.HubID, envelope)
 	if err != nil {
 		return err
 	}
@@ -1228,7 +1229,7 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			}
 			if !active {
 				if event != nil {
-					busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", CollisionEnvelope{Event: *event})
+					busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
 					if err != nil {
 						return err
 					}
@@ -1246,7 +1247,7 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 				LastSeen:    timeValue(event.CollisionTime),
 				LastEmitted: timeValue(event.CollisionTime),
 			}, s.cfg.CollisionStateTTL)
-			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", CollisionEnvelope{Event: *event})
+			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
 			if err != nil {
 				return err
 			}

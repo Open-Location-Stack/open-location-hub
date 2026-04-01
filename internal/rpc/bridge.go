@@ -67,6 +67,7 @@ type XCMDRequest struct {
 type IdentifyConfig struct {
 	ServiceName string
 	AuthMode    string
+	HubID       string
 }
 
 // Config groups runtime collaborators and knobs for the RPC bridge.
@@ -312,6 +313,7 @@ func (b *Bridge) registerBuiltins() {
 		return map[string]any{
 			"handler_id": b.cfg.HandlerID,
 			"name":       b.cfg.Identify.ServiceName,
+			"hub_id":     b.cfg.Identify.HubID,
 			"version":    buildVersion,
 			"auth_mode":  b.cfg.Identify.AuthMode,
 			"methods":    methods,

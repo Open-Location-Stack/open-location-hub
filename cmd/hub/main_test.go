@@ -15,6 +15,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/config"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/hubmeta"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/rpc"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
@@ -199,6 +200,8 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 				HTTPListenAddr:                       ":0",
 				HTTPRequestBodyLimitBytes:            1024,
 				LogLevel:                             "info",
+				HubID:                                "4f630dd4-e5f2-4398-9970-c63cad9bc109",
+				HubLabel:                             "hub-test",
 				PostgresURL:                          "postgres://test",
 				MQTTBrokerURL:                        "tcp://localhost:1883",
 				WebSocketWriteTimeout:                time.Second,
@@ -235,6 +238,9 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 		loadRegistry: func(string) (*auth.Registry, error) {
 			return nil, nil
 		},
+		resolveHubMetadata: func(context.Context, sqlcgen.Querier, config.Config) (hubmeta.Metadata, error) {
+			return hubmeta.Metadata{HubID: "4f630dd4-e5f2-4398-9970-c63cad9bc109", Label: "hub-test"}, nil
+		},
 		newEventBus: func() *hub.EventBus { return nil },
 		newService: func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error) {
 			return &hub.Service{}, nil
@@ -248,6 +254,20 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 		newHTTPServer: func(_ string, handler http.Handler) httpServer {
 			return &fakeHTTPServer{handler: handler}
 		},
+	}
+}
+
+func TestRunReturnsHubMetadataBootstrapFailure(t *testing.T) {
+	t.Parallel()
+
+	rt := stubRuntimeForTest(t)
+	rt.resolveHubMetadata = func(context.Context, sqlcgen.Querier, config.Config) (hubmeta.Metadata, error) {
+		return hubmeta.Metadata{}, errors.New("mismatch")
+	}
+
+	err := runWithRuntime(context.Background(), rt)
+	if err == nil || !strings.Contains(err.Error(), "hub metadata init failed: mismatch") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

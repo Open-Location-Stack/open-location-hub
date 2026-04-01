@@ -106,6 +106,32 @@ func TestInvokeReturnsLocalPingSuccess(t *testing.T) {
 	assertResultContains(t, raw, "message", "pong")
 }
 
+func TestInvokeIdentifyReturnsConfiguredHubMetadata(t *testing.T) {
+	t.Parallel()
+
+	bridge, err := NewBridge(zap.NewNop(), nil, Config{
+		Timeout: time.Second,
+		Identify: IdentifyConfig{
+			ServiceName: "alpha-hub",
+			HubID:       "4f630dd4-e5f2-4398-9970-c63cad9bc109",
+		},
+	})
+	if err != nil {
+		t.Fatalf("bridge init failed: %v", err)
+	}
+	t.Cleanup(func() { _ = bridge.Close() })
+
+	request := testRequest(t, "com.omlox.identify")
+	mode := gen.UnderscoreReturnFirstSuccess
+	request.Params = &gen.JsonRpcRequest_Params{UnderscoreAggregation: &mode}
+	raw, _, err := bridge.Invoke(context.Background(), request)
+	if err != nil {
+		t.Fatalf("invoke failed: %v", err)
+	}
+	assertResultContains(t, raw, "name", "alpha-hub")
+	assertResultContains(t, raw, "hub_id", "4f630dd4-e5f2-4398-9970-c63cad9bc109")
+}
+
 func TestInvokeBridgesExternalMethodAndReturnsFirstSuccess(t *testing.T) {
 	t.Parallel()
 

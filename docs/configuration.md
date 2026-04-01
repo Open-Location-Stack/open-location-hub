@@ -11,10 +11,21 @@ Runtime lifecycle behavior:
 - `HTTP_LISTEN_ADDR` (default `:8080`)
 - `HTTP_REQUEST_BODY_LIMIT_BYTES` (default `4194304`)
 - `LOG_LEVEL` (default `info`)
+- `HUB_ID` (optional UUID bootstrap or reset value for the persisted hub identity)
+- `HUB_LABEL` (optional bootstrap or reset value for the persisted human-readable hub label)
+- `RESET_HUB_ID` (`true`/`false`, default `false`; when `true`, overwrite stored hub metadata with explicitly supplied env values)
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
+
+Hub metadata bootstrap behavior:
+- the hub persists one durable metadata row in Postgres containing the stable `hub_id` and operator-facing label
+- on first startup, `HUB_ID` seeds that row when provided; otherwise the hub generates a UUIDv7
+- on first startup, `HUB_LABEL` seeds that row when provided; otherwise the hub defaults to the machine hostname and falls back to `open-rtls-hub` if hostname lookup is unavailable
+- on later startups, the stored row is the source of truth when `HUB_ID` and `HUB_LABEL` are omitted
+- if supplied env values disagree with the stored row, startup fails with a clear mismatch error unless `RESET_HUB_ID=true`
+- when `RESET_HUB_ID=true`, only explicitly supplied values overwrite the stored row; omitted fields are preserved
 
 HTTP request decoding behavior:
 - JSON request bodies are capped by `HTTP_REQUEST_BODY_LIMIT_BYTES` before decode work proceeds
@@ -37,6 +48,7 @@ Stateful ingest behavior:
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed in the in-memory processing state before fan-out work
 - latest provider-source location state, trackable latest-location state, proximity hysteresis state, fence membership state, and collision pair state are all kept in process memory with the configured expiry semantics
 - metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`
+- durable hub metadata is also loaded from Postgres at startup before the service begins accepting traffic
 - WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
@@ -46,6 +58,7 @@ RPC behavior:
 - `RPC_TIMEOUT` is the default wait time for request-response style RPC calls when the client does not supply `_timeout`
 - `RPC_ANNOUNCEMENT_INTERVAL` controls how often the hub republishes retained MQTT availability announcements for hub-owned methods
 - `RPC_HANDLER_ID` is the handler identifier announced for hub-owned RPC methods and the identifier clients may use with `_handler_id` to target the hub directly
+- `com.omlox.identify` now returns the persisted hub label as `name` plus the stable `hub_id`
 
 ## Proximity Resolution
 - `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
