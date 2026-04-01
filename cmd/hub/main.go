@@ -16,6 +16,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/handlers"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/hubmeta"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"github.com/formation-res/open-rtls-hub/internal/rpc"
@@ -55,6 +56,7 @@ type runtimeDeps struct {
 	newMQTT              func(*zap.Logger, string) (mqttRuntimeClient, error)
 	newAuthenticator     func(context.Context, config.AuthConfig) (auth.Authenticator, error)
 	loadRegistry         func(string) (*auth.Registry, error)
+	resolveHubMetadata   func(context.Context, sqlcgen.Querier, config.Config) (hubmeta.Metadata, error)
 	newEventBus          func() *hub.EventBus
 	newService           func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error)
 	eventPublisherHandle func(mqttRuntimeClient) func(context.Context, hub.Event) error
@@ -75,11 +77,12 @@ var defaultRuntime = runtimeDeps{
 			return nil
 		}), nil
 	},
-	newMQTT:          authlessNewMQTT,
-	newAuthenticator: auth.NewAuthenticator,
-	loadRegistry:     auth.LoadRegistry,
-	newEventBus:      hub.NewEventBus,
-	newService:       hub.New,
+	newMQTT:            authlessNewMQTT,
+	newAuthenticator:   auth.NewAuthenticator,
+	loadRegistry:       auth.LoadRegistry,
+	resolveHubMetadata: hubmeta.Resolve,
+	newEventBus:        hub.NewEventBus,
+	newService:         hub.New,
 	eventPublisherHandle: func(client mqttRuntimeClient) func(context.Context, hub.Event) error {
 		if concrete, ok := client.(*mqtt.Client); ok {
 			return mqtt.NewEventPublisher(concrete).Handle
@@ -138,6 +141,11 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 	defer func() { _ = closeQueries.Close() }()
 
+	hubMeta, err := rt.resolveHubMetadata(ctx, queries, cfg)
+	if err != nil {
+		return fmt.Errorf("hub metadata init failed: %w", err)
+	}
+
 	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL)
 	if err != nil {
 		return fmt.Errorf("mqtt init failed: %w", err)
@@ -158,6 +166,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 
 	eventBus := rt.newEventBus()
 	service, err := rt.newService(logger, queries, eventBus, hub.Config{
+		HubID:                                 hubMeta.HubID,
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
@@ -197,8 +206,9 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		AnnouncementInterval: cfg.RPCAnnouncementInterval,
 		Authorizer:           registry,
 		Identify: rpc.IdentifyConfig{
-			ServiceName: "open-rtls-hub",
+			ServiceName: hubMeta.Label,
 			AuthMode:    cfg.Auth.Mode,
+			HubID:       hubMeta.HubID,
 		},
 	})
 	if err != nil {

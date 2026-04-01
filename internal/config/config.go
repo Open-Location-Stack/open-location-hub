@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type lookupEnvFunc func(string) (string, bool)
@@ -16,6 +18,9 @@ type Config struct {
 	HTTPListenAddr                        string
 	HTTPRequestBodyLimitBytes             int64
 	LogLevel                              string
+	HubID                                 string
+	HubLabel                              string
+	ResetHubID                            bool
 	PostgresURL                           string
 	MQTTBrokerURL                         string
 	WebSocketWriteTimeout                 time.Duration
@@ -66,6 +71,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		HTTPListenAddr:                        envWithLookup(lookup, "HTTP_LISTEN_ADDR", ":8080"),
 		HTTPRequestBodyLimitBytes:             int64EnvWithLookup(lookup, "HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
 		LogLevel:                              envWithLookup(lookup, "LOG_LEVEL", "info"),
+		HubID:                                 strings.TrimSpace(envWithLookup(lookup, "HUB_ID", "")),
+		HubLabel:                              strings.TrimSpace(envWithLookup(lookup, "HUB_LABEL", "")),
+		ResetHubID:                            boolEnvWithLookup(lookup, "RESET_HUB_ID", false),
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
@@ -114,6 +122,11 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.HTTPRequestBodyLimitBytes <= 0 {
 		return Config{}, fmt.Errorf("HTTP_REQUEST_BODY_LIMIT_BYTES must be > 0")
+	}
+	if cfg.HubID != "" {
+		if _, err := uuid.Parse(cfg.HubID); err != nil {
+			return Config{}, fmt.Errorf("HUB_ID must be a valid UUID: %w", err)
+		}
 	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")

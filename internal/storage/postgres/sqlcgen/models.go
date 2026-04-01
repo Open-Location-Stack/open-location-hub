@@ -17,6 +17,14 @@ type Fence struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type HubMetadatum struct {
+	SingletonID int16
+	HubID       pgtype.UUID
+	Label       string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
 type Provider struct {
 	ID        string
 	Type      string
