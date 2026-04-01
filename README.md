@@ -14,6 +14,7 @@ Key capabilities:
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
+- Connector demonstrators under [`connectors/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors)
 
 ## Omlox
 
@@ -58,6 +59,10 @@ Notes:
 - [docs/configuration.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/configuration.md)
 - [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md)
 - [docs/rpc.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/rpc.md)
+
+## Connector Demonstrators
+- [connectors/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/README.md)
+- [connectors/gtfs/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
 
 ## Engineering Docs
 - [engineering/index.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/index.md)

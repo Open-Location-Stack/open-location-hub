@@ -1,0 +1,83 @@
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.43.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ../../tools/dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "${DEMO_DEX_PORT:-5556}:5556"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5556/dex/.well-known/openid-configuration >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openrtls}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${DEMO_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ${DEMO_STATE_DIR:-./state}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "${DEMO_MQTT_PORT:-1883}:1883"
+      - "${DEMO_MQTT_WS_PORT:-9001}:9001"
+    volumes:
+      - ../../tools/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto -h >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: golang:1.26-alpine
+    working_dir: /workspace
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - 'apk add --no-cache build-base && /usr/local/go/bin/go install github.com/pressly/goose/v3/cmd/goose@v3.27.0 && /go/bin/goose -dir migrations postgres "$$POSTGRES_URL" up'
+    environment:
+      POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
+    volumes:
+      - ../../:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  hub:
+    build:
+      context: ../..
+    environment:
+      HTTP_LISTEN_ADDR: ":8080"
+      POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
+      MQTT_BROKER_URL: tcp://mosquitto:1883
+      AUTH_MODE: oidc
+      AUTH_ISSUER: http://dex:5556/dex
+      AUTH_AUDIENCE: open-rtls-cli
+      AUTH_ROLES_CLAIM: email
+      AUTH_PERMISSIONS_FILE: /app/config/auth/permissions.yaml
+      COLLISIONS_ENABLED: "true"
+    ports:
+      - "${DEMO_APP_PORT:-8080}:8080"
+    volumes:
+      - ../../config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
+    depends_on:
+      dex:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

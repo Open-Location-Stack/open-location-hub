@@ -1,0 +1,15 @@
+[project]
+name = "open-rtls-gtfs-demo"
+version = "0.1.0"
+description = "GTFS demonstrator connector for Open RTLS Hub"
+requires-python = ">=3.12"
+dependencies = [
+  "gtfs-realtime-bindings>=2.0.0",
+  "protobuf>=7.0.0",
+  "pyproj>=3.7.0",
+  "requests>=2.33.0",
+  "websocket-client>=1.9.0",
+]
+
+[tool.uv]
+package = false

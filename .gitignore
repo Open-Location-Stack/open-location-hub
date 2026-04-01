@@ -5,3 +5,10 @@ bin/
 !tools/bin/pkg-config
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
+connectors/gtfs/.env.local
+connectors/gtfs/demo.env
+connectors/gtfs/.venv/
+connectors/gtfs/logs/
+connectors/gtfs/state/
