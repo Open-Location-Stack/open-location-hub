@@ -27,48 +27,25 @@ The checked-in defaults target the live Grand Dole network:
 - `gtfs_support.py`: GTFS parsing, GTFS-RT decoding, and station polygon
   generation helpers
 - `.env.example`: environment template
-- `demo-compose.yml`: self-contained hub, Dex, Postgres, Mosquitto, and migration stack
-- `demo.env.example`: environment template for the local demo stack
-- `start_demo.sh`: starts the local demo stack with persistent Postgres state
-- `stop_demo.sh`: stops the local demo stack without deleting persisted state
-- `fetch_demo_token.sh`: fetches a Dex access token for local testing
 - `pyproject.toml`: `uv`-managed Python project metadata
 - `uv.lock`: locked Python dependency set for the demo
 
-## Self-contained Demo Stack
+## Shared Local Hub
 
-The directory is runnable as a self-contained demo for the hub and the GTFS
-connector. The local stack includes:
+This demo uses the shared local runtime in
+[`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub).
 
-- the hub container
-- Postgres with migrations
-- Dex for local OIDC tokens
-- Mosquitto for parity with the normal hub runtime
-
-Persistent state is kept in a bind-mounted local directory:
-
-- `connectors/gtfs/state/postgres`
-
-Start the stack:
+Start it with:
 
 ```bash
-connectors/gtfs/start_demo.sh
+connectors/local-hub/start_demo.sh
 ```
 
-Stop the stack while keeping state:
+Fetch an admin token with:
 
 ```bash
-connectors/gtfs/stop_demo.sh
+connectors/local-hub/fetch_demo_token.sh
 ```
-
-Fetch an admin token for the connector or manual API calls:
-
-```bash
-connectors/gtfs/fetch_demo_token.sh
-```
-
-The first run creates `connectors/gtfs/demo.env` from `demo.env.example`. Edit
-that file if you need different ports or a different local state directory.
 
 ## Required Inputs
 
@@ -96,7 +73,7 @@ Optional filters and tuning:
 1. Start the self-contained local runtime:
 
 ```bash
-connectors/gtfs/start_demo.sh
+connectors/local-hub/start_demo.sh
 ```
 
 2. Copy `.env.example` to `connectors/gtfs/.env.local` and fill in the required
@@ -106,7 +83,7 @@ connectors/gtfs/start_demo.sh
 cp connectors/gtfs/.env.example connectors/gtfs/.env.local
 ```
 
-3. If the hub runs with auth enabled, fetch a token with `fetch_demo_token.sh`
+3. If the hub runs with auth enabled, fetch a token with `connectors/local-hub/fetch_demo_token.sh`
    and set `HUB_TOKEN`.
 4. Sync the Python runtime with `uv`:
 

@@ -10,8 +10,10 @@ Connector projects in this repository should:
 - prefer the hub's existing OMLOX interfaces over private integration paths
 - keep bootstrap utilities and runtime connectors in the same project when they
   depend on the same upstream metadata
+- reuse the shared local hub runtime under [`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub) when they need a local demo stack
 
-The first demonstrator is [`connectors/gtfs`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs),
-which forwards GTFS-RT vehicle updates to the hub over WebSocket and bootstraps
-station zones and fence polygons from GTFS stop geometry plus optional external
-reference datasets.
+Available connector demos:
+
+- [`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub): reusable local hub, Postgres, Dex, and Mosquitto stack
+- [`connectors/gtfs`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs): GTFS-RT vehicle updates and station fence bootstrap
+- [`connectors/opensky`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky): OpenSky aircraft positions with airport-sector fences

@@ -62,7 +62,9 @@ Notes:
 
 ## Connector Demonstrators
 - [connectors/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/README.md)
+- [connectors/local-hub/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
 - [connectors/gtfs/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
+- [connectors/opensky/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md)
 
 ## Engineering Docs
 - [engineering/index.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/index.md)

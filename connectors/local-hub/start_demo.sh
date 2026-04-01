@@ -23,7 +23,7 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d
 
 cat <<EOF
 
-GTFS demo stack is starting.
+Local hub demo stack is starting.
 
 Persistent state:
   $STATE_DIR/postgres
