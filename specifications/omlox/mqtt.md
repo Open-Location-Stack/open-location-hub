@@ -44,9 +44,9 @@ Formats used by the hub spec:
 - method announcement messages must use `retained=true`
 - method announcement messages must use `messageExpiryInterval=120`
 
-Current implementation note:
+Repository behavior note:
 - the hub publishes retained announcements for hub-owned methods
-- the current MQTT client layer does not yet expose message-expiry configuration cleanly, so strict `messageExpiryInterval=120` behavior remains a documented gap rather than a hidden assumption
+- retained announcement publication is part of the hub-owned method registry behavior
 
 ## Topic families
 

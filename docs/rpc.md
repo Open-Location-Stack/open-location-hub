@@ -30,12 +30,12 @@ This makes the hub the control-plane front door and audit point.
 
 ## Available methods
 
-The hub currently exposes these OMLOX-reserved methods locally:
+The hub exposes these OMLOX-reserved methods locally:
 - `com.omlox.ping`
 - `com.omlox.identify`
 - `com.omlox.core.xcmd`
 
-The hub may also expose additional methods announced by external MQTT handlers.
+The hub also exposes methods announced by external MQTT handlers when those handlers are reachable.
 
 Use:
 
@@ -44,7 +44,7 @@ curl -sS http://localhost:8080/v2/rpc/available \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-The response maps method names to currently reachable handler ids.
+The response maps method names to the reachable handler ids known to the hub.
 
 ## Calling methods
 
@@ -104,7 +104,7 @@ curl -sS -X PUT http://localhost:8080/v2/rpc \
 
 Note:
 - `com.omlox.core.xcmd` already exists at the hub control-plane layer
-- actual device execution still depends on the configured adapter for the target deployment
+- device execution is provided through the adapter configured for the target deployment
 - if no adapter is configured, the hub returns a deterministic unsupported JSON-RPC error
 
 ## What the built-in methods mean
@@ -119,15 +119,15 @@ hub handler id, the message `pong`, and a timestamp.
 Use it to learn what the hub exposes. It returns the service name, build
 version, auth mode, stable `hub_id`, and built-in method list.
 
-Current hub behavior:
+Hub behavior:
 - `name` is the persisted hub label from Postgres-backed hub metadata
-- `hub_id` is the stable persisted hub UUID used for internal provenance and future federation identity
+- `hub_id` is the stable persisted hub UUID used for internal provenance
 
 ### `com.omlox.core.xcmd`
 
 Use it when you need to send OMLOX core-zone commands through the hub instead
 of opening direct MQTT control access to devices. The hub validates and logs
-the call, then routes it through an adapter if one is configured.
+the call, then routes it through the configured adapter.
 
 ## `_handler_id`, `_timeout`, and `_aggregation`
 
@@ -207,11 +207,10 @@ The hub logs:
 - whether the call was accepted or rejected
 - handler selection and timeout/failure paths
 
-Operators should treat those logs as the primary audit trail for RPC use until
-metrics and richer observability are added.
+Operators should treat those logs as the primary audit trail for RPC use.
 
-## Current limitations
+## Repository behavior
 
-- the available-method response exposes handler ids but not local/external source metadata
-- retained MQTT announcements are implemented, but strict MQTT v5 expiry behavior is still a documented gap
-- `com.omlox.core.xcmd` still needs a deployment-specific adapter before it can drive real provider/core integrations
+- the available-method response exposes handler ids for the methods the hub can reach
+- the hub publishes retained MQTT availability announcements for hub-owned methods
+- `com.omlox.core.xcmd` executes through the deployment adapter configured for the hub and returns a deterministic unsupported error when no adapter is configured

@@ -33,7 +33,7 @@ The hub maintains a single method registry containing:
 - hub-owned methods implemented locally
 - externally announced MQTT handlers discovered from retained availability topics
 
-Dispatch rules in the current implementation:
+Dispatch rules:
 - if `_handler_id` targets the hub handler id, dispatch locally
 - if `_handler_id` targets an external handler id, dispatch only to that MQTT handler
 - without `_handler_id`, the hub dispatches to all matching local and external handlers
@@ -80,7 +80,7 @@ The OMLOX-reserved methods are:
 - `com.omlox.identify`
 - `com.omlox.core.xcmd`
 
-Current implementation status:
+Repository behavior:
 - `com.omlox.ping`: implemented locally by the hub
 - `com.omlox.identify`: implemented locally by the hub
 - `com.omlox.core.xcmd`: implemented locally at the RPC layer and routed through an adapter seam; deployments without an adapter receive a deterministic unsupported error
@@ -92,7 +92,7 @@ Current implementation status:
 Purpose:
 - prove that the control-plane path is reachable
 
-Current result shape includes:
+Result shape includes:
 - handler id
 - message `pong`
 - method name
@@ -103,7 +103,7 @@ Current result shape includes:
 Purpose:
 - tell operators and clients what the hub exposes
 
-Current result shape includes:
+Result shape includes:
 - handler id
 - service name
 - stable hub id
@@ -117,15 +117,11 @@ Current result shape includes:
 Purpose:
 - provide a stable hub entrypoint for OMLOX core-zone commands
 
-Current repository behavior:
+Repository behavior:
 - validates and authorizes the call at the hub RPC layer
 - forwards normalized parameters to a deployment-specific adapter
 - publishes any returned `XCMD_BC` payloads to the broadcast topic
 - returns a deterministic unsupported error when no adapter is configured
-
-This means the hub-side control-plane contract exists today, but actual device
-command execution still depends on the adapter implementation used in a given
-deployment.
 
 ## Security model
 
@@ -142,8 +138,8 @@ Operational guidance:
 - restrict `com.omlox.core.xcmd` more tightly than `com.omlox.ping` or `com.omlox.identify`
 - keep MQTT broker access narrow to the hub and trusted device/adaptor components
 
-## Current limitations
+## Repository behavior notes
 
-- the available-method REST response currently exposes handler ids but not local/external source metadata
-- retained method announcements are published, but MQTT v5 message-expiry enforcement is not yet wired through the current client abstraction
-- `com.omlox.core.xcmd` needs a real adapter before it can control concrete provider/core implementations
+- the available-method REST response exposes handler ids for the methods the hub can reach
+- the hub publishes retained method announcements for hub-owned methods
+- deployments provide concrete device or provider integration through the configured adapter

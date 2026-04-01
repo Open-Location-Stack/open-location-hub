@@ -51,7 +51,7 @@ Method mapping:
 - `PUT` and `PATCH` require `UPDATE_*`
 - `DELETE` requires `DELETE_*`
 
-`*_OWN` permissions are only supported for routes that include explicit path identifiers, such as `/v2/providers/:providerId`. Collection routes like `/v2/zones` cannot currently enforce `*_OWN` semantics.
+`*_OWN` permissions apply to routes that include explicit path identifiers, such as `/v2/providers/:providerId`. Collection routes such as `/v2/zones` use the corresponding `*_ANY` semantics.
 
 ## Permissions File
 
@@ -119,9 +119,9 @@ admin@example.com:
       proximity_updates: true
 ```
 
-The current implementation supports exact topic names and suffix-style wildcard patterns such as `location_*`.
+The WebSocket policy matcher supports exact topic names and suffix-style wildcard patterns such as `location_*`.
 
-Subscribe-only topics currently include:
+Subscribe-only topics include:
 - `location_updates`
 - `location_updates:geojson`
 - `proximity_updates`

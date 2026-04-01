@@ -3,7 +3,7 @@
 All runtime configuration is environment-driven.
 
 Runtime lifecycle behavior:
-- the hub process now runs from a single signal-aware root context created from `SIGINT` and `SIGTERM`
+- the hub process runs from a single signal-aware root context created from `SIGINT` and `SIGTERM`
 - startup failures return structured process errors instead of panicking during early config or logger initialization
 - graceful shutdown uses a bounded timeout so HTTP shutdown and internal event-publisher fan-out can complete deterministically after a stop signal
 
@@ -58,14 +58,14 @@ RPC behavior:
 - `RPC_TIMEOUT` is the default wait time for request-response style RPC calls when the client does not supply `_timeout`
 - `RPC_ANNOUNCEMENT_INTERVAL` controls how often the hub republishes retained MQTT availability announcements for hub-owned methods
 - `RPC_HANDLER_ID` is the handler identifier announced for hub-owned RPC methods and the identifier clients may use with `_handler_id` to target the hub directly
-- `com.omlox.identify` now returns the persisted hub label as `name` plus the stable `hub_id`
+- `com.omlox.identify` returns the persisted hub label as `name` plus the stable `hub_id`
 
 ## Proximity Resolution
 - `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
 - `PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION` (duration, default `15s`)
 - `PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE` (number, default `2`)
 - `PROXIMITY_RESOLUTION_MIN_DWELL_DURATION` (duration, default `5s`)
-- `PROXIMITY_RESOLUTION_POSITION_MODE` (default `zone_position`; the only supported value today)
+- `PROXIMITY_RESOLUTION_POSITION_MODE` (default `zone_position`; supported value: `zone_position`)
 - `PROXIMITY_RESOLUTION_FALLBACK_RADIUS` (number, default `0`)
 - `PROXIMITY_RESOLUTION_STALE_STATE_TTL` (duration, default `10m`)
 

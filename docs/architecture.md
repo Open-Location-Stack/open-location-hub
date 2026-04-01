@@ -34,9 +34,9 @@
 Implications:
 - ingest logic is shared across REST, MQTT, and WebSocket
 - MQTT is no longer the only downstream publication path
-- the internal event seam is intended to keep future federation work from depending on MQTT-specific topics
+- the internal event seam decouples downstream publication from MQTT-specific topics
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
-- internal hub events now also carry the persisted `origin_hub_id` so downstream transports and future federation work can preserve source provenance without inventing it later
+- internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
 
 ## RPC Control Plane
 1. A client calls `GET /v2/rpc/available` or `PUT /v2/rpc` over HTTP.
@@ -74,11 +74,10 @@ Resolver notes:
 - transient proximity membership state lives in the in-memory processing state
 - derived location metadata includes hub extension fields such as `resolution_method`, `resolved_zone_id`, and `sticky`
 
-Current limits and likely next steps:
-- the resolver currently treats zone position as the emitted point; it does not estimate a better coordinate inside the zone
-- only static proximity zones are supported today
-- a practical next extension is a mobile-zone mode where a proximity zone follows a referenced provider or trackable
-- a second practical extension is to reuse future confidence/tolerance concepts across proximity resolution, locating rules, and fence handling
+Resolver scope:
+- the resolver emits the configured zone position as the derived point
+- proximity resolution supports static proximity zones
+- resolution policy is driven by hub defaults and zone-specific overrides
 
 ## Contract-first flow
 1. Update OpenAPI spec.
