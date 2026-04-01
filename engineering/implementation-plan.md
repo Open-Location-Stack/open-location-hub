@@ -182,43 +182,66 @@ Scope:
 Exit criteria:
 - The hub supports realistic on-prem, regional, and aggregate federation topologies with standard OMLOX APIs as the main contract and documented extensions only where OMLOX leaves practical gaps.
 
-## Near-Term Priority
+## Issue Tracking
 
-The immediate priority should now be federation foundations plus production hardening. The repository now has working CRUD, ingest, MQTT, RPC, and WebSocket baselines, but the largest gaps for a feature-complete OMLOX hub remain deeper event semantics, stronger operational behavior, and the absence of a federation model for on-prem to cloud deployments.
+The remaining work is now tracked in GitHub issues with explicit priority labels plus the `0.1` milestone for work judged urgent for the first public alpha release targeted for April 30, 2026.
 
-## Feature-Complete Next Steps
+### Parent trackers
 
-To move this repository toward feature-complete status for the intended product scope, the next verified work should be:
+- `#23` parent issue for `0.1` alpha readiness
+- `#24` parent issue for federation foundations and replication backlog
+- `#25` parent issue for post-alpha product depth and scalability backlog
 
-1. Close the biggest remaining standards-facing behavior gaps:
-   - deepen fence timeout and tolerance semantics where OMLOX requires more than the current simplified behavior
-   - deepen or intentionally bound the current collision-event implementation
-   - document exact MQTT extension support, its local-only role, and any remaining limits
-2. Add hub federation foundations:
-   - stable configured hub UUID and peer identities
-   - peer configuration for REST/WebSocket-based push and pull modes
-   - provenance metadata and replay or deduplication state
-   - loop suppression rules
-3. Extend auth and authorization for federation:
-   - machine identities separate from human users
-   - multi-issuer and multi-audience trust handling
-   - per-peer scopes for ingest, subscribe, replicate, and RPC
-   - propagated ownership, tenant, and region boundaries
-4. Add cloud-authoritative metadata sync so buildings or sites, zones, fences, and related metadata can be managed centrally and synchronized safely to on-prem hubs.
-5. Add resource synchronization support for zones, providers, trackables, and fences, including practical change-feed support and a slave mode that subscribes to remote metadata updates and persists them into local PostgreSQL.
-6. Add the operational foundations required for federated deployments:
-   - peer health and readiness
-   - replication lag and retry metrics
-   - dead-letter handling
-   - clearer audit trails for hub-to-hub actions
+### Priority now: `0.1` alpha
 
-## Documentation Follow-Up
+- `#23` parent tracker for the full alpha slice
+- `#1` production observability and readiness baseline
+- `#2` baseline performance checks for CRUD, ingest, MQTT publication, and RPC
+- `#3` boundary-focused runtime coverage and auth-enabled WebSocket flows
+- `#4` MQTT failure/reconnect/overload behavior and documentation
+- `#5` runtime and operations guide
+- `#6` ingest and CRS guide
+- `#7` MQTT and RPC documentation
+- `#8` data and behavior model guide
+- `#9` decision on alpha fence timeout and tolerance scope
+- `#10` decision on alpha collision-event scope
 
-The next documentation work should focus on current implemented behavior that is still under-documented in the software-facing docs under `docs/`.
+### Priority next: post-alpha backlog
 
-- Add a runtime and operations guide covering startup assumptions, dependency expectations, Docker versus host-native workflows, readiness expectations, and the current observability limits.
-- Add a contributor-quality guide covering the required `just` workflow, what CI currently enforces, when to run race-detector and deeper static-analysis checks locally, and how generated-code/module-hygiene checks are expected to stay clean.
-- Add an ingest and CRS guide covering accepted location and proximity inputs, local versus WGS84 derivation behavior, ground control point expectations, and the current macOS versus Linux/Docker verification caveat.
-- Expand MQTT and RPC documentation to cover inbound and outbound topic responsibilities, retained method announcements, aggregation modes, the auth boundary, and the current `com.omlox.core.xcmd` adapter limitation.
-- Add a data and behavior model guide covering the canonical JSON payload storage model, current query and filter limitations, proximity-resolution behavior and limits, and the current fence-processing simplifications.
-- Add a federation and trust guide once implementation work starts, using `engineering/federation-plan.md` as the design baseline for software-facing documentation.
+- `#24` parent tracker for federation design and implementation
+- `#17` define stable hub identity and peer configuration for federation
+- `#18` design federation auth and trust for hub-to-hub service identities
+- `#21` federated event replication with provenance, replay handling, deduplication, and loop suppression
+- `#22` federation operational visibility for peer health, lag, retries, and dead-letter conditions
+- `#25` parent tracker for non-federation product depth
+- `#12` real `com.omlox.core.xcmd` adapters
+- `#13` richer REST query and filter behavior
+- `#14` higher-cardinality WebSocket fan-out efficiency
+- `#15` deeper proximity resolution and shared locating tolerances
+- `#19` cloud-authoritative metadata sync and slave-mode behavior
+- `#20` resource snapshot sync and change feeds for federated CRUD resources
+- `#11` contributor-quality guide
+- `#16` evaluate advanced georeferencing calibration beyond the current 2D similarity fit
+- `#26` downstream consumer delivery and reconnect semantics for WebSocket and MQTT event streams
+
+### Needs input before implementation can move cleanly
+
+- `#9` decide the exact alpha target for fence timeout and tolerance semantics
+- `#10` decide whether alpha collision behavior stays intentionally narrow or expands
+- `#12` choose the first real `com.omlox.core.xcmd` adapter target and command scope
+- `#17` decide the first federation topology slice and peer bootstrap model
+- `#18` decide the federation trust model, scopes, and ownership propagation rules
+- `#19` decide which metadata classes become cloud-authoritative first and what slave-mode write restrictions apply
+
+### Documentation follow-up now tracked explicitly
+
+- `#5` runtime and operations guide
+- `#6` ingest and CRS guide
+- `#7` MQTT and RPC guide
+- `#8` data and behavior model guide
+- `#11` contributor-quality guide
+- Add the federation and trust guide after implementation starts, using `engineering/federation-plan.md` as the design baseline for software-facing documentation.
+
+## Adjacent Project Note
+
+Asset-history, movement, fence-event, and collision analytics for Grafana should be built as a separate downstream project on top of the hub's WebSocket or MQTT event APIs rather than as high-cardinality operational metrics inside the hub itself. A first draft plan for that adjacent project now lives in `engineering/analytics-project-plan.md`.
