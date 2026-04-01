@@ -73,4 +73,3 @@ Notes:
 - `engineering/index.md`
 - `engineering/testing.md`
 - `engineering/openapi-governance.md`
-- `engineering/implementation-plan.md`

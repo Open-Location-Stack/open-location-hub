@@ -41,13 +41,13 @@ Use this skill when the task materially touches documentation, including:
 
 ## Repository Docs
 
-- Update `engineering/implementation-plan.md` after substantive changes so it reflects the verified current state, remaining gaps, and near-term follow-up.
 - Update `docs/configuration.md` when config knobs or runtime assumptions change.
 - Update `docs/architecture.md` when component boundaries, data flow, or operational behavior change.
 - Update software-facing guides under `docs/` when implemented behavior is currently only implicit in code or tests.
 - Update engineering workflow/governance docs under `engineering/` when contributor process, validation expectations, or implementation tracking changes.
 - Update `README.md` when local setup, platform prerequisites, or common workflows change.
 - Update the relevant `specifications/omlox/*.md` notes when MQTT, WebSocket, RPC, or OMLOX behavior guidance changes outside the REST contract.
+- Use GitHub issues rather than `engineering/implementation-plan.md` for implementation tracking and follow-up work.
 
 ## Style
 
@@ -61,6 +61,7 @@ Use this skill when the task materially touches documentation, including:
 
 - Run the repository workflow expected for the touched surfaces:
   1. For documentation-only changes that do not touch code, generated files, OpenAPI, SQL, or runtime configuration: no test gate is required.
-  2. If the documentation change touches generated or spec-coupled surfaces, run the minimum required workflow for those surfaces.
-  3. If the documentation accompanies implementation changes, follow the repository's normal implementation workflow.
+  2. For contributor-maintenance-only changes such as GitHub workflow edits, skill updates, or issue-tracking guidance: do not run build/test workflows unless implementation-affecting files also changed; use minimal file-relevant validation instead.
+  3. If the documentation change touches generated or spec-coupled surfaces, run the minimum required workflow for those surfaces.
+  4. If the documentation accompanies implementation changes, follow the repository's normal implementation workflow.
 - If local environment issues block validation, do not push on assumption. Document the blocker precisely and keep the docs honest about the verified state.

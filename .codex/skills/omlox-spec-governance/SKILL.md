@@ -15,7 +15,7 @@ Use for API contract work and normative alignment decisions.
 4. Record inferred endpoints, nested objects, and schema details explicitly as inferred when the PDF implies behavior but does not fully spell out the REST contract.
 5. Preserve OMLOX `/v2` base path compatibility.
 6. When API surface or behavior changes, update the relevant companion docs under `specifications/omlox/` in the same change.
-7. Keep `engineering/implementation-plan.md` aligned with the current implementation status, especially when a spec gap is closed or a new limitation/follow-up is discovered.
+7. Track spec gaps, limitations, and follow-up work in GitHub issues instead of `engineering/implementation-plan.md`.
 8. When API surface changes, hand off to the Go harness flow: `just bootstrap`, `just generate`, `just test`, `just check`.
 
 ## Validation
