@@ -3,12 +3,14 @@ info:
   title: Open RTLS Hub API
   version: 0.2.0
   description: |
-    Normative REST contract for the Open RTLS Hub API targeting the omlox hub specification.
+    REST API documentation for Open Location Hub.
 
-    This contract is aligned to `omlox-hub-spec_20112_V200_Aug23.pdf`.
-    Where the PDF defines setup or lifecycle behavior but does not enumerate a
-    verb/path pair, companion REST lifecycle endpoints are included here and
-    marked as inferred.
+    This API provides resource management for zones, trackables, location
+    providers, and fences, together with provider ingest endpoints and a
+    JSON-RPC control-plane interface.
+
+    Parts of this API follow the omlox v2 hub model and terminology where that
+    improves interoperability with omlox-compatible systems.
 
     This contract is independently authored and is not an official PI/PNO
     publication or certification artifact. `omlox` is a trademark of
@@ -56,8 +58,9 @@ paths:
       operationId: createZone
       summary: Create a zone
       description: |
-        Explicit zone announcement endpoint from OMLOX chapter 7.12. Supports
-        both incomplete and fully configured zones.
+        Creates a zone definition. The request may describe either a fully
+        configured zone or a partially configured zone that will be completed
+        later.
       requestBody:
         required: true
         content:
@@ -521,7 +524,7 @@ paths:
     put:
       tags: [rpc]
       operationId: putRPC
-      summary: Invoke OMLOX JSON-RPC
+      summary: Invoke JSON-RPC
       description: |
         Sends a JSON-RPC 2.0 request to the hub control plane. Depending on the
         method and `_handler_id`, the hub may handle the request locally, bridge
@@ -724,9 +727,9 @@ components:
     GroundControlPoint:
       type: object
       description: |
-        Inferred companion schema for section 6.7.19. The PDF requires each
-        item to map WGS84 coordinates to local zone coordinates but does not
-        name the child properties.
+        Mapping between a WGS84 coordinate and the corresponding local zone
+        coordinate. Use multiple control points to define the local-to-global
+        transform for a zone.
       required: [wgs84, local]
       properties:
         wgs84:
@@ -742,8 +745,8 @@ components:
         expression:
           type: string
           description: >
-            Rule expression. Supported properties named in the PDF are
-            `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and
+            Rule expression. Supported properties include `accuracy`,
+            `provider_id`, `type`, `source`, `floor`, `speed`, and
             `timestamp_diff`.
         priority:
           type: number
@@ -781,8 +784,8 @@ components:
         type:
           type: string
           description: >
-            Positioning system type. OMLOX behavior chapters require support
-            for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
+            Positioning system type. Common values include `uwb`, `wifi`,
+            `rfid`, and `ibeacon`.
         site:
           type: string
           description: Optional site identifier.

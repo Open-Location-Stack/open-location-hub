@@ -302,9 +302,9 @@ type GeoJsonPosition2D = []float32
 // GeoJsonPosition3D GeoJSON 3D coordinate tuple in `[x, y, z]` order.
 type GeoJsonPosition3D = []float32
 
-// GroundControlPoint Inferred companion schema for section 6.7.19. The PDF requires each
-// item to map WGS84 coordinates to local zone coordinates but does not
-// name the child properties.
+// GroundControlPoint Mapping between a WGS84 coordinate and the corresponding local zone
+// coordinate. Use multiple control points to define the local-to-global
+// transform for a zone.
 type GroundControlPoint struct {
 	// Local GeoJSON point geometry.
 	Local Point `json:"local"`
@@ -419,7 +419,7 @@ type LineString struct {
 
 // LocatingRule Trackable locating rule used to prioritize candidate locations from providers.
 type LocatingRule struct {
-	// Expression Rule expression. Supported properties named in the PDF are `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and `timestamp_diff`.
+	// Expression Rule expression. Supported properties include `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and `timestamp_diff`.
 	Expression string `json:"expression"`
 
 	// Priority Lower values indicate higher precedence.
@@ -729,7 +729,7 @@ type Zone struct {
 	// Site Optional site identifier.
 	Site *string `json:"site,omitempty"`
 
-	// Type Positioning system type. OMLOX behavior chapters require support for at least `uwb`, `wifi`, `rfid`, and `ibeacon`.
+	// Type Positioning system type. Common values include `uwb`, `wifi`, `rfid`, and `ibeacon`.
 	Type string `json:"type"`
 
 	// Wgs84Height Optional zone altitude in meters relative to WGS84.
@@ -1465,7 +1465,7 @@ type ServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
-	// Invoke OMLOX JSON-RPC
+	// Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
 	// List available RPC methods
@@ -1579,7 +1579,7 @@ func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, pr
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Invoke OMLOX JSON-RPC
+// Invoke JSON-RPC
 // (PUT /v2/rpc)
 func (_ Unimplemented) PutRPC(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -3557,7 +3557,7 @@ type StrictServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(ctx context.Context, request UpdateProviderRequestObject) (UpdateProviderResponseObject, error)
-	// Invoke OMLOX JSON-RPC
+	// Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
 	// List available RPC methods
