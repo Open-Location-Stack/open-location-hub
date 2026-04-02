@@ -14,6 +14,7 @@ import (
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/ids"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -49,19 +51,20 @@ type Config struct {
 // Service implements the hub's CRUD and ingest behavior over storage, cache,
 // and publish dependencies.
 type Service struct {
-	logger         *zap.Logger
-	queries        sqlcgen.Querier
-	bus            *EventBus
-	cfg            Config
-	now            func() time.Time
-	crsTransformer *transform.CRSTransformer
-	transformCache *transform.Cache
-	metadata       *MetadataCache
-	state          *ProcessingState
-	stats          *RuntimeStats
-	nativeQueue    derivedLocationSubmitter
-	derivedQueue   derivedLocationSubmitter
-	decisionStage  decisionLocationStage
+	logger           *zap.Logger
+	queries          sqlcgen.Querier
+	bus              *EventBus
+	cfg              Config
+	now              func() time.Time
+	crsTransformer   *transform.CRSTransformer
+	transformCache   *transform.Cache
+	metadata         *MetadataCache
+	state            *ProcessingState
+	stats            *RuntimeStats
+	telemetryRuntime *observability.Runtime
+	nativeQueue      derivedLocationSubmitter
+	derivedQueue     derivedLocationSubmitter
+	decisionStage    decisionLocationStage
 }
 
 // HTTPError represents an API error that should be rendered with a specific
@@ -82,6 +85,7 @@ func (s *Service) Start(ctx context.Context) {
 	if s == nil {
 		return
 	}
+	_ = s.telemetry().RegisterRuntimeMetricsSource(s.stats)
 	s.processingState().StartSweeper(ctx, time.Second)
 	if s.nativeQueue == nil {
 		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
@@ -100,9 +104,20 @@ func (s *Service) Start(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := s.reconcileMetadata(ctx); err != nil && s.logger != nil {
-					s.logger.Warn("metadata reconcile failed", zap.Error(err))
+				reconcileCtx, span := s.telemetry().StartSpan(observability.WithIngestTransport(ctx, "internal"), "hub.metadata.reconcile")
+				start := time.Now()
+				err := s.reconcileMetadata(reconcileCtx)
+				s.telemetry().RecordProcessingDuration(reconcileCtx, "metadata_reconcile", "metadata", time.Since(start))
+				if err != nil {
+					span.RecordError(err)
+					s.telemetry().RecordDependencyEvent(reconcileCtx, "metadata", "reconcile", "failure")
+					if s.logger != nil {
+						s.logger.Warn("metadata reconcile failed", zap.Any("context", reconcileCtx), zap.Error(err))
+					}
+				} else {
+					s.telemetry().RecordDependencyEvent(reconcileCtx, "metadata", "reconcile", "success")
 				}
+				span.End()
 			}
 		}
 	}()
@@ -129,17 +144,18 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config)
 	}
 	nowFn := time.Now
 	return &Service{
-		logger:         logger,
-		queries:        queries,
-		bus:            bus,
-		cfg:            cfg,
-		now:            nowFn,
-		crsTransformer: transform.NewCRSTransformer(),
-		transformCache: transform.NewCache(),
-		metadata:       metadata,
-		state:          NewProcessingState(nowFn),
-		stats:          runtimeStatsFromBus(bus),
-		decisionStage:  passthroughDecisionStage{},
+		logger:           logger,
+		queries:          queries,
+		bus:              bus,
+		cfg:              cfg,
+		now:              nowFn,
+		crsTransformer:   transform.NewCRSTransformer(),
+		transformCache:   transform.NewCache(),
+		metadata:         metadata,
+		state:            NewProcessingState(nowFn),
+		stats:            runtimeStatsFromBus(bus),
+		telemetryRuntime: observability.Global(),
+		decisionStage:    passthroughDecisionStage{},
 	}, nil
 }
 
@@ -192,6 +208,13 @@ func (s *Service) processingState() *ProcessingState {
 		s.state = NewProcessingState(s.now)
 	}
 	return s.state
+}
+
+func (s *Service) telemetry() *observability.Runtime {
+	if s == nil || s.telemetryRuntime == nil {
+		return observability.Global()
+	}
+	return s.telemetryRuntime
 }
 
 func (s *Service) metadataCache() *MetadataCache {
@@ -700,12 +723,28 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 // updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
 	for _, location := range locations {
+		itemCtx := observability.WithIngestTransport(ctx, observability.IngestTransportFromContext(ctx))
+		itemCtx, span := s.telemetry().StartSpan(itemCtx, "hub.ingest.location",
+			attribute.String("provider_id", location.ProviderId),
+			attribute.String("provider_type", location.ProviderType),
+			attribute.String("source", location.Source),
+			attribute.StringSlice("trackable_ids", stringSliceValue(location.Trackables)),
+		)
+		start := time.Now()
 		if err := validateLocation(location); err != nil {
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "location", "invalid")
+			span.End()
 			return err
 		}
-		if err := s.recordLocation(ctx, location, s.cfg.LocationTTL); err != nil {
+		if err := s.recordLocation(itemCtx, location, s.cfg.LocationTTL); err != nil {
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "location", "failed")
+			span.End()
 			return err
 		}
+		s.telemetry().RecordProcessingDuration(itemCtx, "location_ingest", "location", time.Since(start))
+		span.End()
 	}
 	return nil
 }
@@ -714,19 +753,41 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 // updates.
 func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
 	for _, proximity := range proximities {
+		itemCtx := observability.WithIngestTransport(ctx, observability.IngestTransportFromContext(ctx))
+		itemCtx, span := s.telemetry().StartSpan(itemCtx, "hub.ingest.proximity",
+			attribute.String("provider_id", proximity.ProviderId),
+			attribute.String("provider_type", proximity.ProviderType),
+			attribute.String("source", proximity.Source),
+		)
+		start := time.Now()
 		if strings.TrimSpace(proximity.ProviderId) == "" || strings.TrimSpace(proximity.ProviderType) == "" || strings.TrimSpace(proximity.Source) == "" {
-			return badRequest("proximity entries require provider_id, provider_type, and source")
+			err := badRequest("proximity entries require provider_id, provider_type, and source")
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "invalid")
+			span.End()
+			return err
 		}
 		if err := s.publishProximity(proximity); err != nil {
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
+			span.End()
 			return err
 		}
-		location, err := s.locationFromProximity(ctx, proximity)
+		location, err := s.locationFromProximity(itemCtx, proximity)
 		if err != nil {
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
+			span.End()
 			return err
 		}
-		if err := s.recordLocation(ctx, location, s.cfg.ProximityTTL); err != nil {
+		if err := s.recordLocation(itemCtx, location, s.cfg.ProximityTTL); err != nil {
+			span.RecordError(err)
+			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
+			span.End()
 			return err
 		}
+		s.telemetry().RecordProcessingDuration(itemCtx, "proximity_ingest", "proximity", time.Since(start))
+		span.End()
 	}
 	return nil
 }
@@ -744,6 +805,7 @@ func (s *Service) publishProximity(proximity gen.Proximity) error {
 }
 
 func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proximity) (gen.Location, error) {
+	start := time.Now()
 	zones, err := s.ListZones(ctx)
 	if err != nil {
 		return gen.Location{}, err
@@ -769,6 +831,7 @@ func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proxi
 	} else if err := s.storeProximityState(ctx, stateKey, resolution.State, resolution.Policy.StaleStateTTL); err != nil {
 		return gen.Location{}, err
 	}
+	s.telemetry().RecordProcessingDuration(ctx, "proximity_resolution", "proximity", time.Since(start))
 	return deriveLocationFromProximity(proximity, resolution.Zone, resolution.Sticky), nil
 }
 
@@ -905,13 +968,16 @@ func deriveLocationFromProximity(proximity gen.Proximity, zone gen.Zone, sticky 
 }
 
 func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl time.Duration) error {
+	start := time.Now()
 	payload, err := json.Marshal(location)
 	if err != nil {
 		return err
 	}
 	if !s.processingState().Deduplicate(dedupKey(payload), s.cfg.DedupTTL) {
+		s.telemetry().RecordIngestRecord(ctx, "location", "deduplicated")
 		return nil
 	}
+	s.telemetry().RecordIngestRecord(ctx, "location", "accepted")
 	s.processingState().SetLatestLocation(latestLocationKey(location.ProviderId, location.Source), location, ttl)
 	if location.Trackables != nil {
 		for _, trackableID := range *location.Trackables {
@@ -919,46 +985,75 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		}
 	}
 	if s.nativeQueue != nil {
-		s.nativeQueue.Submit(derivedLocationWork{Location: location})
+		s.nativeQueue.Submit(derivedLocationWork{Context: ctx, Location: location, EnqueuedAt: time.Now()})
+		s.telemetry().RecordProcessingDuration(ctx, "location_record", "location", time.Since(start))
 		return nil
 	}
 	if err := s.publishLocation(ctx, location); err != nil {
-		s.logger.Warn("location event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		s.logger.Warn("location event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	motions, err := s.publishTrackableMotions(ctx, location)
 	if err != nil {
-		s.logger.Warn("trackable motion event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		s.logger.Warn("trackable motion event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	if err := s.publishFenceEvents(ctx, location); err != nil {
-		s.logger.Warn("fence event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+		s.logger.Warn("fence event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	if s.cfg.CollisionsEnabled {
 		if err := s.publishCollisionEvents(ctx, motions); err != nil {
-			s.logger.Warn("collision event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
+			s.logger.Warn("collision event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 		}
 	}
+	s.telemetry().RecordProcessingDuration(ctx, "location_record", "location", time.Since(start))
 	return nil
 }
 
 func (s *Service) processNativeLocation(ctx context.Context, location gen.Location) error {
-	if err := s.publishNativeLocation(ctx, location); err != nil {
+	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.native_location",
+		attribute.String("provider_id", location.ProviderId),
+		attribute.String("source", location.Source),
+	)
+	start := time.Now()
+	if err := s.publishNativeLocation(stageCtx, location); err != nil {
+		span.RecordError(err)
+		span.End()
 		return err
 	}
-	if _, err := s.publishNativeTrackableMotions(ctx, location); err != nil {
+	if _, err := s.publishNativeTrackableMotions(stageCtx, location); err != nil {
+		span.RecordError(err)
+		span.End()
 		return err
 	}
 	if s.derivedQueue != nil {
-		s.derivedQueue.Submit(derivedLocationWork{Location: location})
+		s.derivedQueue.Submit(derivedLocationWork{Context: stageCtx, Location: location, EnqueuedAt: time.Now()})
 	}
+	s.telemetry().RecordProcessingDuration(stageCtx, "native_publication", "location", time.Since(start))
+	span.End()
 	return nil
 }
 
 func (s *Service) processDecisionLocation(ctx context.Context, location gen.Location) error {
-	decisionLocation, ok, err := s.decisionStage.Process(ctx, location)
+	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.decision_location",
+		attribute.String("provider_id", location.ProviderId),
+		attribute.String("source", location.Source),
+	)
+	start := time.Now()
+	decisionLocation, ok, err := s.decisionStage.Process(stageCtx, location)
 	if err != nil || !ok {
+		if err != nil {
+			span.RecordError(err)
+		}
+		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
+		span.End()
 		return err
 	}
-	return s.processDerivedLocation(ctx, decisionLocation)
+	err = s.processDerivedLocation(stageCtx, decisionLocation)
+	if err != nil {
+		span.RecordError(err)
+	}
+	s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
+	span.End()
+	return err
 }
 
 func (s *Service) processDerivedLocation(ctx context.Context, location gen.Location) error {
@@ -1327,6 +1422,13 @@ func (s *Service) invalidateZoneTransform(zoneID string) {
 }
 
 func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location) error {
+	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.fence_events",
+		attribute.String("provider_id", location.ProviderId),
+		attribute.String("source", location.Source),
+		attribute.StringSlice("trackable_ids", stringSliceValue(location.Trackables)),
+	)
+	defer span.End()
+	start := time.Now()
 	if s.bus == nil || location.Trackables == nil {
 		return nil
 	}
@@ -1359,6 +1461,7 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					ForeignId:   fence.ForeignId,
 				}
 				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
+					span.RecordError(err)
 					return err
 				}
 			case !inside && wasInside:
@@ -1373,11 +1476,13 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					ForeignId:   fence.ForeignId,
 				}
 				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
+					span.RecordError(err)
 					return err
 				}
 			}
 		}
 	}
+	s.telemetry().RecordProcessingDuration(stageCtx, "fence_evaluation", "location", time.Since(start))
 	return nil
 }
 
@@ -1396,6 +1501,9 @@ func (s *Service) publishFenceEvent(_ context.Context, fence gen.Fence, event ge
 }
 
 func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.TrackableMotion) error {
+	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.collision_events")
+	defer span.End()
+	start := time.Now()
 	if s.bus == nil || !s.cfg.CollisionsEnabled || len(motions) == 0 {
 		return nil
 	}
@@ -1424,12 +1532,14 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			}
 			event, active, err := s.evaluateCollision(motion, leftTrackable, otherMotion, otherTrackable)
 			if err != nil {
+				span.RecordError(err)
 				return err
 			}
 			if !active {
 				if event != nil {
 					busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
 					if err != nil {
+						span.RecordError(err)
 						return err
 					}
 					s.bus.Emit(busEvent)
@@ -1448,11 +1558,13 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			}, s.cfg.CollisionStateTTL)
 			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
 			if err != nil {
+				span.RecordError(err)
 				return err
 			}
 			s.bus.Emit(busEvent)
 		}
 	}
+	s.telemetry().RecordProcessingDuration(stageCtx, "collision_evaluation", "location", time.Since(start))
 	return nil
 }
 
@@ -2008,6 +2120,13 @@ func proximityResolutionStateKey(providerType, providerID string) string {
 func dedupKey(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return "hub:dedup:" + hex.EncodeToString(sum[:])
+}
+
+func stringSliceValue(values *[]string) []string {
+	if values == nil {
+		return nil
+	}
+	return append([]string(nil), (*values)...)
 }
 
 func point2D(point gen.Point) ([2]float64, error) {

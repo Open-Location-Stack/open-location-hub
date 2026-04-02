@@ -54,6 +54,13 @@ AIRPORT_PRESETS: dict[str, list[AirportArea]] = {
         AirportArea("muc-terminal-2", "Munich Terminal 2", 48.3535, 11.7755, 450, "Terminal 2 sector"),
         AirportArea("muc-satellite", "Munich Satellite Apron", 48.3530, 11.7710, 450, "Satellite and apron sector"),
     ],
+    "germany": [
+        AirportArea("fra-airport", "Frankfurt Airport", 50.0379, 8.5622, 2200, "Frankfurt airport catchment"),
+        AirportArea("muc-airport", "Munich Airport", 48.3538, 11.7861, 2200, "Munich airport catchment"),
+        AirportArea("ber-airport", "Berlin Brandenburg Airport", 52.3667, 13.5033, 2200, "Berlin Brandenburg airport catchment"),
+        AirportArea("ham-airport", "Hamburg Airport", 53.6304, 9.9882, 1800, "Hamburg airport catchment"),
+        AirportArea("dus-airport", "Dusseldorf Airport", 51.2895, 6.7668, 1800, "Dusseldorf airport catchment"),
+    ],
     "newyork": [
         AirportArea("jfk-airport", "John F. Kennedy International Airport", 40.6413, -73.7781, 2400, "JFK airport catchment"),
         AirportArea("lga-airport", "LaGuardia Airport", 40.7769, -73.8740, 1800, "LaGuardia airport catchment"),

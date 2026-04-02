@@ -68,10 +68,21 @@ services:
       AUTH_ROLES_CLAIM: email
       AUTH_PERMISSIONS_FILE: /app/config/auth/permissions.yaml
       COLLISIONS_ENABLED: "true"
+      OTEL_ENABLED: "true"
+      OTEL_METRICS_ENABLED: "true"
+      OTEL_TRACES_ENABLED: "true"
+      OTEL_LOGS_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://signoz-otel-collector:4318
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: open-rtls-hub
+      OTEL_DEPLOYMENT_ENVIRONMENT: local-demo
     ports:
-      - "${DEMO_APP_PORT:-8080}:8080"
+      - "${DEMO_APP_PORT:-8090}:8080"
     volumes:
       - ../../config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
+    networks:
+      - default
+      - signoz-net
     depends_on:
       dex:
         condition: service_healthy
@@ -81,3 +92,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+
+networks:
+  signoz-net:
+    external: true
+    name: signoz-net

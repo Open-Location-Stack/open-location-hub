@@ -12,6 +12,7 @@ The checked-in defaults target Frankfurt Airport and its surrounding airspace:
 
 Alternate built-in presets:
 
+- `germany`: country-wide bounding box with major airport catchments for Frankfurt, Munich, Berlin, Hamburg, and Dusseldorf
 - `newyork`: wider New York area with JFK, LaGuardia, and Newark airport sectors
 - `munich`: Munich Airport and terminal sectors
 

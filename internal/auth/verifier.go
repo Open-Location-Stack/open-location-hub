@@ -16,6 +16,7 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/formation-res/open-rtls-hub/internal/config"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -92,14 +93,20 @@ func newOIDCAuthenticator(ctx context.Context, cfg config.AuthConfig) (Authentic
 			Timeout: cfg.HTTPTimeout,
 		},
 	}
+	start := time.Now()
 	if err := a.refreshVerifier(ctx); err != nil {
+		observability.Global().RecordDependencyEvent(ctx, "auth", "oidc_init", "failure")
 		return nil, err
 	}
+	observability.Global().RecordDependencyEvent(ctx, "auth", "oidc_init", "success")
+	observability.Global().RecordProcessingDuration(observability.WithIngestTransport(ctx, "internal"), "auth_oidc_init", "auth", time.Since(start))
 	return a, nil
 }
 
 func (a *oidcAuthenticator) Authenticate(ctx context.Context, token string) (*Principal, error) {
+	start := time.Now()
 	if err := a.ensureFresh(ctx); err != nil {
+		observability.Global().RecordDependencyEvent(ctx, "auth", "authenticate", "failure")
 		return nil, unauthorized("unable to refresh OIDC verifier")
 	}
 
@@ -119,9 +126,11 @@ func (a *oidcAuthenticator) Authenticate(ctx context.Context, token string) (*Pr
 	)
 	parsed, err := parser.ParseWithClaims(token, claims, keyfn)
 	if err != nil {
+		observability.Global().RecordDependencyEvent(ctx, "auth", "authenticate", "failure")
 		return nil, unauthorized("invalid bearer token")
 	}
 	if !parsed.Valid {
+		observability.Global().RecordDependencyEvent(ctx, "auth", "authenticate", "failure")
 		return nil, unauthorized("invalid bearer token")
 	}
 	rawClaims := map[string]any{}
@@ -129,8 +138,11 @@ func (a *oidcAuthenticator) Authenticate(ctx context.Context, token string) (*Pr
 		rawClaims[k] = v
 	}
 	if !audienceAllowed(extractAudience(rawClaims), a.cfg.Audience) {
+		observability.Global().RecordDependencyEvent(ctx, "auth", "authenticate", "failure")
 		return nil, unauthorized("token audience is not accepted")
 	}
+	observability.Global().RecordDependencyEvent(ctx, "auth", "authenticate", "success")
+	observability.Global().RecordProcessingDuration(observability.WithIngestTransport(ctx, "internal"), "auth_authenticate", "auth", time.Since(start))
 	return principalFromClaims(rawClaims, a.cfg), nil
 }
 
@@ -146,8 +158,10 @@ func (a *oidcAuthenticator) ensureFresh(ctx context.Context) error {
 		if hasVerifier {
 			return nil
 		}
+		observability.Global().RecordDependencyEvent(ctx, "auth", "oidc_refresh", "failure")
 		return err
 	}
+	observability.Global().RecordDependencyEvent(ctx, "auth", "oidc_refresh", "success")
 	return nil
 }
 
@@ -296,6 +310,7 @@ func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
 func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 			if !cfg.Enabled || cfg.Mode == "none" || r.URL.Path == "/healthz" || r.URL.Path == "/v2/ws/socket" {
 				next.ServeHTTP(w, r)
 				return
@@ -316,6 +331,7 @@ func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Re
 			defer cancel()
 			principal, err := authenticator.Authenticate(ctx, token)
 			if err != nil {
+				observability.Global().RecordProcessingDuration(observability.WithIngestTransport(ctx, "http"), "auth_middleware", "auth", time.Since(start))
 				writeAuthError(w, err)
 				return
 			}
@@ -324,9 +340,11 @@ func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Re
 				return
 			}
 			if err := registry.Authorize(r, principal); err != nil {
+				observability.Global().RecordProcessingDuration(observability.WithIngestTransport(ctx, "http"), "auth_middleware", "auth", time.Since(start))
 				writeAuthError(w, err)
 				return
 			}
+			observability.Global().RecordProcessingDuration(observability.WithIngestTransport(ctx, "http"), "auth_middleware", "auth", time.Since(start))
 			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), principal)))
 		})
 	}

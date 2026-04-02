@@ -43,6 +43,16 @@ Implications:
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
 
+## Observability Boundaries
+- `internal/observability` owns OpenTelemetry resource setup, OTLP exporters, lifecycle management, and the small internal instrumentation API used by the rest of the runtime.
+- OTLP export is collector-first: metrics, traces, and logs go to an OpenTelemetry collector such as SigNoz rather than to a hub-owned scrape endpoint.
+- Transport handlers attach ingest transport context at entry so REST, MQTT, and WebSocket traffic create one shared root ingest span shape before entering `internal/hub`.
+- The hot path records low-cardinality metrics for accepted, deduplicated, rejected, and failed ingest, queue depth and wait time, stage latency, event-bus fan-out, MQTT publish, WebSocket dispatch, RPC execution, and end-to-end processing time.
+- Child spans isolate proximity resolution, native publication, decision processing, fence evaluation, collision evaluation, metadata reconcile, auth, and runtime dependency work so slow stages can be inspected directly.
+- Asset-, provider-, zone-, and fence-centric identifiers belong on traces and structured logs only. They are intentionally excluded from normal metric labels so dashboards remain queryable under sustained ingest volume.
+- Zap remains the application logging API. When OTLP logs are enabled, the logger tees into the OpenTelemetry bridge so the same structured events still appear locally while also being exported to the collector.
+- Runtime gauges for queue occupancy, event-bus subscribers, and WebSocket connections are exposed from `internal/hub` through observable instruments so the e2e stack can dashboard degraded states without adding lock-heavy bookkeeping to the ingest path.
+
 ## RPC Control Plane
 1. A client calls `GET /v2/rpc/available` or `PUT /v2/rpc` over HTTP.
 2. REST auth verifies the bearer token and route-level access.

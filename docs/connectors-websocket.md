@@ -30,8 +30,8 @@ Choose WebSocket when:
 Most WebSocket-based connectors need:
 
 - `HUB_HTTP_URL`: REST base URL for metadata bootstrap such as
-  `http://localhost:8080`
-- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8080/v2/ws/socket`
+  `http://localhost:8090`
+- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8090/v2/ws/socket`
 - `HUB_TOKEN`: optional JWT access token; required when auth is enabled
 
 The bundled examples also keep upstream URLs, polling intervals, provider IDs,

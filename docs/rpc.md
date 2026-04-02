@@ -40,7 +40,7 @@ The hub also exposes methods announced by external MQTT handlers when those hand
 Use:
 
 ```bash
-curl -sS http://localhost:8080/v2/rpc/available \
+curl -sS http://localhost:8090/v2/rpc/available \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -53,7 +53,7 @@ Call `PUT /v2/rpc` with a JSON-RPC 2.0 request body.
 Example: ping the hub
 
 ```bash
-curl -sS -X PUT http://localhost:8080/v2/rpc \
+curl -sS -X PUT http://localhost:8090/v2/rpc \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -69,7 +69,7 @@ curl -sS -X PUT http://localhost:8080/v2/rpc \
 Example: identify a specific handler
 
 ```bash
-curl -sS -X PUT http://localhost:8080/v2/rpc \
+curl -sS -X PUT http://localhost:8090/v2/rpc \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -85,7 +85,7 @@ curl -sS -X PUT http://localhost:8080/v2/rpc \
 Example: send an OMLOX core command through the hub
 
 ```bash
-curl -sS -X PUT http://localhost:8080/v2/rpc \
+curl -sS -X PUT http://localhost:8090/v2/rpc \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

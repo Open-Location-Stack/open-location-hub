@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // NewLogger constructs the repository's structured production logger.
@@ -17,6 +18,11 @@ func NewLogger(level string) (*zap.Logger, func(), error) {
 	l, err := cfg.Build()
 	if err != nil {
 		return nil, nil, err
+	}
+	if runtime := Global(); runtime.LogsEnabled() {
+		l = l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
+			return zapcore.NewTee(core, runtime.BridgeCore("github.com/formation-res/open-rtls-hub"))
+		}))
 	}
 	return l, func() { _ = l.Sync() }, nil
 }

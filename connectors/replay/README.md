@@ -42,7 +42,7 @@ connectors/local-hub/fetch_demo_token.sh
 
 ## Required Inputs
 
-- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8080/v2/ws/socket`
+- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8090/v2/ws/socket`
 - `REPLAY_INPUT`: path to a logged `location_updates` NDJSON file
 
 Optional but recommended:

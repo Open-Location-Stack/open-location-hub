@@ -55,7 +55,7 @@ The repository documentation is now split by audience: software/runtime document
 - Startup now persists singleton hub metadata in Postgres, bootstraps `HUB_ID` and `HUB_LABEL` from env or sensible defaults on first run, and fails fast on later env-versus-storage mismatches unless `RESET_HUB_ID=true`.
 - The shared internal event bus now populates `origin_hub_id` from persisted hub metadata for all emitted events so provenance is available for downstream consumers and later federation work.
 - MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
-- Observability remains log-centric; dependency readiness, metrics, and deeper operational diagnostics are still limited.
+- OTLP observability is now part of the runtime baseline: the hub can export metrics, traces, and logs to a collector, the ingest and decision hot paths emit bounded-cardinality telemetry, and e2e coverage now verifies all three signals reach an OTLP receiver.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
 - Coverage is still lighter in observability and a few storage/runtime edge packages than in the core service and RPC packages, but the previous blind spots around the REST handler layer, MQTT client edges, process wiring, metadata cache diffs, and in-memory processing state now have direct failure-path coverage.
 - WebSocket authorization and fan-out now exist, but the current topic-filter implementation is still intentionally simple and not yet tuned for high-cardinality subscriber counts or peer federation.
@@ -125,16 +125,23 @@ Residual work:
 
 ### Phase 6: Production hardening
 Scope:
-- Expand observability with metrics, readiness checks, and richer failure diagnostics around auth, DB, metadata reconcile, MQTT, and RPC.
+- Deepen observability dashboards, alert recommendations, and failure playbooks on top of the now-implemented OTLP export and hot-path instrumentation around auth, DB, metadata reconcile, MQTT, and RPC.
 - Tighten startup validation for dependency reachability and misconfiguration beyond the current env validation.
 - Evaluate whether repository scale and rule count now justify consolidating the current explicit lint commands under `golangci-lint` or a comparable aggregator without obscuring which checks actually gate CI.
 - Review auth hardening gaps such as key rotation telemetry, operator-facing guidance, and clearer runtime failure visibility.
 - Establish baseline performance checks for CRUD, ingest, MQTT publication, and RPC fan-out/fan-in behavior.
 - Raise direct test coverage around runtime adapters and entrypoints, especially the REST handler layer, MQTT client edges, and process wiring, so regressions at package boundaries are caught earlier.
-- Extend the same style of boundary-focused tests to observability logging middleware and the remaining low-coverage runtime packages so they have comparable regression resistance.
+- Extend the same style of boundary-focused tests to the remaining low-coverage runtime packages so they have comparable regression resistance, with observability already included in the integration harness.
 
 Exit criteria:
 - The hub can be operated with clear visibility into failures, dependency health, expected throughput characteristics, and repository quality checks that exercise concurrency and adapter-boundary failure modes.
+
+Current observability baseline in this phase:
+- `internal/observability` provides OTLP metrics, traces, and logs with environment-driven configuration and clean shutdown flushing.
+- Transport and service code now emit ingest counters, stage timings, queue telemetry, dependency events, RPC timing, MQTT publication timing, and WebSocket dispatch outcomes.
+- Entity drill-down uses trace and log attributes for `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision identifiers while metric cardinality remains bounded.
+- The reusable local demo stack now starts SigNoz alongside the hub so connector demonstrations can be inspected in a persistent telemetry UI without tearing the collector down between runs.
+- The integration suite includes an OTLP export test that proves metrics, traces, and logs are emitted end to end.
 
 ### Additional implementation depth
 Scope:

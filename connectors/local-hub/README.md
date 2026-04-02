@@ -5,6 +5,7 @@ this repository.
 
 The stack starts:
 
+- SigNoz plus its ClickHouse and collector dependencies for telemetry inspection
 - the hub
 - Postgres with persistent bind-mounted data
 - Dex for local OIDC tokens
@@ -27,6 +28,10 @@ Start the local hub:
 connectors/local-hub/start_demo.sh
 ```
 
+The first run also clones the pinned SigNoz deploy repository revision declared
+in `demo.env` and starts that stack separately before starting the hub demo
+compose project.
+
 Stop it:
 
 ```bash
@@ -41,11 +46,23 @@ connectors/local-hub/fetch_demo_token.sh
 
 The first run creates `connectors/local-hub/demo.env` from `demo.env.example`.
 
+Default local URLs:
+
+- hub REST: `http://localhost:8090`
+- hub WebSocket: `ws://localhost:8090/v2/ws/socket`
+- SigNoz UI: `http://localhost:8080`
+- OTLP gRPC: `localhost:4317`
+- OTLP HTTP: `localhost:4318`
+
 ## Persistent State
 
 Postgres state is stored under:
 
 - `connectors/local-hub/state/postgres`
+
+SigNoz deploy checkout defaults to:
+
+- `connectors/local-hub/state/signoz`
 
 ## Default Dex Users
 

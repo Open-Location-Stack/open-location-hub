@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
@@ -46,11 +47,13 @@ func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 		SetOrderMatters(false)
 	opts.OnConnect = func(client pahomqtt.Client) {
 		c.logger.Info("mqtt connected", zap.String("broker", brokerURL))
+		observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "connect", "success")
 		c.resubscribe(client)
 		c.runOnConnectHooks(context.Background())
 	}
 	opts.OnConnectionLost = func(_ pahomqtt.Client, err error) {
-		c.logger.Warn("mqtt connection lost", zap.Error(err))
+		observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "connection_lost", "failure")
+		c.logger.Warn("mqtt connection lost", zap.Any("context", context.Background()), zap.Error(err))
 	}
 	c.inner = pahomqtt.NewClient(opts)
 	token := c.inner.Connect()
@@ -104,11 +107,19 @@ func (c *Client) PublishJSON(ctx context.Context, topic string, payload any, ret
 
 // PublishRaw publishes the provided byte payload with QoS 1.
 func (c *Client) PublishRaw(_ context.Context, topic string, payload []byte, retained bool) error {
+	start := time.Now()
 	token := c.inner.Publish(topic, 1, retained, payload)
 	if !token.WaitTimeout(10 * time.Second) {
+		observability.Global().RecordMQTTPublish(context.Background(), "timeout", time.Since(start))
 		return fmt.Errorf("mqtt publish timed out for %s", topic)
 	}
-	return token.Error()
+	err := token.Error()
+	if err != nil {
+		observability.Global().RecordMQTTPublish(context.Background(), "failure", time.Since(start))
+		return err
+	}
+	observability.Global().RecordMQTTPublish(context.Background(), "success", time.Since(start))
+	return nil
 }
 
 func (c *Client) resubscribe(client pahomqtt.Client) {
@@ -116,7 +127,8 @@ func (c *Client) resubscribe(client pahomqtt.Client) {
 	defer c.mu.RUnlock()
 	for _, sub := range c.subscriptions {
 		if err := c.subscribe(client, sub.filter, sub.handler); err != nil {
-			c.logger.Warn("mqtt subscribe failed", zap.Error(err), zap.String("filter", sub.filter))
+			observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "subscribe", "failure")
+			c.logger.Warn("mqtt subscribe failed", zap.Any("context", context.Background()), zap.Error(err), zap.String("filter", sub.filter))
 		}
 	}
 }
@@ -133,7 +145,8 @@ func (c *Client) runOnConnectHooks(ctx context.Context) {
 func (c *Client) subscribe(client pahomqtt.Client, filter string, handler MessageHandler) error {
 	token := client.Subscribe(filter, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 		if err := handler(context.Background(), msg.Topic(), msg.Payload()); err != nil {
-			c.logger.Warn("mqtt handler failed", zap.Error(err), zap.String("topic", msg.Topic()))
+			observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "handler", "failure")
+			c.logger.Warn("mqtt handler failed", zap.Any("context", context.Background()), zap.Error(err), zap.String("topic", msg.Topic()))
 		}
 	})
 	if !token.WaitTimeout(10 * time.Second) {

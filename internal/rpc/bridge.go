@@ -14,6 +14,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/ids"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
@@ -186,10 +187,17 @@ func (b *Bridge) AvailableMethods(ctx context.Context) (gen.RpcAvailableMethods,
 
 // Invoke serves local methods and/or bridges JSON-RPC requests over MQTT.
 func (b *Bridge) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.RawMessage, bool, error) {
+	start := time.Now()
+	outcome := "success"
+	defer func() {
+		observability.Global().RecordRPC(ctx, request.Method, outcome, time.Since(start))
+	}()
 	if err := b.authorizeInvoke(ctx, request.Method); err != nil {
+		outcome = "forbidden"
 		return nil, false, err
 	}
 	if raw, ok := b.validateRequest(request); !ok {
+		outcome = "invalid"
 		return raw, false, nil
 	}
 
@@ -197,15 +205,18 @@ func (b *Bridge) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.R
 	notifyOnly := request.Id == nil && (params == nil || params.UnderscoreCallerId == nil)
 	targetLocal, targetExternal, rawErr := b.dispatchTargets(request)
 	if rawErr != nil {
+		outcome = "invalid"
 		return rawErr, false, nil
 	}
 	if !targetLocal && !targetExternal {
+		outcome = "no_handler"
 		return errorResponse(request.Id, errCodeUnknownHandler, "no handler available for method", nil), false, nil
 	}
 
 	if notifyOnly {
 		if targetLocal {
 			if _, err := b.invokeLocal(ctx, request); err != nil {
+				outcome = "failure"
 				return errorResponse(request.Id, errCodeInternal, err.Error(), nil), false, nil
 			}
 		}
@@ -215,6 +226,7 @@ func (b *Bridge) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.R
 				topic = mqtt.TopicRPCRequestHandler(request.Method, *params.UnderscoreHandlerId)
 			}
 			if err := b.publish(ctx, topic, request, false); err != nil {
+				outcome = "failure"
 				return errorResponse(request.Id, errCodeInternal, "failed to publish mqtt rpc request", nil), false, nil
 			}
 		}
@@ -242,16 +254,19 @@ func (b *Bridge) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.R
 			topic = mqtt.TopicRPCRequestHandler(request.Method, *request.Params.UnderscoreHandlerId)
 		}
 		if err := b.publish(ctx, topic, request, false); err != nil {
+			outcome = "failure"
 			return errorResponse(request.Id, errCodeInternal, "failed to publish mqtt rpc request", nil), false, nil
 		}
 	}
 	if targetLocal {
 		if raw, err := b.invokeLocal(ctx, request); err != nil {
+			outcome = "failure"
 			return errorResponse(request.Id, errCodeInternal, err.Error(), nil), false, nil
 		} else if len(raw) != 0 {
 			select {
 			case respCh <- raw:
 			default:
+				outcome = "failure"
 				return errorResponse(request.Id, errCodeInternal, "local rpc response buffer is full", nil), false, nil
 			}
 		}
@@ -286,7 +301,8 @@ func (b *Bridge) publishAnnouncements(ctx context.Context) {
 			"method_name": method,
 		}
 		if err := b.publish(ctx, mqtt.TopicRPCAvailable(method), payload, true); err != nil {
-			b.logger.Warn("rpc method announcement failed", zap.Error(err), zap.String("method", method))
+			observability.Global().RecordDependencyEvent(ctx, "rpc", "announcement", "failure")
+			b.logger.Warn("rpc method announcement failed", zap.Any("context", ctx), zap.Error(err), zap.String("method", method))
 		}
 	}
 }
