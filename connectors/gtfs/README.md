@@ -28,7 +28,7 @@ The checked-in defaults target the live Grand Dole network:
 ## Shared Local Hub
 
 This demo uses the shared local runtime in
-[`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub).
+[`connectors/local-hub`](../local-hub).
 
 Start it with:
 

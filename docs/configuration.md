@@ -93,7 +93,7 @@ Proximity resolution behavior:
 - `AUTH_ROLES_CLAIM` (JWT claim used for role extraction, default `groups`)
 - `AUTH_OWNED_RESOURCES_CLAIM` (JWT object claim for owned resource IDs; see `docs/auth.md` for format and usage)
 
-See [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md) for the full auth model, Dex setup, and permission file format.
+See [docs/auth.md](auth.md) for the full auth model, Dex setup, and permission file format.
 
 ## RPC Security Defaults
 

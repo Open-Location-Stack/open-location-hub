@@ -2,7 +2,7 @@
 
 Open RTLS Hub is an OpenAPI-first Go implementation of an OMLOX-ready location hub. It provides OMLOX `/v2` REST resources, OMLOX companion MQTT and WebSocket surfaces, and hub-mediated RPC control-plane support for location-driven integrations.
 
-The hub is vendor-neutral and environment-driven. It runs with Postgres, MQTT, and JWT-based access control, and it follows a contract-first workflow with the normative REST contract in [specifications/openapi/omlox-hub.v0.yaml](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/specifications/openapi/omlox-hub.v0.yaml).
+The hub is vendor-neutral and environment-driven. It runs with Postgres, MQTT, and JWT-based access control, and it follows a contract-first workflow with the normative REST contract in [specifications/openapi/omlox-hub.v0.yaml](specifications/openapi/omlox-hub.v0.yaml).
 
 Key capabilities:
 - OMLOX `/v2` REST resources and ingestion endpoints
@@ -14,7 +14,7 @@ Key capabilities:
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
-- Connector demonstrators under [`connectors/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors)
+- Connector demonstrators under [`connectors/`](connectors)
 
 ## Omlox
 
@@ -54,25 +54,25 @@ Notes:
 - `just compose-logs` tails compose services
 
 ## Software Docs
-- [docs/index.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/index.md)
-- [docs/architecture.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/architecture.md)
-- [docs/configuration.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/configuration.md)
-- [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md)
-- [docs/rpc.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/rpc.md)
+- [docs/index.md](docs/index.md)
+- [docs/architecture.md](docs/architecture.md)
+- [docs/configuration.md](docs/configuration.md)
+- [docs/auth.md](docs/auth.md)
+- [docs/rpc.md](docs/rpc.md)
 
 ## Connector Demonstrators
-- [connectors/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/README.md)
-- [connectors/local-hub/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
-- [connectors/gtfs/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
-- [connectors/opensky/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md)
+- [connectors/README.md](connectors/README.md)
+- [connectors/local-hub/README.md](connectors/local-hub/README.md)
+- [connectors/gtfs/README.md](connectors/gtfs/README.md)
+- [connectors/opensky/README.md](connectors/opensky/README.md)
 
 ## Utility Scripts
-- [scripts/log_locations.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_locations.py)
-- [scripts/log_fence_events.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_fence_events.py)
-- [scripts/log_collision_events.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_collision_events.py)
-- [scripts/check_fence_alignment.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/check_fence_alignment.py)
+- [scripts/log_locations.py](scripts/log_locations.py)
+- [scripts/log_fence_events.py](scripts/log_fence_events.py)
+- [scripts/log_collision_events.py](scripts/log_collision_events.py)
+- [scripts/check_fence_alignment.py](scripts/check_fence_alignment.py)
 
 ## Engineering Docs
-- [engineering/index.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/index.md)
-- [engineering/testing.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/testing.md)
-- [engineering/openapi-governance.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/openapi-governance.md)
+- [engineering/index.md](engineering/index.md)
+- [engineering/testing.md](engineering/testing.md)
+- [engineering/openapi-governance.md](engineering/openapi-governance.md)

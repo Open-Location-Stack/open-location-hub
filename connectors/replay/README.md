@@ -3,7 +3,7 @@
 This connector is a diagnostic tool for replaying logged hub
 `location_updates` NDJSON back into an Open RTLS Hub. It is intended for trace
 files produced by the shared root logging scripts such as
-[`scripts/log_locations.py`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_locations.py).
+[`scripts/log_locations.py`](../../scripts/log_locations.py).
 
 Replay behavior:
 

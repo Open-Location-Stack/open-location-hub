@@ -172,7 +172,7 @@ If a topic is valid but disabled by configuration, the WebSocket layer returns a
 
 ## Dex Development Setup
 
-This repository includes a Dex fixture at [tools/dex/config.yaml](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/tools/dex/config.yaml) and a matching permissions file at [config/auth/permissions.yaml](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/config/auth/permissions.yaml).
+This repository includes a Dex fixture at [tools/dex/config.yaml](../tools/dex/config.yaml) and a matching permissions file at [config/auth/permissions.yaml](../config/auth/permissions.yaml).
 
 `docker compose` starts Dex on port `5556` and configures the app container to verify Dex-issued tokens with:
 
