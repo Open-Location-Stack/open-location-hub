@@ -130,10 +130,10 @@ useful example for shared project layout, env handling, and REST bootstrap.
 For local development, use the shared demo stack:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 That stack includes the hub, Postgres, Dex, and Mosquitto. See
-[`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
+[`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
 for the local runtime details and the token helper if your connector also uses
 REST against an auth-enabled hub.

@@ -1,11 +1,13 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 )
 
 // EventKind identifies a normalized hub event emitted onto the internal bus.
@@ -138,12 +140,18 @@ func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
 	b.nextID++
 	b.subscribers[id] = ch
 	b.mu.Unlock()
+	if b.stats != nil {
+		b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
+	}
 
 	return ch, func() {
 		b.mu.Lock()
 		if existing, ok := b.subscribers[id]; ok {
 			delete(b.subscribers, id)
 			close(existing)
+		}
+		if b.stats != nil {
+			b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
 		}
 		b.mu.Unlock()
 	}
@@ -159,6 +167,7 @@ func (b *EventBus) Stats() *RuntimeStats {
 
 // Emit publishes an event to all subscribers.
 func (b *EventBus) Emit(event Event) {
+	start := time.Now()
 	b.mu.RLock()
 	subs := make([]chan Event, 0, len(b.subscribers))
 	for _, ch := range b.subscribers {
@@ -175,6 +184,7 @@ func (b *EventBus) Emit(event Event) {
 			}
 		}
 	}
+	observability.Global().RecordEventBusEmit(context.Background(), string(event.Kind), time.Since(start))
 }
 
 func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID, originHubID string, payload any) (Event, error) {
@@ -185,7 +195,7 @@ func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID,
 	if eventTime.IsZero() {
 		eventTime = time.Now().UTC()
 	}
-	return Event{
+	event := Event{
 		Kind:        kind,
 		Scope:       scope,
 		EventTime:   eventTime,
@@ -195,5 +205,7 @@ func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID,
 		FenceID:     fenceID,
 		OriginHubID: originHubID,
 		Payload:     raw,
-	}, nil
+	}
+	observability.Global().RecordEndToEnd(context.Background(), string(kind), string(scope), event.ProcessedAt.Sub(event.EventTime))
+	return event, nil
 }

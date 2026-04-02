@@ -9,6 +9,7 @@ import (
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
@@ -173,7 +174,7 @@ func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) 
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
-	err := h.deps.Service.ProcessLocations(r.Context(), body)
+	err := h.deps.Service.ProcessLocations(observability.WithIngestTransport(r.Context(), "http"), body)
 	writeAcceptedOrError(w, err)
 }
 
@@ -183,7 +184,7 @@ func (h *Handler) PostProviderProximities(w http.ResponseWriter, r *http.Request
 		writeJSONOrError(w, nil, err, 0)
 		return
 	}
-	err := h.deps.Service.ProcessProximities(r.Context(), body)
+	err := h.deps.Service.ProcessProximities(observability.WithIngestTransport(r.Context(), "http"), body)
 	writeAcceptedOrError(w, err)
 }
 

@@ -129,16 +129,31 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	telemetry, err := observability.NewRuntime(ctx, cfg.Telemetry, cfg.HubID)
+	if err != nil {
+		return fmt.Errorf("init telemetry: %w", err)
+	}
+	observability.SetGlobal(telemetry)
+	defer observability.SetGlobal(nil)
+	defer func() { _ = telemetry.Shutdown(context.WithoutCancel(ctx)) }()
+	ctx = observability.WithRuntime(ctx, telemetry)
+
 	logger, cleanupLogger, err := rt.newLogger(cfg.LogLevel)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	defer cleanupLogger()
 
+	postgresCtx, postgresSpan := telemetry.StartSpan(ctx, "runtime.postgres.init")
 	queries, closeQueries, err := rt.openQueries(ctx, cfg.PostgresURL)
 	if err != nil {
+		postgresSpan.RecordError(err)
+		telemetry.RecordDependencyEvent(postgresCtx, "postgres", "init", "failure")
+		postgresSpan.End()
 		return fmt.Errorf("postgres init failed: %w", err)
 	}
+	telemetry.RecordDependencyEvent(postgresCtx, "postgres", "init", "success")
+	postgresSpan.End()
 	defer func() { _ = closeQueries.Close() }()
 
 	hubMeta, err := rt.resolveHubMetadata(ctx, queries, cfg)
@@ -146,16 +161,28 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		return fmt.Errorf("hub metadata init failed: %w", err)
 	}
 
+	mqttCtx, mqttSpan := telemetry.StartSpan(ctx, "runtime.mqtt.init")
 	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL)
 	if err != nil {
+		mqttSpan.RecordError(err)
+		telemetry.RecordDependencyEvent(mqttCtx, "mqtt", "init", "failure")
+		mqttSpan.End()
 		return fmt.Errorf("mqtt init failed: %w", err)
 	}
+	telemetry.RecordDependencyEvent(mqttCtx, "mqtt", "init", "success")
+	mqttSpan.End()
 	defer func() { _ = mq.Close() }()
 
+	authCtx, authSpan := telemetry.StartSpan(ctx, "runtime.auth.init")
 	authenticator, err := rt.newAuthenticator(ctx, cfg.Auth)
 	if err != nil {
+		authSpan.RecordError(err)
+		telemetry.RecordDependencyEvent(authCtx, "auth", "init", "failure")
+		authSpan.End()
 		return fmt.Errorf("auth init failed: %w", err)
 	}
+	telemetry.RecordDependencyEvent(authCtx, "auth", "init", "success")
+	authSpan.End()
 	var registry *auth.Registry
 	if cfg.Auth.Enabled && cfg.Auth.Mode != "none" {
 		registry, err = rt.loadRegistry(cfg.Auth.PermissionsFile)
@@ -202,6 +229,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	if cleanupMQTTPublisher != nil {
 		defer cleanupMQTTPublisher()
 	}
+	rpcCtx, rpcSpan := telemetry.StartSpan(ctx, "runtime.rpc.init")
 	rpcBridge, err := rt.newRPCBridge(logger, mq, rpc.Config{
 		Timeout:              cfg.RPCTimeout,
 		HandlerID:            cfg.RPCHandlerID,
@@ -214,11 +242,17 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		},
 	})
 	if err != nil {
+		rpcSpan.RecordError(err)
+		telemetry.RecordDependencyEvent(rpcCtx, "rpc", "init", "failure")
+		rpcSpan.End()
 		return fmt.Errorf("rpc bridge init failed: %w", err)
 	}
+	telemetry.RecordDependencyEvent(rpcCtx, "rpc", "init", "success")
+	rpcSpan.End()
 	defer func() { _ = rpcBridge.Close() }()
 
 	if err := mq.Subscribe(mqtt.TopicLocationPubWildcard(), func(ctx context.Context, _ string, payload []byte) error {
+		ctx = observability.WithIngestTransport(ctx, "mqtt")
 		var body []gen.Location
 		if err := json.Unmarshal(payload, &body); err == nil {
 			return service.ProcessLocations(ctx, body)
@@ -233,6 +267,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 
 	if err := mq.Subscribe(mqtt.TopicProximityWildcard(), func(ctx context.Context, _ string, payload []byte) error {
+		ctx = observability.WithIngestTransport(ctx, "mqtt")
 		var body []gen.Proximity
 		if err := json.Unmarshal(payload, &body); err == nil {
 			return service.ProcessProximities(ctx, body)

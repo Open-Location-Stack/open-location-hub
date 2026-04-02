@@ -4,13 +4,16 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"go.uber.org/zap"
 )
 
 type derivedLocationWork struct {
-	Location gen.Location
+	Context    context.Context
+	Location   gen.Location
+	EnqueuedAt time.Time
 }
 
 type derivedLocationSubmitter interface {
@@ -53,6 +56,7 @@ func startDerivedLocationProcessor(
 func (p *derivedLocationProcessor) Submit(work derivedLocationWork) {
 	select {
 	case p.queue <- work:
+		p.updateDepth()
 	default:
 		dropped := p.dropped.Add(1)
 		if p.onDrop != nil {
@@ -70,10 +74,27 @@ func (p *derivedLocationProcessor) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case work := <-p.queue:
+			p.updateDepth()
+			if !work.EnqueuedAt.IsZero() {
+				p.service.telemetry().RecordQueueWait(work.Context, p.label, time.Since(work.EnqueuedAt))
+			}
 			if err := p.onProcess(ctx, work.Location); err != nil {
-				p.logger.Warn(p.label+" processing failed", zap.Error(err), zap.String("provider_id", work.Location.ProviderId), zap.String("source", work.Location.Source))
+				p.logger.Warn(p.label+" processing failed", zap.Any("context", work.Context), zap.Error(err), zap.String("provider_id", work.Location.ProviderId), zap.String("source", work.Location.Source))
 			}
 		}
+	}
+}
+
+func (p *derivedLocationProcessor) updateDepth() {
+	if p.service == nil || p.service.stats == nil {
+		return
+	}
+	depth := int64(len(p.queue))
+	switch p.label {
+	case "native location queue":
+		p.service.stats.SetNativeQueueDepth(depth)
+	case "decision location queue":
+		p.service.stats.SetDecisionQueueDepth(depth)
 	}
 }
 

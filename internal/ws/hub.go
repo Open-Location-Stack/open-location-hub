@@ -12,6 +12,7 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/config"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-rtls-hub/internal/observability"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
@@ -170,6 +171,10 @@ func runtimeStatsFromBus(bus *hub.EventBus) *hub.RuntimeStats {
 	return nil
 }
 
+func (h *Hub) telemetry() *observability.Runtime {
+	return observability.Global()
+}
+
 // Handle upgrades the request to a WebSocket connection and serves the OMLOX
 // wrapper protocol on it.
 func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +193,9 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 	c.configureSocket()
 	h.mu.Lock()
 	h.connections[c] = struct{}{}
+	if h.stats != nil {
+		h.stats.SetWebSocketConnections(int64(len(h.connections)))
+	}
 	h.mu.Unlock()
 
 	go c.writeLoop()
@@ -293,6 +301,9 @@ func (c *connection) writeLoop() {
 			if !ok {
 				return
 			}
+			if c.hub.stats != nil {
+				c.hub.stats.AddWebSocketOutboundDepth(-1)
+			}
 			if err := c.writeFrame(websocket.TextMessage, payload); err != nil {
 				if !isExpectedClose(err) && !isNetClosed(err) {
 					c.hub.logger.Debug("websocket write loop ended", zap.Error(err))
@@ -323,6 +334,9 @@ func (c *connection) close() {
 	c.closeMux.Unlock()
 	c.hub.mu.Lock()
 	delete(c.hub.connections, c)
+	if c.hub.stats != nil {
+		c.hub.stats.SetWebSocketConnections(int64(len(c.hub.connections)))
+	}
 	c.hub.mu.Unlock()
 	_ = c.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(c.hub.writeTimeout))
 	_ = c.conn.Close()
@@ -386,6 +400,7 @@ func (c *connection) handleMessage(msg wrapper) {
 	if principal != nil {
 		ctx = auth.WithPrincipal(ctx, principal)
 	}
+	ctx = observability.WithIngestTransport(ctx, "websocket")
 	switch msg.Topic {
 	case topicLocationUpdates:
 		var body []gen.Location
@@ -437,6 +452,7 @@ func (c *connection) authenticate(params map[string]any, subscribe bool, topic s
 }
 
 func (c *connection) deliverBatch(events []hub.Event) {
+	start := time.Now()
 	c.mu.RLock()
 	subs := make([]subscription, 0, len(c.subs))
 	for _, sub := range c.subs {
@@ -449,10 +465,12 @@ func (c *connection) deliverBatch(events []hub.Event) {
 			continue
 		}
 		c.sendWrapper(wrapper{Event: "message", Topic: sub.topic, SubscriptionID: &sub.id, Payload: payload})
+		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), sub.topic, "sent", time.Since(start))
 	}
 }
 
 func (c *connection) sendWrapper(msg wrapper) {
+	start := time.Now()
 	raw, err := json.Marshal(msg)
 	if err != nil {
 		return
@@ -467,10 +485,15 @@ func (c *connection) sendWrapper(msg wrapper) {
 	case <-c.done:
 		return
 	case c.send <- raw:
+		if c.hub.stats != nil {
+			c.hub.stats.AddWebSocketOutboundDepth(1)
+		}
+		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "queued", time.Since(start))
 	default:
 		if c.hub.stats != nil {
 			c.hub.stats.IncWebSocketOutboundDrops()
 		}
+		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "dropped", time.Since(start))
 		c.hub.logger.Debug("websocket outbound buffer full; dropping outbound payload")
 	}
 }

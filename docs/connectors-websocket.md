@@ -124,20 +124,20 @@ For local development:
 1. Start the shared demo runtime:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 2. Fetch a token when auth is enabled:
 
 ```bash
-connectors/local-hub/fetch_demo_token.sh
+local-hub/fetch_demo_token.sh
 ```
 
 3. Run your connector against the local hub with `HUB_HTTP_URL`,
    `HUB_WS_URL`, and optionally `HUB_TOKEN`.
 
 See
-[`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
+[`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
 for the reusable local stack.
 
 ## Example Projects

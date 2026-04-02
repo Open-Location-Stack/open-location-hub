@@ -18,6 +18,7 @@ type Config struct {
 	HTTPListenAddr                        string
 	HTTPRequestBodyLimitBytes             int64
 	LogLevel                              string
+	Telemetry                             TelemetryConfig
 	HubID                                 string
 	HubLabel                              string
 	ResetHubID                            bool
@@ -66,6 +67,28 @@ type AuthConfig struct {
 	Enabled             bool
 }
 
+// TelemetryConfig contains OpenTelemetry export settings for the hub runtime.
+type TelemetryConfig struct {
+	Enabled               bool
+	MetricsEnabled        bool
+	TracesEnabled         bool
+	LogsEnabled           bool
+	OTLPEndpoint          string
+	OTLPTracesEndpoint    string
+	OTLPMetricsEndpoint   string
+	OTLPLogsEndpoint      string
+	OTLPHeaders           map[string]string
+	Insecure              bool
+	ExportTimeout         time.Duration
+	MetricsExportInterval time.Duration
+	MetricsExportTimeout  time.Duration
+	TraceSampleRatio      float64
+	ServiceName           string
+	ServiceVersion        string
+	DeploymentEnvironment string
+	DebugIdentifiers      bool
+}
+
 // FromEnv loads Config from environment variables and validates the result.
 func FromEnv() (Config, error) {
 	return fromLookupEnv(os.LookupEnv)
@@ -73,9 +96,29 @@ func FromEnv() (Config, error) {
 
 func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	cfg := Config{
-		HTTPListenAddr:                        envWithLookup(lookup, "HTTP_LISTEN_ADDR", ":8080"),
-		HTTPRequestBodyLimitBytes:             int64EnvWithLookup(lookup, "HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
-		LogLevel:                              envWithLookup(lookup, "LOG_LEVEL", "info"),
+		HTTPListenAddr:            envWithLookup(lookup, "HTTP_LISTEN_ADDR", ":8080"),
+		HTTPRequestBodyLimitBytes: int64EnvWithLookup(lookup, "HTTP_REQUEST_BODY_LIMIT_BYTES", 4*1024*1024),
+		LogLevel:                  envWithLookup(lookup, "LOG_LEVEL", "info"),
+		Telemetry: TelemetryConfig{
+			Enabled:               boolEnvWithLookup(lookup, "OTEL_ENABLED", false),
+			MetricsEnabled:        boolEnvWithLookup(lookup, "OTEL_METRICS_ENABLED", true),
+			TracesEnabled:         boolEnvWithLookup(lookup, "OTEL_TRACES_ENABLED", true),
+			LogsEnabled:           boolEnvWithLookup(lookup, "OTEL_LOGS_ENABLED", true),
+			OTLPEndpoint:          strings.TrimSpace(envWithLookup(lookup, "OTEL_EXPORTER_OTLP_ENDPOINT", "")),
+			OTLPTracesEndpoint:    strings.TrimSpace(envWithLookup(lookup, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")),
+			OTLPMetricsEndpoint:   strings.TrimSpace(envWithLookup(lookup, "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "")),
+			OTLPLogsEndpoint:      strings.TrimSpace(envWithLookup(lookup, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "")),
+			OTLPHeaders:           headerMapEnvWithLookup(lookup, "OTEL_EXPORTER_OTLP_HEADERS", ""),
+			Insecure:              boolEnvWithLookup(lookup, "OTEL_EXPORTER_OTLP_INSECURE", false),
+			ExportTimeout:         durationEnvWithLookup(lookup, "OTEL_EXPORTER_OTLP_TIMEOUT", 10*time.Second),
+			MetricsExportInterval: durationEnvWithLookup(lookup, "OTEL_METRIC_EXPORT_INTERVAL", 15*time.Second),
+			MetricsExportTimeout:  durationEnvWithLookup(lookup, "OTEL_METRIC_EXPORT_TIMEOUT", 10*time.Second),
+			TraceSampleRatio:      floatEnvWithLookup(lookup, "OTEL_TRACE_SAMPLE_RATIO", 1),
+			ServiceName:           strings.TrimSpace(envWithLookup(lookup, "OTEL_SERVICE_NAME", "open-rtls-hub")),
+			ServiceVersion:        strings.TrimSpace(envWithLookup(lookup, "OTEL_SERVICE_VERSION", "")),
+			DeploymentEnvironment: strings.TrimSpace(envWithLookup(lookup, "OTEL_DEPLOYMENT_ENVIRONMENT", "")),
+			DebugIdentifiers:      boolEnvWithLookup(lookup, "OTEL_DEBUG_IDENTIFIERS", false),
+		},
 		HubID:                                 strings.TrimSpace(envWithLookup(lookup, "HUB_ID", "")),
 		HubLabel:                              strings.TrimSpace(envWithLookup(lookup, "HUB_LABEL", "")),
 		ResetHubID:                            boolEnvWithLookup(lookup, "RESET_HUB_ID", false),
@@ -204,6 +247,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	if cfg.ProximityResolutionStaleStateTTL <= 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_STALE_STATE_TTL must be > 0")
 	}
+	if err := cfg.Telemetry.Validate(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
 }
 
@@ -253,11 +299,71 @@ func clean(in []string) []string {
 	return out
 }
 
+// Validate checks telemetry settings for internal consistency.
+func (t TelemetryConfig) Validate() error {
+	if !t.Enabled {
+		return nil
+	}
+	if !t.MetricsEnabled && !t.TracesEnabled && !t.LogsEnabled {
+		return fmt.Errorf("OTEL_ENABLED requires at least one of metrics, traces, or logs to be enabled")
+	}
+	if strings.TrimSpace(t.OTLPEndpoint) == "" &&
+		strings.TrimSpace(t.OTLPTracesEndpoint) == "" &&
+		strings.TrimSpace(t.OTLPMetricsEndpoint) == "" &&
+		strings.TrimSpace(t.OTLPLogsEndpoint) == "" {
+		return fmt.Errorf("OTEL_ENABLED requires OTEL_EXPORTER_OTLP_ENDPOINT or a signal-specific OTLP endpoint")
+	}
+	if t.ExportTimeout <= 0 {
+		return fmt.Errorf("OTEL_EXPORTER_OTLP_TIMEOUT must be > 0")
+	}
+	if t.MetricsExportInterval <= 0 {
+		return fmt.Errorf("OTEL_METRIC_EXPORT_INTERVAL must be > 0")
+	}
+	if t.MetricsExportTimeout <= 0 {
+		return fmt.Errorf("OTEL_METRIC_EXPORT_TIMEOUT must be > 0")
+	}
+	if t.TraceSampleRatio < 0 || t.TraceSampleRatio > 1 {
+		return fmt.Errorf("OTEL_TRACE_SAMPLE_RATIO must be between 0 and 1")
+	}
+	if strings.TrimSpace(t.ServiceName) == "" {
+		return fmt.Errorf("OTEL_SERVICE_NAME must not be empty when telemetry is enabled")
+	}
+	return nil
+}
+
 func envWithLookup(lookup lookupEnvFunc, k, d string) string {
 	if v, ok := lookup(k); ok {
 		return v
 	}
 	return d
+}
+
+func headerMapEnvWithLookup(lookup lookupEnvFunc, k, d string) map[string]string {
+	values := strings.TrimSpace(envWithLookup(lookup, k, d))
+	if values == "" {
+		return nil
+	}
+	out := map[string]string{}
+	for _, item := range strings.Split(values, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func csvEnvWithLookup(lookup lookupEnvFunc, k, d string) []string {

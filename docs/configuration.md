@@ -102,6 +102,35 @@ Proximity resolution behavior:
 
 See [docs/auth.md](auth.md) for the full auth model, Dex setup, and permission file format.
 
+## Telemetry
+- `OTEL_ENABLED` (`true`/`false`, default `false`)
+- `OTEL_METRICS_ENABLED` (`true`/`false`, default `true` when telemetry is enabled)
+- `OTEL_TRACES_ENABLED` (`true`/`false`, default `true` when telemetry is enabled)
+- `OTEL_LOGS_ENABLED` (`true`/`false`, default `true` when telemetry is enabled)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (base OTLP HTTP endpoint such as `http://localhost:4318`)
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (optional full traces endpoint override)
+- `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` (optional full metrics endpoint override)
+- `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` (optional full logs endpoint override)
+- `OTEL_EXPORTER_OTLP_HEADERS` (comma-separated `key=value` headers for collector auth or routing)
+- `OTEL_EXPORTER_OTLP_INSECURE` (`true`/`false`, default `false`)
+- `OTEL_EXPORTER_OTLP_TIMEOUT` (duration, default `10s`)
+- `OTEL_METRIC_EXPORT_INTERVAL` (duration, default `30s`)
+- `OTEL_METRIC_EXPORT_TIMEOUT` (duration, default `10s`)
+- `OTEL_TRACE_SAMPLE_RATIO` (number between `0` and `1`, default `1`)
+- `OTEL_SERVICE_NAME` (default `open-rtls-hub`)
+- `OTEL_SERVICE_VERSION` (optional override for release tagging)
+- `OTEL_DEPLOYMENT_ENVIRONMENT` (optional deployment environment label such as `local-demo` or `production`)
+- `OTEL_DEBUG_IDENTIFIERS` (`true`/`false`, default `false`)
+
+Telemetry behavior:
+- the hub exports OTLP metrics, traces, and logs directly to a collector and does not expose a separate Prometheus scrape endpoint in this slice
+- `service.name`, `service.version`, `deployment.environment`, and the persisted `hub.id` are attached to the OTel resource when available
+- invalid telemetry configuration fails startup only when telemetry is enabled
+- metrics are intentionally low-cardinality and are labeled only with bounded dimensions such as transport, signal type, stage, feature, and outcome
+- entity identifiers such as `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision pair identifiers are emitted on spans and structured logs for drill-down, not on normal metric series
+- runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
+- the local demo stack under [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) enables all three OTLP signals by default and routes them to SigNoz
+
 ## RPC Security Defaults
 
 For production deployments:

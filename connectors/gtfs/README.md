@@ -37,18 +37,18 @@ The checked-in defaults target the live Grand Dole network:
 ## Shared Local Hub
 
 This demo uses the shared local runtime in
-[`connectors/local-hub`](../local-hub).
+[`local-hub/`](../../local-hub).
 
 Start it with:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 Fetch an admin token with:
 
 ```bash
-connectors/local-hub/fetch_demo_token.sh
+local-hub/fetch_demo_token.sh
 ```
 
 ## Required Inputs
@@ -83,7 +83,7 @@ Optional filters and tuning:
 1. Start the self-contained local runtime:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 2. Copy `.env.example` to `connectors/gtfs/.env.local` and fill in the required
@@ -93,7 +93,7 @@ connectors/local-hub/start_demo.sh
 cp connectors/gtfs/.env.example connectors/gtfs/.env.local
 ```
 
-3. If the hub runs with auth enabled, fetch a token with `connectors/local-hub/fetch_demo_token.sh`
+3. If the hub runs with auth enabled, fetch a token with `local-hub/fetch_demo_token.sh`
    and set `HUB_TOKEN`.
 4. Sync the Python runtime with `uv`:
 
