@@ -170,6 +170,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
+		NativeLocationBuffer:                  cfg.NativeLocationBuffer,
 		DerivedLocationBuffer:                 cfg.DerivedLocationBuffer,
 		MetadataReconcileInterval:             cfg.MetadataReconcileInterval,
 		CollisionsEnabled:                     cfg.CollisionsEnabled,
@@ -191,7 +192,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	if eventBus != nil {
 		var ch <-chan hub.Event
 		var unsubscribeMQTTPublisher func()
-		ch, unsubscribeMQTTPublisher = eventBus.Subscribe(128)
+		ch, unsubscribeMQTTPublisher = eventBus.Subscribe(cfg.EventBusSubscriberBuffer)
 		mqttPublisherDone := runEventPublisher(ctx, logger, ch, rt.eventPublisherHandle(mq))
 		cleanupMQTTPublisher = func() {
 			unsubscribeMQTTPublisher()
@@ -272,6 +273,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		cfg.WebSocketReadTimeout,
 		cfg.WebSocketPingInterval,
 		cfg.WebSocketOutboundBuffer,
+		cfg.EventBusSubscriberBuffer,
 		cfg.CollisionsEnabled,
 	)
 	r.Get("/v2/ws/socket", wsHub.Handle)

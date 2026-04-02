@@ -12,6 +12,8 @@ Replay behavior:
 - supports real-time replay or faster playback via `--acceleration-factor`
 - can emit synthetic straight-line interpolation points per object via
   `--interpolation-rate-hz`
+- batches due replay emissions into fewer WebSocket publishes via
+  `--batch-window-ms` and `--max-batch-size`
 - best-effort bootstraps referenced providers and trackables when `HUB_HTTP_URL`
   is configured
 
@@ -50,6 +52,9 @@ Optional but recommended:
 - `REPLAY_ACCELERATION_FACTOR`: playback speed multiplier, where `1.0` is real time
 - `REPLAY_INTERPOLATION_RATE_HZ`: per-object interpolation cadence in Hertz, where
   `1.0` means once per second and `0.1` means once every 10 seconds
+- `REPLAY_BATCH_WINDOW_MS`: coalesce replay events due inside this window into one
+  WebSocket publish
+- `REPLAY_MAX_BATCH_SIZE`: cap the number of locations sent in one replay publish
 
 ## Setup
 
@@ -121,6 +126,17 @@ uv run --project connectors/replay python connectors/replay/connector.py \
   --interpolation-rate-hz 0.1
 ```
 
+Replay with interpolation and larger WebSocket batches:
+
+```bash
+uv run --project connectors/replay python connectors/replay/connector.py \
+  --env-file connectors/replay/.env.local \
+  --input connectors/opensky/logs/location_updates.ndjson \
+  --interpolation-rate-hz 10.0 \
+  --batch-window-ms 25 \
+  --max-batch-size 256
+```
+
 ## Input Format
 
 The connector expects the NDJSON shape produced by the shared logging scripts:
@@ -163,6 +179,13 @@ Synthetic locations:
 - include `properties.replay_synthetic_interpolation=true`
 - preserve the original source timestamp in
   `properties.replay_original_timestamp_generated`
+
+Batching behavior:
+
+- the connector waits for the first due replay timestamp in a batch
+- it then publishes all subsequent events scheduled within `batch-window-ms`
+- batching reduces per-frame overhead but does not change the replay timestamps
+  carried in the payload
 
 ## Limitations
 

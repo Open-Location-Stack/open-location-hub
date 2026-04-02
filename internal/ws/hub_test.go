@@ -146,7 +146,7 @@ func TestSendWrapperSafeDuringConcurrentClose(t *testing.T) {
 	t.Parallel()
 
 	bus := hub.NewEventBus()
-	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, true)
+	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
 	server2 := httptest.NewServer(http.HandlerFunc(h.Handle))
 	defer server2.Close()
 	wsURL2 := "ws" + strings.TrimPrefix(server2.URL, "http") + "/v2/ws/socket"
@@ -196,7 +196,7 @@ func startTestHub(t *testing.T, bus *hub.EventBus, collisionsEnabled bool) (*web
 
 func httpHandler(t *testing.T, bus *hub.EventBus, collisionsEnabled bool) http.Handler {
 	t.Helper()
-	return http.HandlerFunc(New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 8, collisionsEnabled).Handle)
+	return http.HandlerFunc(New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 8, 128, collisionsEnabled).Handle)
 }
 
 func TestReadDeadlineExtendsOnIncomingMessages(t *testing.T) {
@@ -214,6 +214,7 @@ func TestReadDeadlineExtendsOnIncomingMessages(t *testing.T) {
 		80*time.Millisecond,
 		time.Hour,
 		8,
+		128,
 		true,
 	)
 	server := httptest.NewServer(http.HandlerFunc(h.Handle))

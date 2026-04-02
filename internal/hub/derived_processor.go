@@ -18,20 +18,33 @@ type derivedLocationSubmitter interface {
 }
 
 type derivedLocationProcessor struct {
-	service *Service
-	logger  *zap.Logger
-	queue   chan derivedLocationWork
-	dropped atomic.Uint64
+	service   *Service
+	logger    *zap.Logger
+	queue     chan derivedLocationWork
+	label     string
+	onDrop    func() uint64
+	onProcess func(context.Context, gen.Location) error
+	dropped   atomic.Uint64
 }
 
-func startDerivedLocationProcessor(ctx context.Context, service *Service, buffer int) derivedLocationSubmitter {
+func startDerivedLocationProcessor(
+	ctx context.Context,
+	service *Service,
+	buffer int,
+	label string,
+	onDrop func() uint64,
+	onProcess func(context.Context, gen.Location) error,
+) derivedLocationSubmitter {
 	if service == nil || buffer <= 0 {
 		return nil
 	}
 	processor := &derivedLocationProcessor{
-		service: service,
-		logger:  service.logger,
-		queue:   make(chan derivedLocationWork, buffer),
+		service:   service,
+		logger:    service.logger,
+		queue:     make(chan derivedLocationWork, buffer),
+		label:     label,
+		onDrop:    onDrop,
+		onProcess: onProcess,
 	}
 	go processor.run(ctx)
 	return processor
@@ -42,8 +55,11 @@ func (p *derivedLocationProcessor) Submit(work derivedLocationWork) {
 	case p.queue <- work:
 	default:
 		dropped := p.dropped.Add(1)
+		if p.onDrop != nil {
+			dropped = p.onDrop()
+		}
 		if dropped == 1 || dropped%100 == 0 {
-			p.logger.Warn("derived location queue full; dropping derived work", zap.Uint64("dropped", dropped))
+			p.logger.Warn(p.label+" full; dropping location work", zap.Uint64("dropped", dropped))
 		}
 	}
 }
@@ -54,11 +70,21 @@ func (p *derivedLocationProcessor) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case work := <-p.queue:
-			if err := p.service.processDerivedLocation(ctx, work.Location); err != nil {
-				p.logger.Warn("derived location processing failed", zap.Error(err), zap.String("provider_id", work.Location.ProviderId), zap.String("source", work.Location.Source))
+			if err := p.onProcess(ctx, work.Location); err != nil {
+				p.logger.Warn(p.label+" processing failed", zap.Error(err), zap.String("provider_id", work.Location.ProviderId), zap.String("source", work.Location.Source))
 			}
 		}
 	}
+}
+
+type decisionLocationStage interface {
+	Process(context.Context, gen.Location) (gen.Location, bool, error)
+}
+
+type passthroughDecisionStage struct{}
+
+func (passthroughDecisionStage) Process(_ context.Context, location gen.Location) (gen.Location, bool, error) {
+	return location, true, nil
 }
 
 type derivedLocationView struct {
