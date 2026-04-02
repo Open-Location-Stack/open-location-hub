@@ -170,6 +170,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
+		DerivedLocationBuffer:                 cfg.DerivedLocationBuffer,
 		MetadataReconcileInterval:             cfg.MetadataReconcileInterval,
 		CollisionsEnabled:                     cfg.CollisionsEnabled,
 		CollisionStateTTL:                     cfg.CollisionStateTTL,

@@ -27,14 +27,17 @@
 
 ## Event Fan-Out
 1. REST, MQTT, or WebSocket ingest enters the shared hub service.
-2. The hub validates, normalizes, deduplicates, updates in-memory transient state, and derives follow-on events.
-3. The hub emits normalized internal events for locations, proximities, trackable motions, fence events, optional collision events, and metadata changes.
-4. MQTT and WebSocket consume that same event stream and publish transport-specific payloads.
+2. The hub validates, normalizes, deduplicates, updates in-memory transient state, and emits the native location event on the ingest path.
+3. A buffered in-process derived-location worker handles non-critical follow-on work such as alternate-CRS publication, geofence evaluation, and optional collision evaluation.
+4. When that derived queue is full, the hub drops derived work for newer locations rather than backpressuring the ingest path.
+5. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads.
 
 Implications:
 - ingest logic is shared across REST, MQTT, and WebSocket
 - MQTT is no longer the only downstream publication path
 - the internal event seam decouples downstream publication from MQTT-specific topics
+- location ingest latency is protected from slower geofence or collision work
+- the derived-location queue is the intended insertion point for future filtered or smoothed track processing before fence/collision decisions
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
 

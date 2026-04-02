@@ -20,6 +20,7 @@ Runtime lifecycle behavior:
 - `WEBSOCKET_READ_TIMEOUT` (duration, default `1m`)
 - `WEBSOCKET_PING_INTERVAL` (duration, default `30s`)
 - `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
+- `DERIVED_LOCATION_BUFFER` (default `1024`)
 
 Hub metadata bootstrap behavior:
 - the hub persists one durable metadata row in Postgres containing the stable `hub_id` and operator-facing label
@@ -53,6 +54,8 @@ Stateful ingest behavior:
 - durable hub metadata is also loaded from Postgres at startup before the service begins accepting traffic
 - WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
 - WebSocket liveness uses server ping frames every `WEBSOCKET_PING_INTERVAL` and considers the connection stale when no inbound message or pong arrives before `WEBSOCKET_READ_TIMEOUT`
+- non-critical derived location work such as alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
+- when the derived queue is full, the hub drops new derived work instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
