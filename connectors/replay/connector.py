@@ -32,6 +32,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=float(os.getenv("REPLAY_INTERPOLATION_RATE_HZ", "0.0")),
         help="Synthetic interpolation cadence per object in Hertz. 1.0 emits once per second.",
     )
+    parser.add_argument(
+        "--batch-window-ms",
+        type=float,
+        default=float(os.getenv("REPLAY_BATCH_WINDOW_MS", "25.0")),
+        help="Group replay events due within this many milliseconds into one WebSocket publish.",
+    )
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=int(os.getenv("REPLAY_MAX_BATCH_SIZE", "256")),
+        help="Maximum number of locations to send in one replay publish.",
+    )
     return parser
 
 
@@ -45,6 +57,10 @@ def main() -> int:
         raise SystemExit("--acceleration-factor must be greater than 0")
     if args.interpolation_rate_hz < 0:
         raise SystemExit("--interpolation-rate-hz must be greater than or equal to 0")
+    if args.batch_window_ms < 0:
+        raise SystemExit("--batch-window-ms must be greater than or equal to 0")
+    if args.max_batch_size <= 0:
+        raise SystemExit("--max-batch-size must be greater than 0")
 
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -79,14 +95,15 @@ def main() -> int:
 
     start_monotonic = time.monotonic()
     try:
-        for event in replay_schedule:
-            wait_until_scheduled(start_monotonic, replay_start, event.replay_timestamp)
-            hub_ws.publish_locations([event.location])
+        replay_batches = build_replay_batches(replay_schedule, args.batch_window_ms / 1000.0, args.max_batch_size)
+        for batch in replay_batches:
+            wait_until_scheduled(start_monotonic, replay_start, batch[0].replay_timestamp)
+            hub_ws.publish_locations([event.location for event in batch])
             LOGGER.debug(
-                "published replay event synthetic=%s source=%s timestamp=%s",
-                event.synthetic,
-                event.location.get("source"),
-                event.location.get("timestamp_generated"),
+                "published replay batch size=%d first_timestamp=%s last_timestamp=%s",
+                len(batch),
+                batch[0].location.get("timestamp_generated"),
+                batch[-1].location.get("timestamp_generated"),
             )
     except KeyboardInterrupt:
         LOGGER.info("stopping replay connector")
@@ -164,6 +181,24 @@ def wait_until_scheduled(start_monotonic: float, replay_start: datetime, replay_
         if remaining <= 0:
             return
         time.sleep(min(remaining, 0.25))
+
+
+def build_replay_batches(replay_schedule: list, batch_window_seconds: float, max_batch_size: int) -> list[list]:
+    if not replay_schedule:
+        return []
+    batches: list[list] = []
+    current_batch = [replay_schedule[0]]
+    batch_start = replay_schedule[0].replay_timestamp
+    for event in replay_schedule[1:]:
+        same_window = (event.replay_timestamp - batch_start).total_seconds() <= batch_window_seconds
+        if same_window and len(current_batch) < max_batch_size:
+            current_batch.append(event)
+            continue
+        batches.append(current_batch)
+        current_batch = [event]
+        batch_start = event.replay_timestamp
+    batches.append(current_batch)
+    return batches
 
 
 def require_env(name: str) -> str:

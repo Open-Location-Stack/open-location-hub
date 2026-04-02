@@ -42,6 +42,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.WebSocketWriteTimeout <= 0 || cfg.WebSocketReadTimeout <= 0 || cfg.WebSocketPingInterval <= 0 || cfg.WebSocketOutboundBuffer <= 0 {
 		t.Fatal("expected positive websocket settings")
 	}
+	if cfg.EventBusSubscriberBuffer <= 0 || cfg.NativeLocationBuffer <= 0 {
+		t.Fatal("expected positive async buffer settings")
+	}
 	if cfg.DerivedLocationBuffer <= 0 {
 		t.Fatal("expected positive derived location buffer")
 	}
@@ -121,6 +124,30 @@ func TestDerivedLocationBufferMustBePositive(t *testing.T) {
 	_, err := configFromMap(map[string]string{
 		"AUTH_MODE":               "none",
 		"DERIVED_LOCATION_BUFFER": "0",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestNativeLocationBufferMustBePositive(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":              "none",
+		"NATIVE_LOCATION_BUFFER": "0",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestEventBusSubscriberBufferMustBePositive(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":                   "none",
+		"EVENT_BUS_SUBSCRIBER_BUFFER": "0",
 	})
 	if err == nil {
 		t.Fatal("expected validation error")

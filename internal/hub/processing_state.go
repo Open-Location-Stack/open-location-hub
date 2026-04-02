@@ -177,6 +177,21 @@ func (s *ProcessingState) DeleteMotion(trackableID string) {
 	delete(s.motions, trackableID)
 }
 
+func (s *ProcessingState) ListActiveMotions() []gen.TrackableMotion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowUTC()
+	motions := make([]gen.TrackableMotion, 0, len(s.motions))
+	for key, item := range s.motions {
+		if !item.expiresAt.After(now) {
+			delete(s.motions, key)
+			continue
+		}
+		motions = append(motions, item.value)
+	}
+	return motions
+}
+
 func (s *ProcessingState) GetCollisionState(key string) (activeCollisionState, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
