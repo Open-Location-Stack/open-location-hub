@@ -260,7 +260,19 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		RequestBodyLimitBytes: cfg.HTTPRequestBodyLimitBytes,
 	})
 	gen.HandlerFromMux(h, r)
-	wsHub := ws.New(logger, service, eventBus, authenticator, registry, cfg.Auth, cfg.WebSocketWriteTimeout, cfg.WebSocketOutboundBuffer, cfg.CollisionsEnabled)
+	wsHub := ws.New(
+		logger,
+		service,
+		eventBus,
+		authenticator,
+		registry,
+		cfg.Auth,
+		cfg.WebSocketWriteTimeout,
+		cfg.WebSocketReadTimeout,
+		cfg.WebSocketPingInterval,
+		cfg.WebSocketOutboundBuffer,
+		cfg.CollisionsEnabled,
+	)
 	r.Get("/v2/ws/socket", wsHub.Handle)
 
 	srv := rt.newHTTPServer(cfg.HTTPListenAddr, r)

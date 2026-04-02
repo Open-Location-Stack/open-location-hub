@@ -39,8 +39,11 @@ func TestDefaults(t *testing.T) {
 	if cfg.RPCTimeout <= 0 {
 		t.Fatal("expected positive rpc timeout")
 	}
-	if cfg.WebSocketWriteTimeout <= 0 || cfg.WebSocketOutboundBuffer <= 0 {
+	if cfg.WebSocketWriteTimeout <= 0 || cfg.WebSocketReadTimeout <= 0 || cfg.WebSocketPingInterval <= 0 || cfg.WebSocketOutboundBuffer <= 0 {
 		t.Fatal("expected positive websocket settings")
+	}
+	if cfg.WebSocketReadTimeout <= cfg.WebSocketPingInterval {
+		t.Fatal("expected websocket read timeout to exceed ping interval")
 	}
 	if cfg.CollisionsEnabled {
 		t.Fatal("expected collisions to default to disabled")
@@ -90,6 +93,19 @@ func TestRequestBodyLimitMustBePositive(t *testing.T) {
 	_, err := configFromMap(map[string]string{
 		"AUTH_MODE":                     "none",
 		"HTTP_REQUEST_BODY_LIMIT_BYTES": "0",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestWebSocketReadTimeoutMustExceedPingInterval(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":               "none",
+		"WEBSOCKET_READ_TIMEOUT":  "30s",
+		"WEBSOCKET_PING_INTERVAL": "30s",
 	})
 	if err == nil {
 		t.Fatal("expected validation error")

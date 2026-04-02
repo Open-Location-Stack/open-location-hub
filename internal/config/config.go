@@ -24,6 +24,8 @@ type Config struct {
 	PostgresURL                           string
 	MQTTBrokerURL                         string
 	WebSocketWriteTimeout                 time.Duration
+	WebSocketReadTimeout                  time.Duration
+	WebSocketPingInterval                 time.Duration
 	WebSocketOutboundBuffer               int
 	StateLocationTTL                      time.Duration
 	StateProximityTTL                     time.Duration
@@ -77,6 +79,8 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
+		WebSocketReadTimeout:                  durationEnvWithLookup(lookup, "WEBSOCKET_READ_TIMEOUT", time.Minute),
+		WebSocketPingInterval:                 durationEnvWithLookup(lookup, "WEBSOCKET_PING_INTERVAL", 30*time.Second),
 		WebSocketOutboundBuffer:               intEnvWithLookup(lookup, "WEBSOCKET_OUTBOUND_BUFFER", 32),
 		StateLocationTTL:                      durationEnvWithLookup(lookup, "STATE_LOCATION_TTL", 10*time.Minute),
 		StateProximityTTL:                     durationEnvWithLookup(lookup, "STATE_PROXIMITY_TTL", 5*time.Minute),
@@ -119,6 +123,15 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.WebSocketWriteTimeout <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_WRITE_TIMEOUT must be > 0")
+	}
+	if cfg.WebSocketReadTimeout <= 0 {
+		return Config{}, fmt.Errorf("WEBSOCKET_READ_TIMEOUT must be > 0")
+	}
+	if cfg.WebSocketPingInterval <= 0 {
+		return Config{}, fmt.Errorf("WEBSOCKET_PING_INTERVAL must be > 0")
+	}
+	if cfg.WebSocketReadTimeout <= cfg.WebSocketPingInterval {
+		return Config{}, fmt.Errorf("WEBSOCKET_READ_TIMEOUT must be greater than WEBSOCKET_PING_INTERVAL")
 	}
 	if cfg.HTTPRequestBodyLimitBytes <= 0 {
 		return Config{}, fmt.Errorf("HTTP_REQUEST_BODY_LIMIT_BYTES must be > 0")
