@@ -59,6 +59,9 @@ Notes:
 - [docs/configuration.md](docs/configuration.md)
 - [docs/auth.md](docs/auth.md)
 - [docs/rpc.md](docs/rpc.md)
+- [docs/connectors.md](docs/connectors.md)
+- [docs/connectors-websocket.md](docs/connectors-websocket.md)
+- [docs/connectors-mqtt.md](docs/connectors-mqtt.md)
 
 ## Connector Demonstrators
 - [connectors/README.md](connectors/README.md)

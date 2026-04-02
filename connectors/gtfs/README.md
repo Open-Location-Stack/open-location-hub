@@ -1,8 +1,9 @@
 # GTFS Connector Demonstrator
 
 This demonstrator forwards GTFS-RT vehicle positions to a locally running Open
-RTLS Hub over the OMLOX WebSocket `location_updates` topic and bootstraps
-station zones and polygon fences for arrival and departure tracking.
+RTLS Hub and bootstraps station zones and polygon fences for arrival and
+departure tracking. The repository includes both a WebSocket ingest variant and
+an MQTT ingest variant.
 
 The checked-in defaults target the live Grand Dole network:
 
@@ -16,9 +17,17 @@ The checked-in defaults target the live Grand Dole network:
 
 - `connector.py`: polls GTFS-RT vehicle positions and publishes OMLOX
   `location_updates` over WebSocket
+- `connector_mqtt.py`: polls GTFS-RT vehicle positions and publishes OMLOX
+  `Location` payloads to the MQTT ingest topic
+  `/omlox/json/location_updates/pub/{provider_id}`
 - `station_polygons.py`: creates one station `Zone` and one station `Fence` per
   station in the hub
-- `hub_client.py`: shared REST and WebSocket helper code
+- `scripts/log_locations.py`: subscribes to `location_updates` and writes NDJSON
+- `scripts/log_fence_events.py`: subscribes to `fence_events` and writes NDJSON
+- `scripts/log_collision_events.py`: subscribes to `collision_events` and writes NDJSON
+- `scripts/check_geofence_alignment.py`: compares logged locations against the
+  current station fences
+- `hub_client.py`: shared REST, WebSocket, and MQTT helper code
 - `gtfs_support.py`: GTFS parsing, GTFS-RT decoding, and station polygon
   generation helpers
 - `.env.example`: environment template
@@ -46,6 +55,7 @@ connectors/local-hub/fetch_demo_token.sh
 
 - `HUB_HTTP_URL`: base URL for REST bootstrap calls such as `http://localhost:8080`
 - `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8080/v2/ws/socket`
+- `MQTT_BROKER_URL`: MQTT broker URL such as `tcp://localhost:1883`
 - `HUB_TOKEN`: optional JWT access token; required when hub auth is enabled
 - `GTFS_STATIC_URL`: GTFS zip URL or local path
 - `GTFS_RT_URL`: GTFS-RT protobuf URL
@@ -62,6 +72,11 @@ Optional filters and tuning:
 - `GTFS_STATION_POLYGON_MODE`: `circle`, `auto`, or `hull`
 - `GTFS_STATION_RADIUS_METERS`: radius used for circle-based station fences
 - `GTFS_STATION_HULL_BUFFER_METERS`: outward expansion applied to hull polygons
+- `GTFS_MQTT_CLIENT_ID`: optional MQTT client ID override for `connector_mqtt.py`
+- `GTFS_MQTT_USERNAME`: optional MQTT username for `connector_mqtt.py`
+- `GTFS_MQTT_PASSWORD`: optional MQTT password for `connector_mqtt.py`
+- `GTFS_MQTT_KEEPALIVE_SECONDS`: MQTT keepalive for `connector_mqtt.py`
+- `GTFS_MQTT_QOS`: MQTT publish QoS for `connector_mqtt.py`
 
 ## Setup
 
@@ -92,10 +107,11 @@ uv sync --project connectors/gtfs
 uv run --project connectors/gtfs python connectors/gtfs/station_polygons.py --env-file connectors/gtfs/.env.local
 ```
 
-6. Start the connector:
+6. Start either connector:
 
 ```bash
 uv run --project connectors/gtfs python connectors/gtfs/connector.py --env-file connectors/gtfs/.env.local
+uv run --project connectors/gtfs python connectors/gtfs/connector_mqtt.py --env-file connectors/gtfs/.env.local
 ```
 
 7. Optional: record live WebSocket topics to NDJSON with the shared root scripts:
@@ -110,13 +126,14 @@ For a single GTFS-RT fetch during local testing:
 
 ```bash
 uv run --project connectors/gtfs python connectors/gtfs/connector.py --env-file connectors/gtfs/.env.local --once
+uv run --project connectors/gtfs python connectors/gtfs/connector_mqtt.py --env-file connectors/gtfs/.env.local --once
 ```
 
 ## Hub Mapping
 
 ### Vehicle updates
 
-The connector publishes OMLOX WebSocket wrapper messages shaped like:
+The WebSocket connector publishes OMLOX wrapper messages shaped like:
 
 ```json
 {
@@ -146,6 +163,17 @@ Runtime mapping details:
 - vehicle IDs are mapped to deterministic trackable UUIDs and upserted through
   `/v2/trackables`
 - trip, route, stop, and vehicle metadata are copied into `Location.properties`
+
+The MQTT connector publishes the same normalized `Location` objects as plain
+JSON message bodies on:
+
+```text
+/omlox/json/location_updates/pub/{provider_id}
+```
+
+That lets the hub process the same GTFS-derived locations through the MQTT
+ingest surface and then republish normalized output to the normal downstream
+MQTT and WebSocket topics.
 
 ### Station zones and fences
 
