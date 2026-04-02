@@ -18,11 +18,6 @@ The checked-in defaults target the live Grand Dole network:
   `location_updates` over WebSocket
 - `station_polygons.py`: creates one station `Zone` and one station `Fence` per
   station in the hub
-- `scripts/log_locations.py`: subscribes to `location_updates` and writes NDJSON
-- `scripts/log_fence_events.py`: subscribes to `fence_events` and writes NDJSON
-- `scripts/log_collision_events.py`: subscribes to `collision_events` and writes NDJSON
-- `scripts/check_geofence_alignment.py`: compares logged locations against the
-  current station fences
 - `hub_client.py`: shared REST and WebSocket helper code
 - `gtfs_support.py`: GTFS parsing, GTFS-RT decoding, and station polygon
   generation helpers
@@ -33,7 +28,7 @@ The checked-in defaults target the live Grand Dole network:
 ## Shared Local Hub
 
 This demo uses the shared local runtime in
-[`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub).
+[`connectors/local-hub`](../local-hub).
 
 Start it with:
 
@@ -103,12 +98,12 @@ uv run --project connectors/gtfs python connectors/gtfs/station_polygons.py --en
 uv run --project connectors/gtfs python connectors/gtfs/connector.py --env-file connectors/gtfs/.env.local
 ```
 
-7. Optional: record live WebSocket topics to NDJSON:
+7. Optional: record live WebSocket topics to NDJSON with the shared root scripts:
 
 ```bash
-uv run --project connectors/gtfs python connectors/gtfs/scripts/log_locations.py --env-file connectors/gtfs/.env.local
-uv run --project connectors/gtfs python connectors/gtfs/scripts/log_fence_events.py --env-file connectors/gtfs/.env.local
-uv run --project connectors/gtfs python connectors/gtfs/scripts/log_collision_events.py --env-file connectors/gtfs/.env.local
+uv run --project scripts python scripts/log_locations.py --env-file connectors/gtfs/.env.local --output connectors/gtfs/logs/location_updates.ndjson
+uv run --project scripts python scripts/log_fence_events.py --env-file connectors/gtfs/.env.local --output connectors/gtfs/logs/fence_events.ndjson
+uv run --project scripts python scripts/log_collision_events.py --env-file connectors/gtfs/.env.local --output connectors/gtfs/logs/collision_events.ndjson
 ```
 
 For a single GTFS-RT fetch during local testing:
@@ -188,10 +183,10 @@ can emit `fence_events` when vehicle trackables enter or leave those station
 polygons. Subscribe to `fence_events` or `fence_events:geojson` to observe
 arrival and departure behavior.
 
-The `scripts/` directory also includes a simple alignment checker:
+The shared root `scripts/` directory also includes a simple alignment checker:
 
 ```bash
-uv run --project connectors/gtfs python connectors/gtfs/scripts/check_geofence_alignment.py --env-file connectors/gtfs/.env.local
+uv run --project scripts python scripts/check_fence_alignment.py --env-file connectors/gtfs/.env.local --locations-log connectors/gtfs/logs/location_updates.ndjson
 ```
 
 ## Limitations

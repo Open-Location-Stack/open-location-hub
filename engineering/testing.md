@@ -55,8 +55,8 @@ The lint stack now verifies:
 - `go vet`
 - `staticcheck`
 - `govulncheck`
-- `go mod tidy` leaves [go.mod](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/go.mod) and [go.sum](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/go.sum) unchanged
-- `just generate` leaves [internal/httpapi/gen/api.gen.go](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/internal/httpapi/gen/api.gen.go) and [internal/storage/postgres/sqlcgen](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/internal/storage/postgres/sqlcgen) unchanged
+- `go mod tidy` leaves [go.mod](../go.mod) and [go.sum](../go.sum) unchanged
+- `just generate` leaves [internal/httpapi/gen/api.gen.go](../internal/httpapi/gen/api.gen.go) and [internal/storage/postgres/sqlcgen](../internal/storage/postgres/sqlcgen) unchanged
 
 ## Integration tests
 Run integration tests with Docker/Testcontainers:
@@ -86,4 +86,4 @@ The integration suite now also includes shared-hub scenario coverage for high-tr
 - Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.
 - GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly and caches apt archives to reduce repeated package download cost.
 - direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
-- Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md).
+- Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](../docs/auth.md).

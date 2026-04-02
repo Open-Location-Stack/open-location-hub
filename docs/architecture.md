@@ -27,14 +27,19 @@
 
 ## Event Fan-Out
 1. REST, MQTT, or WebSocket ingest enters the shared hub service.
-2. The hub validates, normalizes, deduplicates, updates in-memory transient state, and derives follow-on events.
-3. The hub emits normalized internal events for locations, proximities, trackable motions, fence events, optional collision events, and metadata changes.
-4. MQTT and WebSocket consume that same event stream and publish transport-specific payloads.
+2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
+3. A buffered native-publication stage emits native location and motion events without blocking ingest on downstream fan-out.
+4. A second buffered decision stage is the insertion point for future filtered or smoothed track processing and currently drives alternate-CRS publication, geofence evaluation, and optional collision evaluation.
+5. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
+6. When any non-critical queue fills, the hub drops newer work on that path rather than backpressuring raw ingest.
 
 Implications:
 - ingest logic is shared across REST, MQTT, and WebSocket
 - MQTT is no longer the only downstream publication path
 - the internal event seam decouples downstream publication from MQTT-specific topics
+- location ingest latency is protected from slower transport fan-out, geofence work, or collision work
+- the decision-stage queue is the intended insertion point for future filtered or smoothed track processing before fence/collision decisions
+- WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
 

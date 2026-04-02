@@ -592,6 +592,91 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 	}
 }
 
+type capturingDerivedSubmitter struct {
+	works []derivedLocationWork
+}
+
+func (c *capturingDerivedSubmitter) Submit(work derivedLocationWork) {
+	c.works = append(c.works, work)
+}
+
+func TestRecordLocationWithNativeQueueQueuesWork(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	queue := &capturingDerivedSubmitter{}
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:         bus,
+		nativeQueue: queue,
+		cfg: Config{
+			NativeLocationBuffer:       16,
+			LocationTTL:                time.Minute,
+			DedupTTL:                   time.Minute,
+			CollisionStateTTL:          time.Minute,
+			CollisionCollidingDebounce: time.Second,
+			MetadataReconcileInterval:  time.Second,
+		},
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
+		state:    NewProcessingState(time.Now),
+		logger:   zapTestLogger(t),
+	}
+
+	if err := service.recordLocation(context.Background(), location, time.Minute); err != nil {
+		t.Fatalf("recordLocation failed: %v", err)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one queued native work item, got %d", len(queue.works))
+	}
+}
+
+func TestProcessNativeLocationPublishesNativeAndQueuesDecisionWork(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	queue := &capturingDerivedSubmitter{}
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:          bus,
+		derivedQueue: queue,
+		cfg: Config{
+			DerivedLocationBuffer:      16,
+			LocationTTL:                time.Minute,
+			DedupTTL:                   time.Minute,
+			CollisionStateTTL:          time.Minute,
+			CollisionCollidingDebounce: time.Second,
+			MetadataReconcileInterval:  time.Second,
+		},
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
+		state:    NewProcessingState(time.Now),
+		logger:   zapTestLogger(t),
+	}
+
+	if err := service.processNativeLocation(context.Background(), location); err != nil {
+		t.Fatalf("processNativeLocation failed: %v", err)
+	}
+	events := collectEvents(ch, 2)
+	if len(events) != 2 {
+		t.Fatalf("expected 2 native events, got %d", len(events))
+	}
+	if got := decodeEventLocation(t, eventByScope(t, events, ScopeEPSG4326)); got.Source != location.Source {
+		t.Fatalf("unexpected native location source: %s", got.Source)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one queued decision work item, got %d", len(queue.works))
+	}
+}
+
 func testPolicy() proximityResolutionPolicy {
 	return proximityResolutionPolicy{
 		ExitGraceDuration: 15 * time.Second,

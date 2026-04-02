@@ -31,6 +31,8 @@ type Config struct {
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
 	DedupTTL                              time.Duration
+	NativeLocationBuffer                  int
+	DerivedLocationBuffer                 int
 	ProximityResolutionEntryConfidenceMin float64
 	ProximityResolutionExitGraceDuration  time.Duration
 	ProximityResolutionBoundaryGrace      float64
@@ -56,6 +58,10 @@ type Service struct {
 	transformCache *transform.Cache
 	metadata       *MetadataCache
 	state          *ProcessingState
+	stats          *RuntimeStats
+	nativeQueue    derivedLocationSubmitter
+	derivedQueue   derivedLocationSubmitter
+	decisionStage  decisionLocationStage
 }
 
 // HTTPError represents an API error that should be rendered with a specific
@@ -77,6 +83,12 @@ func (s *Service) Start(ctx context.Context) {
 		return
 	}
 	s.processingState().StartSweeper(ctx, time.Second)
+	if s.nativeQueue == nil {
+		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
+	}
+	if s.derivedQueue == nil {
+		s.derivedQueue = startDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+	}
 	if s.metadata == nil || s.queries == nil {
 		return
 	}
@@ -105,6 +117,12 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config)
 	if cfg.MetadataReconcileInterval <= 0 {
 		cfg.MetadataReconcileInterval = 30 * time.Second
 	}
+	if cfg.NativeLocationBuffer <= 0 {
+		cfg.NativeLocationBuffer = 2048
+	}
+	if cfg.DerivedLocationBuffer <= 0 {
+		cfg.DerivedLocationBuffer = 1024
+	}
 	metadata, err := NewMetadataCache(context.Background(), queries)
 	if err != nil {
 		return nil, err
@@ -120,7 +138,16 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config)
 		transformCache: transform.NewCache(),
 		metadata:       metadata,
 		state:          NewProcessingState(nowFn),
+		stats:          runtimeStatsFromBus(bus),
+		decisionStage:  passthroughDecisionStage{},
 	}, nil
+}
+
+func runtimeStatsFromBus(bus *EventBus) *RuntimeStats {
+	if bus != nil && bus.Stats() != nil {
+		return bus.Stats()
+	}
+	return newRuntimeStats()
 }
 
 type proximityResolutionPolicy struct {
@@ -891,6 +918,10 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 			s.processingState().SetTrackableLocation(latestTrackableLocationKey(trackableID), location, ttl)
 		}
 	}
+	if s.nativeQueue != nil {
+		s.nativeQueue.Submit(derivedLocationWork{Location: location})
+		return nil
+	}
 	if err := s.publishLocation(ctx, location); err != nil {
 		s.logger.Warn("location event emit failed", zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
@@ -907,6 +938,83 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		}
 	}
 	return nil
+}
+
+func (s *Service) processNativeLocation(ctx context.Context, location gen.Location) error {
+	if err := s.publishNativeLocation(ctx, location); err != nil {
+		return err
+	}
+	if _, err := s.publishNativeTrackableMotions(ctx, location); err != nil {
+		return err
+	}
+	if s.derivedQueue != nil {
+		s.derivedQueue.Submit(derivedLocationWork{Location: location})
+	}
+	return nil
+}
+
+func (s *Service) processDecisionLocation(ctx context.Context, location gen.Location) error {
+	decisionLocation, ok, err := s.decisionStage.Process(ctx, location)
+	if err != nil || !ok {
+		return err
+	}
+	return s.processDerivedLocation(ctx, decisionLocation)
+}
+
+func (s *Service) processDerivedLocation(ctx context.Context, location gen.Location) error {
+	if s.bus == nil {
+		return nil
+	}
+	view := newDerivedLocationView(s, location)
+	if err := s.publishFenceEvents(ctx, location); err != nil {
+		return err
+	}
+	switch view.NativeScope() {
+	case ScopeLocal:
+		wgs84Location, ok, err := view.WGS84(ctx)
+		if err == nil && ok {
+			if err := s.publishLocationScope(ctx, *wgs84Location, ScopeEPSG4326); err != nil {
+				return err
+			}
+			wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, *wgs84Location, ScopeEPSG4326)
+			if err != nil {
+				return err
+			}
+			if s.cfg.CollisionsEnabled {
+				if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+					return err
+				}
+			}
+		}
+	case ScopeEPSG4326:
+		localLocation, ok, err := view.Local(ctx)
+		if err == nil && ok {
+			if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
+				return err
+			}
+			if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
+				return err
+			}
+		}
+		if s.cfg.CollisionsEnabled {
+			wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, location)
+			if err != nil {
+				return err
+			}
+			if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) publishNativeLocation(ctx context.Context, location gen.Location) error {
+	return s.publishLocationScope(ctx, location, nativeLocationScope(location))
+}
+
+func (s *Service) publishNativeTrackableMotions(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
+	return s.publishTrackableMotionsForLocation(ctx, location, nativeLocationScope(location))
 }
 
 func (s *Service) publishLocation(ctx context.Context, location gen.Location) error {
@@ -939,6 +1047,22 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		}
 		s.bus.Emit(event)
 	}
+	return nil
+}
+
+func (s *Service) publishLocationScope(_ context.Context, location gen.Location, scope EventScope) error {
+	if s.bus == nil {
+		return nil
+	}
+	feature, err := locationGeoJSONFeatureCollection(location)
+	if err != nil {
+		return err
+	}
+	event, err := newEvent(EventLocation, scope, locationTime(location), location.ProviderId, "", "", s.cfg.HubID, LocationEnvelope{Location: location, GeoJSON: feature})
+	if err != nil {
+		return err
+	}
+	s.bus.Emit(event)
 	return nil
 }
 
@@ -990,6 +1114,77 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		}
 	}
 	return wgsMotions, nil
+}
+
+func (s *Service) publishTrackableMotionsForLocation(ctx context.Context, location gen.Location, scope EventScope) ([]gen.TrackableMotion, error) {
+	motions, err := s.buildTrackableMotionsForLocation(ctx, location)
+	if err != nil {
+		return nil, err
+	}
+	return motions, s.publishTrackableMotionEvents(location.ProviderId, scope, motions)
+}
+
+func (s *Service) buildTrackableMotionsForLocation(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
+	if s.bus == nil || location.Trackables == nil {
+		return nil, nil
+	}
+	motions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
+	for _, id := range *location.Trackables {
+		baseMotion, err := s.trackableMotionBase(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		baseMotion.Location = location
+		motions = append(motions, baseMotion)
+	}
+	return motions, nil
+}
+
+func (s *Service) publishTrackableMotionEvents(providerID string, scope EventScope, motions []gen.TrackableMotion) error {
+	if s.bus == nil {
+		return nil
+	}
+	for _, motion := range motions {
+		event, err := newEvent(EventTrackableMotion, scope, locationTime(motion.Location), providerID, motion.Id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
+		if err != nil {
+			return err
+		}
+		s.bus.Emit(event)
+	}
+	return nil
+}
+
+func (s *Service) trackableMotionBase(ctx context.Context, id string) (gen.TrackableMotion, error) {
+	baseMotion := gen.TrackableMotion{Id: id}
+	if cache := s.metadataCache(); cache != nil {
+		if trackable, ok := cache.TrackableByID(id); ok {
+			baseMotion.Name = trackable.Name
+			baseMotion.Geometry = trackable.Geometry
+			baseMotion.Extrusion = trackable.Extrusion
+			baseMotion.Properties = trackable.Properties
+		}
+		return baseMotion, nil
+	}
+	parsed, parseErr := uuid.Parse(id)
+	if parseErr != nil {
+		return baseMotion, nil
+	}
+	trackable, err := s.GetTrackable(ctx, openapi_types.UUID(parsed))
+	if err != nil {
+		return baseMotion, nil
+	}
+	baseMotion.Name = trackable.Name
+	baseMotion.Geometry = trackable.Geometry
+	baseMotion.Extrusion = trackable.Extrusion
+	baseMotion.Properties = trackable.Properties
+	return baseMotion, nil
+}
+
+func nativeLocationScope(location gen.Location) EventScope {
+	if locationCRS(location) == "EPSG:4326" {
+		return ScopeEPSG4326
+	}
+	return ScopeLocal
 }
 
 type locationPublicationVariants struct {
@@ -1204,26 +1399,30 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 	if s.bus == nil || !s.cfg.CollisionsEnabled || len(motions) == 0 {
 		return nil
 	}
-	allTrackables, err := s.ListTrackables(ctx)
-	if err != nil {
-		return err
-	}
-	trackables := make(map[string]gen.Trackable, len(allTrackables))
-	for _, trackable := range allTrackables {
-		trackables[trackable.Id.String()] = trackable
+	activeMotions := s.processingState().ListActiveMotions()
+	activeMotionByID := make(map[string]gen.TrackableMotion, len(activeMotions))
+	for _, motion := range activeMotions {
+		activeMotionByID[motion.Id] = motion
 	}
 	for _, motion := range motions {
 		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
-		for otherID, otherTrackable := range trackables {
+		leftTrackable, err := s.trackableByID(ctx, motion.Id)
+		if err != nil {
+			continue
+		}
+		for otherID, otherMotion := range activeMotionByID {
 			if otherID == motion.Id {
 				continue
 			}
-			otherMotion, ok := s.processingState().GetMotion(otherID)
-			if !ok {
+			otherTrackable, err := s.trackableByID(ctx, otherID)
+			if err != nil {
+				continue
+			}
+			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable) {
 				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
 				continue
 			}
-			event, active, err := s.evaluateCollision(motion, trackables[motion.Id], otherMotion, otherTrackable)
+			event, active, err := s.evaluateCollision(motion, leftTrackable, otherMotion, otherTrackable)
 			if err != nil {
 				return err
 			}
@@ -1255,6 +1454,19 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 		}
 	}
 	return nil
+}
+
+func (s *Service) trackableByID(ctx context.Context, id string) (gen.Trackable, error) {
+	if cache := s.metadataCache(); cache != nil {
+		if trackable, ok := cache.TrackableByID(id); ok {
+			return trackable, nil
+		}
+	}
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return gen.Trackable{}, err
+	}
+	return s.GetTrackable(ctx, openapi_types.UUID(parsed))
 }
 
 type activeCollisionState struct {
@@ -1352,6 +1564,19 @@ func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable,
 		return true, &area, distance
 	}
 	return false, nil, distance
+}
+
+func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) bool {
+	leftPoint, err := point2D(leftMotion.Location.Position)
+	if err != nil {
+		return false
+	}
+	rightPoint, err := point2D(rightMotion.Location.Position)
+	if err != nil {
+		return false
+	}
+	maxDistance := effectiveRadius(leftTrackable) + effectiveRadius(rightTrackable)
+	return math.Abs(leftPoint[0]-rightPoint[0]) <= maxDistance && math.Abs(leftPoint[1]-rightPoint[1]) <= maxDistance
 }
 
 func collisionPairKey(leftID, rightID string) string {

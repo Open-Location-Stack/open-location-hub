@@ -19,7 +19,10 @@ Runtime lifecycle behavior:
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_READ_TIMEOUT` (duration, default `1m`)
 - `WEBSOCKET_PING_INTERVAL` (duration, default `30s`)
-- `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
+- `WEBSOCKET_OUTBOUND_BUFFER` (default `256`)
+- `EVENT_BUS_SUBSCRIBER_BUFFER` (default `1024`)
+- `NATIVE_LOCATION_BUFFER` (default `2048`)
+- `DERIVED_LOCATION_BUFFER` (default `1024`)
 
 Hub metadata bootstrap behavior:
 - the hub persists one durable metadata row in Postgres containing the stable `hub_id` and operator-facing label
@@ -51,10 +54,14 @@ Stateful ingest behavior:
 - latest provider-source location state, trackable latest-location state, proximity hysteresis state, fence membership state, and collision pair state are all kept in process memory with the configured expiry semantics
 - metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`
 - durable hub metadata is also loaded from Postgres at startup before the service begins accepting traffic
-- WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
+- WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; when that queue fills, outbound payloads are dropped instead of backpressuring ingest or disconnecting the subscriber
 - WebSocket liveness uses server ping frames every `WEBSOCKET_PING_INTERVAL` and considers the connection stale when no inbound message or pong arrives before `WEBSOCKET_READ_TIMEOUT`
+- internal event-bus subscribers such as MQTT and WebSocket consume behind `EVENT_BUS_SUBSCRIBER_BUFFER`
+- native location publication is queued behind `NATIVE_LOCATION_BUFFER` so ingest can decouple from transport fan-out
+- post-native decision work such as future filtering, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
+- when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
-- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
+- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
 
 RPC behavior:
@@ -93,7 +100,7 @@ Proximity resolution behavior:
 - `AUTH_ROLES_CLAIM` (JWT claim used for role extraction, default `groups`)
 - `AUTH_OWNED_RESOURCES_CLAIM` (JWT object claim for owned resource IDs; see `docs/auth.md` for format and usage)
 
-See [docs/auth.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md) for the full auth model, Dex setup, and permission file format.
+See [docs/auth.md](auth.md) for the full auth model, Dex setup, and permission file format.
 
 ## RPC Security Defaults
 

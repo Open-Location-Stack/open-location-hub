@@ -21,10 +21,6 @@ Alternate built-in presets:
 - `airport_fences.py`: creates airport and apron-sector zones/fences from presets
 - `opensky_support.py`: OpenSky polling and preset helpers
 - `hub_client.py`: hub REST and WebSocket helpers
-- `scripts/log_locations.py`: subscribes to `location_updates` and writes NDJSON
-- `scripts/log_fence_events.py`: subscribes to `fence_events` and writes NDJSON
-- `scripts/log_collision_events.py`: subscribes to `collision_events` and writes NDJSON
-- `scripts/check_fence_alignment.py`: compares logged aircraft locations against current hub fences
 - `.env.example`: environment template
 - `pyproject.toml`: `uv`-managed Python project metadata
 - `uv.lock`: locked Python dependency set
@@ -92,18 +88,18 @@ uv run --project connectors/opensky python connectors/opensky/airport_fences.py 
 uv run --project connectors/opensky python connectors/opensky/connector.py --env-file connectors/opensky/.env.local
 ```
 
-7. Optional: log live WebSocket topics:
+7. Optional: log live WebSocket topics with the shared root scripts:
 
 ```bash
-uv run --project connectors/opensky python connectors/opensky/scripts/log_locations.py --env-file connectors/opensky/.env.local
-uv run --project connectors/opensky python connectors/opensky/scripts/log_fence_events.py --env-file connectors/opensky/.env.local
-uv run --project connectors/opensky python connectors/opensky/scripts/log_collision_events.py --env-file connectors/opensky/.env.local
+uv run --project scripts python scripts/log_locations.py --env-file connectors/opensky/.env.local --output connectors/opensky/logs/location_updates.ndjson
+uv run --project scripts python scripts/log_fence_events.py --env-file connectors/opensky/.env.local --output connectors/opensky/logs/fence_events.ndjson
+uv run --project scripts python scripts/log_collision_events.py --env-file connectors/opensky/.env.local --output connectors/opensky/logs/collision_events.ndjson
 ```
 
 8. Check how close captured aircraft positions came to the airport fences:
 
 ```bash
-uv run --project connectors/opensky python connectors/opensky/scripts/check_fence_alignment.py --env-file connectors/opensky/.env.local
+uv run --project scripts python scripts/check_fence_alignment.py --env-file connectors/opensky/.env.local --locations-log connectors/opensky/logs/location_updates.ndjson
 ```
 
 ## Hub Mapping

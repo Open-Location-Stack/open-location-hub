@@ -27,6 +27,9 @@ type Config struct {
 	WebSocketReadTimeout                  time.Duration
 	WebSocketPingInterval                 time.Duration
 	WebSocketOutboundBuffer               int
+	EventBusSubscriberBuffer              int
+	NativeLocationBuffer                  int
+	DerivedLocationBuffer                 int
 	StateLocationTTL                      time.Duration
 	StateProximityTTL                     time.Duration
 	StateDedupTTL                         time.Duration
@@ -81,7 +84,10 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
 		WebSocketReadTimeout:                  durationEnvWithLookup(lookup, "WEBSOCKET_READ_TIMEOUT", time.Minute),
 		WebSocketPingInterval:                 durationEnvWithLookup(lookup, "WEBSOCKET_PING_INTERVAL", 30*time.Second),
-		WebSocketOutboundBuffer:               intEnvWithLookup(lookup, "WEBSOCKET_OUTBOUND_BUFFER", 32),
+		WebSocketOutboundBuffer:               intEnvWithLookup(lookup, "WEBSOCKET_OUTBOUND_BUFFER", 256),
+		EventBusSubscriberBuffer:              intEnvWithLookup(lookup, "EVENT_BUS_SUBSCRIBER_BUFFER", 1024),
+		NativeLocationBuffer:                  intEnvWithLookup(lookup, "NATIVE_LOCATION_BUFFER", 2048),
+		DerivedLocationBuffer:                 intEnvWithLookup(lookup, "DERIVED_LOCATION_BUFFER", 1024),
 		StateLocationTTL:                      durationEnvWithLookup(lookup, "STATE_LOCATION_TTL", 10*time.Minute),
 		StateProximityTTL:                     durationEnvWithLookup(lookup, "STATE_PROXIMITY_TTL", 5*time.Minute),
 		StateDedupTTL:                         durationEnvWithLookup(lookup, "STATE_DEDUP_TTL", 2*time.Minute),
@@ -143,6 +149,15 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")
+	}
+	if cfg.EventBusSubscriberBuffer <= 0 {
+		return Config{}, fmt.Errorf("EVENT_BUS_SUBSCRIBER_BUFFER must be > 0")
+	}
+	if cfg.NativeLocationBuffer <= 0 {
+		return Config{}, fmt.Errorf("NATIVE_LOCATION_BUFFER must be > 0")
+	}
+	if cfg.DerivedLocationBuffer <= 0 {
+		return Config{}, fmt.Errorf("DERIVED_LOCATION_BUFFER must be > 0")
 	}
 	if cfg.StateProximityTTL <= 0 {
 		return Config{}, fmt.Errorf("STATE_PROXIMITY_TTL must be > 0")

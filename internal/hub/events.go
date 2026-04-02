@@ -119,11 +119,12 @@ type EventBus struct {
 	mu          sync.RWMutex
 	nextID      int
 	subscribers map[int]chan Event
+	stats       *RuntimeStats
 }
 
 // NewEventBus constructs an EventBus.
 func NewEventBus() *EventBus {
-	return &EventBus{subscribers: map[int]chan Event{}}
+	return &EventBus{subscribers: map[int]chan Event{}, stats: newRuntimeStats()}
 }
 
 // Subscribe registers a buffered event subscriber.
@@ -148,6 +149,14 @@ func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 }
 
+// Stats returns the counters associated with this bus.
+func (b *EventBus) Stats() *RuntimeStats {
+	if b == nil {
+		return nil
+	}
+	return b.stats
+}
+
 // Emit publishes an event to all subscribers.
 func (b *EventBus) Emit(event Event) {
 	b.mu.RLock()
@@ -161,6 +170,9 @@ func (b *EventBus) Emit(event Event) {
 		select {
 		case ch <- event:
 		default:
+			if b.stats != nil {
+				b.stats.IncEventBusDrops()
+			}
 		}
 	}
 }

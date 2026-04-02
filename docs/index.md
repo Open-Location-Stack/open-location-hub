@@ -3,10 +3,14 @@
 Reference documentation for hub architecture, configuration, authentication, and RPC behavior.
 
 Connector demonstrators live outside the hub runtime under
-[`connectors/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors).
+[`connectors/`](../connectors).
+Shared connector-agnostic utility scripts live under
+[`scripts/`](../scripts).
 The shared local runtime is documented in
-[`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md).
+[`connectors/local-hub/README.md`](../connectors/local-hub/README.md).
 Connector examples currently include
-[`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
+[`connectors/gtfs/README.md`](../connectors/gtfs/README.md)
 and
-[`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md).
+[`connectors/opensky/README.md`](../connectors/opensky/README.md),
+plus
+[`connectors/replay/README.md`](../connectors/replay/README.md).
