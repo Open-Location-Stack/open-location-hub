@@ -56,9 +56,6 @@ render_signoz_compose() {
 
 render_signoz_compose
 
-docker compose -f "$SIGNOZ_RENDERED_COMPOSE" up -d
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d
-
 SIGNOZ_ADMIN_NAME="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_NAME=/{print substr($0, index($0,$2))}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_EMAIL="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_EMAIL=/{print $2}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_PASSWORD="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_PASSWORD=/{print $2}' "$ENV_FILE" | tail -n1)"
@@ -67,6 +64,11 @@ SIGNOZ_ADMIN_NAME="${SIGNOZ_ADMIN_NAME:-Local Admin}"
 SIGNOZ_ADMIN_EMAIL="${SIGNOZ_ADMIN_EMAIL:-admin@local.test}"
 SIGNOZ_ADMIN_PASSWORD="${SIGNOZ_ADMIN_PASSWORD:-$SIGNOZ_ADMIN_PASSWORD_DEFAULT}"
 SIGNOZ_PORT="${SIGNOZ_PORT:-$SIGNOZ_PORT_DEFAULT}"
+
+if ! curl -fsS "http://localhost:${SIGNOZ_PORT}/api/v2/healthz" >/dev/null 2>&1; then
+  docker compose -p signoz -f "$SIGNOZ_RENDERED_COMPOSE" up -d
+fi
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d
 
 wait_for_signoz() {
   local attempts="${1:-60}"
@@ -123,6 +125,10 @@ bootstrap_signoz_admin() {
 
 wait_for_signoz
 bootstrap_signoz_admin
+python3 "$SCRIPT_DIR/bootstrap_signoz_dashboards.py" \
+  --base-url "http://localhost:${SIGNOZ_PORT}" \
+  --email "$SIGNOZ_ADMIN_EMAIL" \
+  --password "$SIGNOZ_ADMIN_PASSWORD"
 
 cat <<EOF
 
@@ -134,11 +140,15 @@ Persistent state:
 Observability:
   SigNoz UI: http://localhost:$SIGNOZ_PORT
   SigNoz login: $SIGNOZ_ADMIN_EMAIL / $SIGNOZ_ADMIN_PASSWORD
+  Provisioned dashboards:
+    Open RTLS Hub Throughput
+    Open RTLS Hub Latency
+    Open RTLS Hub Outcomes
   OTLP gRPC: localhost:4317
   OTLP HTTP: localhost:4318
 
 Useful commands:
-  docker compose -f "$SIGNOZ_RENDERED_COMPOSE" ps
+  docker compose -p signoz -f "$SIGNOZ_RENDERED_COMPOSE" ps
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f hub
   "$SCRIPT_DIR/fetch_demo_token.sh" "$ENV_FILE"

@@ -18,7 +18,7 @@ SIGNOZ_RENDERED_COMPOSE="$STATE_DIR/signoz.docker-compose.rendered.yaml"
 
 docker compose -f "$SCRIPT_DIR/demo-compose.yml" --env-file "$ENV_FILE" down
 if [[ -f "$SIGNOZ_RENDERED_COMPOSE" ]]; then
-  docker compose -f "$SIGNOZ_RENDERED_COMPOSE" down
+  docker compose -p signoz -f "$SIGNOZ_RENDERED_COMPOSE" down
 elif [[ -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" ]]; then
-  docker compose -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" down
+  docker compose -p signoz -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" down
 fi
