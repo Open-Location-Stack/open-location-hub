@@ -17,3 +17,4 @@ Available connector demos:
 - [`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub): reusable local hub, Postgres, Dex, and Mosquitto stack
 - [`connectors/gtfs`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs): GTFS-RT vehicle updates and station fence bootstrap
 - [`connectors/opensky`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky): OpenSky aircraft positions with airport-sector fences
+- [`connectors/replay`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay): diagnostic NDJSON trace replay with timestamp correction, acceleration, and interpolation

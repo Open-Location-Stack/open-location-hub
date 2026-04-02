@@ -66,6 +66,12 @@ Notes:
 - [connectors/gtfs/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
 - [connectors/opensky/README.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md)
 
+## Utility Scripts
+- [scripts/log_locations.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_locations.py)
+- [scripts/log_fence_events.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_fence_events.py)
+- [scripts/log_collision_events.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/log_collision_events.py)
+- [scripts/check_fence_alignment.py](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/scripts/check_fence_alignment.py)
+
 ## Engineering Docs
 - [engineering/index.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/index.md)
 - [engineering/testing.md](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/engineering/testing.md)
