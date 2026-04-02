@@ -53,8 +53,8 @@ connectors/local-hub/fetch_demo_token.sh
 
 ## Required Inputs
 
-- `HUB_HTTP_URL`: base URL for REST bootstrap calls such as `http://localhost:8090`
-- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8090/v2/ws/socket`
+- `HUB_HTTP_URL`: base URL for REST bootstrap calls such as `http://localhost:8080`
+- `HUB_WS_URL`: WebSocket endpoint such as `ws://localhost:8080/v2/ws/socket`
 - `MQTT_BROKER_URL`: MQTT broker URL such as `tcp://localhost:1883`
 - `HUB_TOKEN`: optional JWT access token; required when hub auth is enabled
 - `GTFS_STATIC_URL`: GTFS zip URL or local path

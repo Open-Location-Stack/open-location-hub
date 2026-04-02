@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"errors"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -252,14 +253,24 @@ func (r *Runtime) logOptions() []otlploghttp.Option {
 }
 
 func endpointOption[T any](value string, raw func(string) T, url func(string) T) T {
-	if hasScheme(value) {
-		return url(value)
+	if parsed, ok := endpointURL(value); ok {
+		if parsed.Path != "" && parsed.Path != "/" {
+			return url(value)
+		}
+		return raw(parsed.Host)
 	}
 	return raw(value)
 }
 
-func hasScheme(value string) bool {
-	return len(value) > 8 && (value[:7] == "http://" || value[:8] == "https://")
+func endpointURL(value string) (*url.URL, bool) {
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return nil, false
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, false
+	}
+	return parsed, true
 }
 
 func firstNonEmpty(values ...string) string {

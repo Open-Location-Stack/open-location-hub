@@ -48,9 +48,9 @@ The first run creates `connectors/local-hub/demo.env` from `demo.env.example`.
 
 Default local URLs:
 
-- hub REST: `http://localhost:8090`
-- hub WebSocket: `ws://localhost:8090/v2/ws/socket`
-- SigNoz UI: `http://localhost:8080`
+- hub REST: `http://localhost:8080`
+- hub WebSocket: `ws://localhost:8080/v2/ws/socket`
+- SigNoz UI: `http://localhost:8090`
 - OTLP gRPC: `localhost:4317`
 - OTLP HTTP: `localhost:4318`
 
@@ -72,6 +72,6 @@ SigNoz deploy checkout defaults to:
 
 ## Default SigNoz UI User
 
-- `admin@local.test` / `signozadmin123!`
+- `admin@local.test` / `SignozAdmin123!`
 
 SigNoz authentication is local to SigNoz and is not connected to Dex. The demo start script bootstraps this fixed admin account through the SigNoz setup API on first run and reuses it on later starts.

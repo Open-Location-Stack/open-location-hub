@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${1:-$SCRIPT_DIR/demo.env}"
 COMPOSE_FILE="$SCRIPT_DIR/demo-compose.yml"
 STATE_DIR_DEFAULT="$SCRIPT_DIR/state"
+SIGNOZ_PORT_DEFAULT="8090"
+SIGNOZ_ADMIN_PASSWORD_DEFAULT="SignozAdmin123!"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$SCRIPT_DIR/demo.env.example" "$ENV_FILE"
@@ -45,37 +47,48 @@ ensure_signoz_checkout() {
 
 ensure_signoz_checkout "$SIGNOZ_DIR" "$SIGNOZ_REF"
 
-docker compose -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" up -d
+SIGNOZ_RENDERED_COMPOSE="$STATE_DIR/signoz.docker-compose.rendered.yaml"
+
+render_signoz_compose() {
+  perl -0pe 's/- "8080:8080" # signoz port/- "'"${SIGNOZ_PORT:-8090}"':8080" # signoz port/' \
+    "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" > "$SIGNOZ_RENDERED_COMPOSE"
+}
+
+render_signoz_compose
+
+docker compose -f "$SIGNOZ_RENDERED_COMPOSE" up -d
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d
 
 SIGNOZ_ADMIN_NAME="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_NAME=/{print substr($0, index($0,$2))}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_EMAIL="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_EMAIL=/{print $2}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_PASSWORD="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_PASSWORD=/{print $2}' "$ENV_FILE" | tail -n1)"
+SIGNOZ_PORT="$(awk -F= '/^DEMO_SIGNOZ_PORT=/{print $2}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_NAME="${SIGNOZ_ADMIN_NAME:-Local Admin}"
 SIGNOZ_ADMIN_EMAIL="${SIGNOZ_ADMIN_EMAIL:-admin@local.test}"
-SIGNOZ_ADMIN_PASSWORD="${SIGNOZ_ADMIN_PASSWORD:-signozadmin123!}"
+SIGNOZ_ADMIN_PASSWORD="${SIGNOZ_ADMIN_PASSWORD:-$SIGNOZ_ADMIN_PASSWORD_DEFAULT}"
+SIGNOZ_PORT="${SIGNOZ_PORT:-$SIGNOZ_PORT_DEFAULT}"
 
 wait_for_signoz() {
   local attempts="${1:-60}"
   local i
   for ((i=1; i<=attempts; i++)); do
-    if curl -fsS "http://localhost:8080/api/v2/healthz" >/dev/null 2>&1; then
+    if curl -fsS "http://localhost:${SIGNOZ_PORT}/api/v2/healthz" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
   done
-  echo "timed out waiting for SigNoz UI on http://localhost:8080" >&2
+  echo "timed out waiting for SigNoz UI on http://localhost:${SIGNOZ_PORT}" >&2
   return 1
 }
 
 signoz_access_token() {
   local context_json org_id login_json
-  context_json="$(curl -fsS -G "http://localhost:8080/api/v2/sessions/context" \
+  context_json="$(curl -fsS -G "http://localhost:${SIGNOZ_PORT}/api/v2/sessions/context" \
     --data-urlencode "email=$SIGNOZ_ADMIN_EMAIL" \
-    --data-urlencode "ref=http://localhost:8080")" || return 1
+    --data-urlencode "ref=http://localhost:${SIGNOZ_PORT}")" || return 1
   org_id="$(printf '%s' "$context_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); orgs=((data.get("data") or {}).get("orgs") or []); print(orgs[0]["id"] if orgs else "", end="")')" || return 1
   [[ -n "$org_id" ]] || return 1
-  login_json="$(curl -fsS "http://localhost:8080/api/v2/sessions/email_password" \
+  login_json="$(curl -fsS "http://localhost:${SIGNOZ_PORT}/api/v2/sessions/email_password" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$SIGNOZ_ADMIN_EMAIL\",\"password\":\"$SIGNOZ_ADMIN_PASSWORD\",\"orgId\":\"$org_id\"}")" || return 1
   printf '%s' "$login_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(((data.get("data") or {}).get("accessToken")) or "", end="")'
@@ -88,7 +101,7 @@ bootstrap_signoz_admin() {
   fi
 
   register_body="$(mktemp)"
-  register_status="$(curl -sS -o "$register_body" -w "%{http_code}" "http://localhost:8080/api/v1/register" \
+  register_status="$(curl -sS -o "$register_body" -w "%{http_code}" "http://localhost:${SIGNOZ_PORT}/api/v1/register" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$SIGNOZ_ADMIN_NAME\",\"orgName\":\"\",\"email\":\"$SIGNOZ_ADMIN_EMAIL\",\"password\":\"$SIGNOZ_ADMIN_PASSWORD\"}")"
 
@@ -119,13 +132,13 @@ Persistent state:
   $STATE_DIR/postgres
 
 Observability:
-  SigNoz UI: http://localhost:8080
+  SigNoz UI: http://localhost:$SIGNOZ_PORT
   SigNoz login: $SIGNOZ_ADMIN_EMAIL / $SIGNOZ_ADMIN_PASSWORD
   OTLP gRPC: localhost:4317
   OTLP HTTP: localhost:4318
 
 Useful commands:
-  docker compose -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" ps
+  docker compose -f "$SIGNOZ_RENDERED_COMPOSE" ps
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f hub
   "$SCRIPT_DIR/fetch_demo_token.sh" "$ENV_FILE"
