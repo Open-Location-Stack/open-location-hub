@@ -69,3 +69,9 @@ SigNoz deploy checkout defaults to:
 - `admin@example.com` / `testpass123`
 - `reader@example.com` / `testpass123`
 - `owner@example.com` / `testpass123`
+
+## Default SigNoz UI User
+
+- `admin@local.test` / `signozadmin123!`
+
+SigNoz authentication is local to SigNoz and is not connected to Dex. The demo start script bootstraps this fixed admin account through the SigNoz setup API on first run and reuses it on later starts.

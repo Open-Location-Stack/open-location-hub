@@ -48,6 +48,69 @@ ensure_signoz_checkout "$SIGNOZ_DIR" "$SIGNOZ_REF"
 docker compose -f "$SIGNOZ_DIR/deploy/docker/docker-compose.yaml" up -d
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up --build -d
 
+SIGNOZ_ADMIN_NAME="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_NAME=/{print substr($0, index($0,$2))}' "$ENV_FILE" | tail -n1)"
+SIGNOZ_ADMIN_EMAIL="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_EMAIL=/{print $2}' "$ENV_FILE" | tail -n1)"
+SIGNOZ_ADMIN_PASSWORD="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_PASSWORD=/{print $2}' "$ENV_FILE" | tail -n1)"
+SIGNOZ_ADMIN_NAME="${SIGNOZ_ADMIN_NAME:-Local Admin}"
+SIGNOZ_ADMIN_EMAIL="${SIGNOZ_ADMIN_EMAIL:-admin@local.test}"
+SIGNOZ_ADMIN_PASSWORD="${SIGNOZ_ADMIN_PASSWORD:-signozadmin123!}"
+
+wait_for_signoz() {
+  local attempts="${1:-60}"
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if curl -fsS "http://localhost:8080/api/v2/healthz" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "timed out waiting for SigNoz UI on http://localhost:8080" >&2
+  return 1
+}
+
+signoz_access_token() {
+  local context_json org_id login_json
+  context_json="$(curl -fsS -G "http://localhost:8080/api/v2/sessions/context" \
+    --data-urlencode "email=$SIGNOZ_ADMIN_EMAIL" \
+    --data-urlencode "ref=http://localhost:8080")" || return 1
+  org_id="$(printf '%s' "$context_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); orgs=((data.get("data") or {}).get("orgs") or []); print(orgs[0]["id"] if orgs else "", end="")')" || return 1
+  [[ -n "$org_id" ]] || return 1
+  login_json="$(curl -fsS "http://localhost:8080/api/v2/sessions/email_password" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$SIGNOZ_ADMIN_EMAIL\",\"password\":\"$SIGNOZ_ADMIN_PASSWORD\",\"orgId\":\"$org_id\"}")" || return 1
+  printf '%s' "$login_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(((data.get("data") or {}).get("accessToken")) or "", end="")'
+}
+
+bootstrap_signoz_admin() {
+  local register_status register_body access_token
+  if access_token="$(signoz_access_token)" && [[ -n "$access_token" ]]; then
+    return 0
+  fi
+
+  register_body="$(mktemp)"
+  register_status="$(curl -sS -o "$register_body" -w "%{http_code}" "http://localhost:8080/api/v1/register" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$SIGNOZ_ADMIN_NAME\",\"orgName\":\"\",\"email\":\"$SIGNOZ_ADMIN_EMAIL\",\"password\":\"$SIGNOZ_ADMIN_PASSWORD\"}")"
+
+  if [[ "$register_status" == "200" ]]; then
+    rm -f "$register_body"
+    return 0
+  fi
+
+  rm -f "$register_body"
+
+  if access_token="$(signoz_access_token)" && [[ -n "$access_token" ]]; then
+    return 0
+  fi
+
+  echo "failed to bootstrap or authenticate the configured SigNoz admin user $SIGNOZ_ADMIN_EMAIL" >&2
+  echo "if SigNoz was previously initialized with different credentials, either update demo.env or remove its persisted sqlite volume" >&2
+  return 1
+}
+
+wait_for_signoz
+bootstrap_signoz_admin
+
 cat <<EOF
 
 Local hub demo stack is starting.
@@ -57,6 +120,7 @@ Persistent state:
 
 Observability:
   SigNoz UI: http://localhost:8080
+  SigNoz login: $SIGNOZ_ADMIN_EMAIL / $SIGNOZ_ADMIN_PASSWORD
   OTLP gRPC: localhost:4317
   OTLP HTTP: localhost:4318
 
