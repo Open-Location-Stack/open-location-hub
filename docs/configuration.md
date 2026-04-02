@@ -129,7 +129,7 @@ Telemetry behavior:
 - metrics are intentionally low-cardinality and are labeled only with bounded dimensions such as transport, signal type, stage, feature, and outcome
 - entity identifiers such as `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision pair identifiers are emitted on spans and structured logs for drill-down, not on normal metric series
 - runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
-- the local demo stack under [`connectors/local-hub`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub) enables all three OTLP signals by default and routes them to SigNoz
+- the local demo stack under [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) enables all three OTLP signals by default and routes them to SigNoz
 
 ## RPC Security Defaults
 

@@ -12,6 +12,7 @@ Key capabilities:
 - JWT auth modes: `oidc`, `static`, and `hybrid`
 - RBAC and ownership-aware authorization
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
+- Laptop-friendly local starter stack with optional SigNoz observability
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
 - Connector demonstrators under [`connectors/`](connectors)
@@ -26,6 +27,12 @@ This project is an independent implementation. It is not affiliated with or cert
 3. `just generate`
 4. `just compose-up`
 5. `just run`
+
+If you want the easiest way to explore the hub locally, start with
+[docs/getting-started.md](docs/getting-started.md) and
+[local-hub/README.md](local-hub/README.md). That path brings up a local hub,
+Dex, Mosquitto, Postgres, and an optional SigNoz-backed observability stack for
+laptop development.
 
 ## Build Dependencies
 
@@ -54,6 +61,7 @@ Notes:
 - `just compose-logs` tails compose services
 
 ## Software Docs
+- [docs/getting-started.md](docs/getting-started.md)
 - [docs/index.md](docs/index.md)
 - [docs/architecture.md](docs/architecture.md)
 - [docs/configuration.md](docs/configuration.md)
@@ -65,9 +73,10 @@ Notes:
 
 ## Connector Demonstrators
 - [connectors/README.md](connectors/README.md)
-- [connectors/local-hub/README.md](connectors/local-hub/README.md)
+- [local-hub/README.md](local-hub/README.md)
 - [connectors/gtfs/README.md](connectors/gtfs/README.md)
 - [connectors/opensky/README.md](connectors/opensky/README.md)
+- [connectors/replay/README.md](connectors/replay/README.md)
 
 ## Utility Scripts
 - [scripts/log_locations.py](scripts/log_locations.py)

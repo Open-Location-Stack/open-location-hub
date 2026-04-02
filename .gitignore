@@ -13,5 +13,5 @@ connectors/gtfs/logs/
 connectors/opensky/.env.local
 connectors/opensky/.venv/
 connectors/opensky/logs/
-connectors/local-hub/demo.env
-connectors/local-hub/state/
+local-hub/demo.env
+local-hub/state/

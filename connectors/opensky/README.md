@@ -31,13 +31,13 @@ Alternate built-in presets:
 Start the reusable local hub runtime first:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 Fetch an admin token when auth is enabled:
 
 ```bash
-connectors/local-hub/fetch_demo_token.sh
+local-hub/fetch_demo_token.sh
 ```
 
 ## Required Inputs
@@ -60,7 +60,7 @@ Optional tuning:
 1. Start the shared local hub:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 2. Copy `.env.example` to `.env.local`:

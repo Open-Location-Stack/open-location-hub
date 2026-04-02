@@ -18,17 +18,22 @@ the hub. In most cases you only need:
 The repository already includes a few connector-oriented projects under
 [`connectors/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors):
 
-- [`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md):
-  shared local hub, Postgres, Dex, and Mosquitto demo runtime
 - [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md):
   GTFS-RT vehicle ingest plus station-zone and fence bootstrap
 - [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md):
   OpenSky aircraft ingest plus airport fence bootstrap
+- [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md):
+  NDJSON trace replay back into the hub for diagnostic or demo use
 
 The bundled runtime connectors now cover both transport styles. The GTFS
 project includes WebSocket and MQTT ingest variants, and the OpenSky project
 shows the WebSocket path. Together they are useful examples for connector
 structure, env handling, bootstrap logic, and local development flow.
+
+The recommended local runtime itself now lives outside `connectors/` under
+[`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
+because it is broader than connector bootstrapping. It is the normal starting
+point when you want a local hub plus observability stack on your laptop.
 
 ## Easy Path
 
@@ -51,8 +56,8 @@ Most custom connectors follow the same shape:
    Send those normalized payloads over WebSocket or MQTT using the transport's
    expected wrapper or topic layout.
 6. Run locally against the shared demo stack.
-   Use [`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
-   for a reproducible local hub, Postgres, Dex, and Mosquitto environment.
+   Use [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
+   for a reproducible local hub, Postgres, Dex, Mosquitto, and optional SigNoz environment.
 
 ## Shared Connector Shape
 
@@ -81,13 +86,13 @@ The recommended local development path is the shared demo runtime:
 1. Start the local stack:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 2. If auth is enabled, fetch a token:
 
 ```bash
-connectors/local-hub/fetch_demo_token.sh
+local-hub/fetch_demo_token.sh
 ```
 
 3. Create a connector-local env file with the hub URLs, optional token, and any
@@ -116,7 +121,7 @@ If you want a fast starting point:
   or
   [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md)
 - use
-  [`connectors/local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/local-hub/README.md)
+  [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
   as the local runtime guide
 - use
   [`specifications/omlox/websocket.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/specifications/omlox/websocket.md)

@@ -1,16 +1,33 @@
-# Local Hub Demo Runtime
+# Local Hub Starter Stack
 
-This directory contains the reusable local runtime used by connector demos in
-this repository.
+This directory is the easiest way to get Open RTLS Hub running on a laptop with
+a practical local observability setup. It is intended as the normal starting
+point for new users who want to bring up the hub locally, inspect telemetry,
+and then try one of the example connectors.
 
 The stack starts:
 
-- SigNoz plus its ClickHouse and collector dependencies for telemetry inspection
 - the hub
 - Postgres with persistent bind-mounted data
-- Dex for local OIDC tokens
 - Mosquitto for parity with the normal hub runtime
+- Dex for local OIDC tokens
+- SigNoz plus its ClickHouse and collector dependencies for telemetry inspection
 - a migration container that applies the repository migrations before the hub starts
+
+Useful next stops after the stack is up:
+
+- [`docs/getting-started.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/getting-started.md) for the shortest path through local setup
+- [`docs/index.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/index.md) for the broader software docs
+- [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md) for a transit-focused connector example
+- [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md) for an aircraft-position example
+- [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md) for replaying captured traffic back into the hub
+
+## Development Scope
+
+- This setup is intended for local development, demos, and laptop experimentation.
+- Dex is a good fit for that workflow, but the included Dex fixture should not be treated as a production identity setup.
+- SigNoz is included because it is a modern observability stack that is easy to script and automate on top of ClickHouse, but the hub does not require SigNoz specifically.
+- You should be able to point the hub at other OpenTelemetry-compatible collectors and observability stacks instead.
 
 ## Files
 
@@ -22,10 +39,10 @@ The stack starts:
 
 ## Usage
 
-Start the local hub:
+Start the local stack:
 
 ```bash
-connectors/local-hub/start_demo.sh
+local-hub/start_demo.sh
 ```
 
 The first run also clones the pinned SigNoz deploy repository revision declared
@@ -36,16 +53,16 @@ account and provisions the default Open RTLS Hub dashboards.
 Stop it:
 
 ```bash
-connectors/local-hub/stop_demo.sh
+local-hub/stop_demo.sh
 ```
 
 Fetch an admin token:
 
 ```bash
-connectors/local-hub/fetch_demo_token.sh
+local-hub/fetch_demo_token.sh
 ```
 
-The first run creates `connectors/local-hub/demo.env` from `demo.env.example`.
+The first run creates `local-hub/demo.env` from `demo.env.example`.
 
 Default local URLs:
 
@@ -59,11 +76,11 @@ Default local URLs:
 
 Postgres state is stored under:
 
-- `connectors/local-hub/state/postgres`
+- `local-hub/state/postgres`
 
 SigNoz deploy checkout defaults to:
 
-- `connectors/local-hub/state/signoz`
+- `local-hub/state/signoz`
 
 ## Default Dex Users
 

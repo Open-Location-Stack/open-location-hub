@@ -1,7 +1,11 @@
 # Software Documentation
 
-Reference documentation for hub architecture, configuration, authentication,
-RPC behavior, and connector development.
+Reference documentation for local setup, hub architecture, configuration,
+authentication, RPC behavior, and connector development.
+
+Start here if you want the laptop-friendly local runtime:
+
+- [`docs/getting-started.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/getting-started.md)
 
 Core hub docs:
 
@@ -21,7 +25,7 @@ Connector demonstrators live outside the hub runtime under
 Shared connector-agnostic utility scripts live under
 [`scripts/`](../scripts).
 The shared local runtime is documented in
-[`connectors/local-hub/README.md`](../connectors/local-hub/README.md).
+[`local-hub/README.md`](../local-hub/README.md).
 Connector examples currently include
 [`connectors/gtfs/README.md`](../connectors/gtfs/README.md)
 and
