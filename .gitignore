@@ -5,3 +5,13 @@ bin/
 !tools/bin/pkg-config
 *.log
 .DS_Store
+__pycache__/
+*.py[cod]
+connectors/gtfs/.env.local
+connectors/gtfs/.venv/
+connectors/gtfs/logs/
+connectors/opensky/.env.local
+connectors/opensky/.venv/
+connectors/opensky/logs/
+connectors/local-hub/demo.env
+connectors/local-hub/state/

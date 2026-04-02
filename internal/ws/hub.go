@@ -122,9 +122,18 @@ type metadataFilter struct {
 }
 
 // New constructs a WebSocket hub and starts bus fan-out.
-func New(logger *zap.Logger, service *hub.Service, bus *hub.EventBus, authenticator auth.Authenticator, registry *auth.Registry, authCfg config.AuthConfig, writeTimeout time.Duration, outboundBuffer int, collisionsEnabled bool) *Hub {
+func New(logger *zap.Logger, service *hub.Service, bus *hub.EventBus, authenticator auth.Authenticator, registry *auth.Registry, authCfg config.AuthConfig, writeTimeout, readTimeout, pingInterval time.Duration, outboundBuffer int, collisionsEnabled bool) *Hub {
 	if writeTimeout <= 0 {
 		writeTimeout = 5 * time.Second
+	}
+	if readTimeout <= 0 {
+		readTimeout = time.Minute
+	}
+	if pingInterval <= 0 {
+		pingInterval = 30 * time.Second
+	}
+	if readTimeout <= pingInterval {
+		readTimeout = pingInterval + pingInterval/2
 	}
 	h := &Hub{
 		logger:            logger,
@@ -136,8 +145,8 @@ func New(logger *zap.Logger, service *hub.Service, bus *hub.EventBus, authentica
 		writeTimeout:      writeTimeout,
 		outboundBuffer:    outboundBuffer,
 		collisionsEnabled: collisionsEnabled,
-		readTimeout:       2 * writeTimeout,
-		pingInterval:      writeTimeout,
+		readTimeout:       readTimeout,
+		pingInterval:      pingInterval,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
@@ -202,6 +211,7 @@ func (c *connection) readLoop() {
 			}
 			return
 		}
+		_ = c.conn.SetReadDeadline(time.Now().Add(c.hub.readTimeout))
 		var msg wrapper
 		if err := json.Unmarshal(payload, &msg); err != nil {
 			c.sendError(errInvalidPayload, "invalid websocket wrapper")

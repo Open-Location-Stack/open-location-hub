@@ -17,6 +17,8 @@ Runtime lifecycle behavior:
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
+- `WEBSOCKET_READ_TIMEOUT` (duration, default `1m`)
+- `WEBSOCKET_PING_INTERVAL` (duration, default `30s`)
 - `WEBSOCKET_OUTBOUND_BUFFER` (default `32`)
 
 Hub metadata bootstrap behavior:
@@ -50,6 +52,7 @@ Stateful ingest behavior:
 - metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`
 - durable hub metadata is also loaded from Postgres at startup before the service begins accepting traffic
 - WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; slow subscribers are disconnected instead of backpressuring the ingest path
+- WebSocket liveness uses server ping frames every `WEBSOCKET_PING_INTERVAL` and considers the connection stale when no inbound message or pong arrives before `WEBSOCKET_READ_TIMEOUT`
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs

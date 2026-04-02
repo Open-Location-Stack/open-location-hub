@@ -1,0 +1,12 @@
+[project]
+name = "open-rtls-opensky-demo"
+version = "0.1.0"
+description = "OpenSky demonstrator connector for Open RTLS Hub"
+requires-python = ">=3.12"
+dependencies = [
+  "requests>=2.33.0",
+  "websocket-client>=1.9.0",
+]
+
+[tool.uv]
+package = false
