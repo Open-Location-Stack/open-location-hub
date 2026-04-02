@@ -7,18 +7,11 @@ import argparse
 import json
 import os
 import signal
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import websocket
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SCRIPT_DIR.parent
-sys.path.insert(0, str(ROOT_DIR))
-
-from opensky_support import load_env_file  # noqa: E402
 
 
 RUNNING = True
@@ -26,23 +19,33 @@ RUNNING = True
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--topic", required=True)
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--env-file", default=os.getenv("OPENSKY_ENV_FILE"))
-    parser.add_argument("--ws-url", default=os.getenv("HUB_WS_URL"))
-    parser.add_argument("--token", default=os.getenv("HUB_TOKEN"))
+    parser.add_argument("--topic", required=True, help="Hub WebSocket topic to subscribe to")
+    parser.add_argument("--output", required=True, help="NDJSON file to append received wrapper messages to")
+    parser.add_argument("--env-file", help="Optional dotenv-style file loaded before resolving HUB_* settings")
+    parser.add_argument("--ws-url", default=os.getenv("HUB_WS_URL"), help="Hub WebSocket URL")
+    parser.add_argument("--token", default=os.getenv("HUB_TOKEN"), help="Optional bearer token for subscribe params")
+    parser.add_argument(
+        "--reconnect-delay-seconds",
+        type=float,
+        default=2.0,
+        help="Delay before reconnecting after a receive failure",
+    )
     return parser
 
 
 def main() -> int:
     global RUNNING
+
     args = build_argument_parser().parse_args()
     load_env_file(args.env_file)
+
     ws_url = args.ws_url or os.getenv("HUB_WS_URL")
     if not ws_url:
         raise SystemExit("HUB_WS_URL or --ws-url is required")
+
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
     signal.signal(signal.SIGINT, handle_stop)
     signal.signal(signal.SIGTERM, handle_stop)
 
@@ -72,11 +75,26 @@ def main() -> int:
             except KeyboardInterrupt:
                 break
             except Exception:
-                time.sleep(2.0)
+                time.sleep(max(args.reconnect_delay_seconds, 0.0))
             finally:
                 if connection is not None:
                     connection.close()
     return 0
+
+
+def load_env_file(path: str | None) -> None:
+    if not path:
+        return
+    input_path = Path(path)
+    if not input_path.exists():
+        return
+    with input_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
 
 
 def handle_stop(_signum: int, _frame: object) -> None:

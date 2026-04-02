@@ -11,21 +11,26 @@ from pathlib import Path
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", default="connectors/gtfs/logs/location_updates.ndjson")
-    parser.add_argument("--env-file", default="connectors/gtfs/.env.local")
+    parser.add_argument("--output", default="logs/location_updates.ndjson")
+    parser.add_argument("--env-file")
+    parser.add_argument("--ws-url")
+    parser.add_argument("--token")
     args = parser.parse_args()
 
-    logger = Path(__file__).with_name("ws_ndjson_logger.py")
     command = [
         sys.executable,
-        str(logger),
+        str(Path(__file__).with_name("ws_ndjson_logger.py")),
         "--topic",
         "location_updates",
         "--output",
         args.output,
-        "--env-file",
-        args.env_file,
     ]
+    if args.env_file:
+        command.extend(["--env-file", args.env_file])
+    if args.ws_url:
+        command.extend(["--ws-url", args.ws_url])
+    if args.token:
+        command.extend(["--token", args.token])
     try:
         return subprocess.call(command)
     except KeyboardInterrupt:

@@ -7,23 +7,16 @@ import argparse
 import json
 import math
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import requests
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SCRIPT_DIR.parent
-sys.path.insert(0, str(ROOT_DIR))
-
-from opensky_support import load_env_file  # noqa: E402
-
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", default=os.getenv("OPENSKY_ENV_FILE"))
-    parser.add_argument("--locations-log", default="connectors/opensky/logs/location_updates.ndjson")
+    parser.add_argument("--env-file", help="Optional dotenv-style file loaded before resolving HUB_* settings")
+    parser.add_argument("--locations-log", default="logs/location_updates.ndjson")
     parser.add_argument("--http-url", default=os.getenv("HUB_HTTP_URL"))
     parser.add_argument("--token", default=os.getenv("HUB_TOKEN"))
     return parser
@@ -32,14 +25,32 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_argument_parser().parse_args()
     load_env_file(args.env_file)
+
     http_url = args.http_url or os.getenv("HUB_HTTP_URL")
     if not http_url:
         raise SystemExit("HUB_HTTP_URL or --http-url is required")
+
     fences = fetch_fences(http_url, args.token or os.getenv("HUB_TOKEN"))
     normalized = [item for item in (normalize_fence(fence) for fence in fences) if item is not None]
     locations = load_locations(Path(args.locations_log))
+
     print(json.dumps(summarize_proximity(locations, normalized), indent=2))
     return 0
+
+
+def load_env_file(path: str | None) -> None:
+    if not path:
+        return
+    input_path = Path(path)
+    if not input_path.exists():
+        return
+    with input_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
 
 
 def fetch_fences(http_url: str, token: str | None) -> list[dict[str, Any]]:
