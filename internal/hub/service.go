@@ -1515,22 +1515,61 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 		return nil
 	}
 	activeMotions := s.processingState().ListActiveMotions()
-	activeMotionByID := make(map[string]gen.TrackableMotion, len(activeMotions))
+	indexedActiveMotions := make([]indexedCollisionMotion, 0, len(activeMotions))
 	for _, motion := range activeMotions {
-		activeMotionByID[motion.Id] = motion
-	}
-	for _, motion := range motions {
-		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
-		leftTrackable, err := s.trackableByID(ctx, motion.Id)
+		point, err := point2D(motion.Location.Position)
 		if err != nil {
 			continue
 		}
-		for otherID, otherMotion := range activeMotionByID {
+		indexed, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			continue
+		}
+		indexedActiveMotions = append(indexedActiveMotions, indexed)
+	}
+	activeMotionIndex := newCollisionSpatialIndex(indexedActiveMotions)
+	trackablesByID := make(map[string]gen.Trackable, len(activeMotions)+len(motions))
+	getTrackable := func(id string) (gen.Trackable, bool) {
+		if trackable, ok := trackablesByID[id]; ok {
+			return trackable, true
+		}
+		trackable, err := s.trackableByID(ctx, id)
+		if err != nil {
+			return gen.Trackable{}, false
+		}
+		trackablesByID[id] = trackable
+		return trackable, true
+	}
+	maxActiveRadiusMeters := s.cfg.CollisionDefaultRadiusMeters
+	for _, motion := range indexedActiveMotions {
+		trackable, ok := getTrackable(motion.motion.Id)
+		if !ok {
+			continue
+		}
+		radius := effectiveRadiusMeters(trackable, s.cfg.CollisionDefaultRadiusMeters)
+		if radius > maxActiveRadiusMeters {
+			maxActiveRadiusMeters = radius
+		}
+	}
+	for _, motion := range motions {
+		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
+		leftTrackable, ok := getTrackable(motion.Id)
+		if !ok {
+			continue
+		}
+		leftPoint, err := point2D(motion.Location.Position)
+		if err != nil {
+			continue
+		}
+		searchDistanceMeters := effectiveRadiusMeters(leftTrackable, s.cfg.CollisionDefaultRadiusMeters) + maxActiveRadiusMeters
+		for _, candidate := range activeMotionIndex.Nearby(motion.Location, leftPoint, searchDistanceMeters) {
+			otherID := candidate.motion.Id
 			if otherID == motion.Id {
 				continue
 			}
-			otherTrackable, err := s.trackableByID(ctx, otherID)
-			if err != nil {
+			otherMotion := candidate.motion
+			otherTrackable, ok := getTrackable(otherID)
+			if !ok {
 				continue
 			}
 			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
@@ -1593,6 +1632,72 @@ type activeCollisionState struct {
 	StartTime   time.Time `json:"start_time"`
 	LastSeen    time.Time `json:"last_seen"`
 	LastEmitted time.Time `json:"last_emitted"`
+}
+
+type collisionSpatialCell struct {
+	space string
+	x     int
+	y     int
+}
+
+type indexedCollisionMotion struct {
+	motion gen.TrackableMotion
+	point  [2]float64
+	x      float64
+	y      float64
+	space  string
+}
+
+type collisionSpatialIndex struct {
+	cells map[collisionSpatialCell][]indexedCollisionMotion
+}
+
+func newCollisionSpatialIndex(motions []indexedCollisionMotion) collisionSpatialIndex {
+	index := collisionSpatialIndex{cells: make(map[collisionSpatialCell][]indexedCollisionMotion, len(motions))}
+	for _, motion := range motions {
+		cell := collisionSpatialCell{
+			space: motion.space,
+			x:     collisionSpatialCellIndex(motion.x),
+			y:     collisionSpatialCellIndex(motion.y),
+		}
+		index.cells[cell] = append(index.cells[cell], motion)
+	}
+	return index
+}
+
+func (i collisionSpatialIndex) Nearby(location gen.Location, point [2]float64, searchDistanceMeters float64) []indexedCollisionMotion {
+	space, x, y, paddingFactor, ok := collisionSpatialPoint(location, point)
+	if !ok {
+		return nil
+	}
+	radiusCells := int(math.Ceil((searchDistanceMeters * paddingFactor) / collisionSpatialCellSizeMeters))
+	if radiusCells < 1 {
+		radiusCells = 1
+	}
+	candidates := make([]indexedCollisionMotion, 0)
+	baseX := collisionSpatialCellIndex(x)
+	baseY := collisionSpatialCellIndex(y)
+	for dx := -radiusCells; dx <= radiusCells; dx++ {
+		for dy := -radiusCells; dy <= radiusCells; dy++ {
+			cell := collisionSpatialCell{space: space, x: baseX + dx, y: baseY + dy}
+			candidates = append(candidates, i.cells[cell]...)
+		}
+	}
+	return candidates
+}
+
+func newIndexedCollisionMotion(motion gen.TrackableMotion, point [2]float64) (indexedCollisionMotion, bool) {
+	space, x, y, _, ok := collisionSpatialPoint(motion.Location, point)
+	if !ok {
+		return indexedCollisionMotion{}, false
+	}
+	return indexedCollisionMotion{
+		motion: motion,
+		point:  point,
+		x:      x,
+		y:      y,
+		space:  space,
+	}, true
 }
 
 func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
@@ -1859,6 +1964,8 @@ func collisionAreaPoint(point [2]float64) gen.CollisionEvent_CollisionArea {
 }
 
 const defaultCollisionRadiusMeters = 0.5
+const collisionSpatialCellSizeMeters = 100.0
+const collisionSpatialWGS84PaddingFactor = 2.0
 
 func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64) float64 {
 	if trackable.Radius != nil && *trackable.Radius > 0 {
@@ -1868,6 +1975,35 @@ func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64)
 		return defaultRadiusMeters
 	}
 	return defaultCollisionRadiusMeters
+}
+
+func collisionSpatialCellIndex(value float64) int {
+	return int(math.Floor(value / collisionSpatialCellSizeMeters))
+}
+
+func collisionSpatialPoint(location gen.Location, point [2]float64) (space string, x, y, paddingFactor float64, ok bool) {
+	crs := strings.TrimSpace(locationCRS(location))
+	if crs == "" {
+		crs = "local"
+	}
+	if crs == "EPSG:4326" {
+		projectedX, projectedY, valid := wgs84PointToWebMercator(point)
+		return crs, projectedX, projectedY, collisionSpatialWGS84PaddingFactor, valid
+	}
+	return crs, point[0], point[1], 1, true
+}
+
+func wgs84PointToWebMercator(point [2]float64) (float64, float64, bool) {
+	lon := point[0]
+	lat := point[1]
+	if lon < -180 || lon > 180 || lat < -90 || lat > 90 {
+		return 0, 0, false
+	}
+	lat = math.Max(math.Min(lat, 85.05112878), -85.05112878)
+	x := 6378137.0 * degreesToRadians(lon)
+	latRad := degreesToRadians(lat)
+	y := 6378137.0 * math.Log(math.Tan(math.Pi/4+latRad/2))
+	return x, y, true
 }
 
 func pointSquarePolygon(location gen.Location, radiusMeters float64) *gen.Polygon {

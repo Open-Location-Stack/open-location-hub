@@ -245,6 +245,84 @@ func TestPointSquarePolygonConvertsMetersForWGS84(t *testing.T) {
 	}
 }
 
+func TestCollisionSpatialIndexNearbyFiltersFarWGS84Candidates(t *testing.T) {
+	t.Parallel()
+
+	crs := "EPSG:4326"
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{8.5411, 47.37735})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{8.5411, 47.39})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{8.5411, 47.3769})}
+
+	var indexed []indexedCollisionMotion
+	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
+		point, err := point2D(motion.Location.Position)
+		if err != nil {
+			t.Fatalf("point decode failed: %v", err)
+		}
+		item, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			t.Fatal("expected indexed motion")
+		}
+		indexed = append(indexed, item)
+	}
+	index := newCollisionSpatialIndex(indexed)
+	queryPoint, err := point2D(queryMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("query point decode failed: %v", err)
+	}
+
+	candidates := index.Nearby(queryMotion.Location, queryPoint, 120)
+	ids := map[string]bool{}
+	for _, candidate := range candidates {
+		ids[candidate.motion.Id] = true
+	}
+	if !ids["near"] {
+		t.Fatal("expected nearby motion candidate")
+	}
+	if ids["far"] {
+		t.Fatal("did not expect far motion candidate")
+	}
+}
+
+func TestCollisionSpatialIndexNearbyFiltersFarLocalCandidates(t *testing.T) {
+	t.Parallel()
+
+	crs := "local"
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{20, 20})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{600, 600})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{0, 0})}
+
+	var indexed []indexedCollisionMotion
+	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
+		point, err := point2D(motion.Location.Position)
+		if err != nil {
+			t.Fatalf("point decode failed: %v", err)
+		}
+		item, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			t.Fatal("expected indexed motion")
+		}
+		indexed = append(indexed, item)
+	}
+	index := newCollisionSpatialIndex(indexed)
+	queryPoint, err := point2D(queryMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("query point decode failed: %v", err)
+	}
+
+	candidates := index.Nearby(queryMotion.Location, queryPoint, 100)
+	ids := map[string]bool{}
+	for _, candidate := range candidates {
+		ids[candidate.motion.Id] = true
+	}
+	if !ids["near"] {
+		t.Fatal("expected nearby local motion candidate")
+	}
+	if ids["far"] {
+		t.Fatal("did not expect far local motion candidate")
+	}
+}
+
 func TestNormalizeZoneRejectsInvalidProximityResolutionProperties(t *testing.T) {
 	t.Parallel()
 
