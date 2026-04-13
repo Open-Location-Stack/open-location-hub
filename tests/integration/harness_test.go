@@ -251,7 +251,11 @@ func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers
 	}
 	if exitCode != 0 {
 		data, _ := io.ReadAll(output)
-		t.Fatalf("create postgres database %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
+		message := strings.TrimSpace(string(data))
+		if strings.Contains(message, "already exists") {
+			return
+		}
+		t.Fatalf("create postgres database %s failed with exit code %d: %s", name, exitCode, message)
 	}
 }
 
