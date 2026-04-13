@@ -18,136 +18,21 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/redis"
-	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestDexBackedAuthorization(t *testing.T) {
-	t.Parallel()
+const integrationLogTailBytes = 16 * 1024
 
+func TestDexBackedAuthorization(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
 		}
 	}()
 
-	ctx := context.Background()
-	network, err := tcnetwork.New(ctx)
-	if err != nil {
-		t.Skipf("docker network unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = network.Remove(ctx) })
-
-	pg, err := startPostgres(ctx, network.Name)
-	if err != nil {
-		t.Skipf("docker/postgres unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-
-	vk, err := redis.Run(ctx, "valkey/valkey:8-alpine", tcnetwork.WithNetwork([]string{"valkey"}, network))
-	if err != nil {
-		t.Skipf("docker/valkey unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-
-	mqReq := testcontainers.ContainerRequest{
-		Image:        "eclipse-mosquitto:2.0",
-		ExposedPorts: []string{"1883/tcp"},
-		Networks:     []string{network.Name},
-		NetworkAliases: map[string][]string{
-			network.Name: {"mosquitto"},
-		},
-		WaitingFor: wait.ForListeningPort("1883/tcp").WithStartupTimeout(30 * time.Second),
-		Files: []testcontainers.ContainerFile{{
-			HostFilePath:      repoPath(t, "tools/mqtt/mosquitto.conf"),
-			ContainerFilePath: "/mosquitto/config/mosquitto.conf",
-			FileMode:          0o644,
-		}},
-	}
-	mq, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: mqReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Skipf("docker/mosquitto unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = mq.Terminate(ctx) })
-
-	dexReq := testcontainers.ContainerRequest{
-		Image:        "ghcr.io/dexidp/dex:v2.43.1",
-		ExposedPorts: []string{"5556/tcp"},
-		Networks:     []string{network.Name},
-		NetworkAliases: map[string][]string{
-			network.Name: {"dex"},
-		},
-		Cmd: []string{"dex", "serve", "/etc/dex/config.yaml"},
-		Files: []testcontainers.ContainerFile{{
-			HostFilePath:      repoPath(t, "tools/dex/config.yaml"),
-			ContainerFilePath: "/etc/dex/config.yaml",
-			FileMode:          0o644,
-		}},
-		WaitingFor: wait.ForHTTP("/dex/.well-known/openid-configuration").
-			WithPort("5556/tcp").
-			WithStartupTimeout(30 * time.Second),
-	}
-	dex, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: dexReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Skipf("docker/dex unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = dex.Terminate(ctx) })
-
-	runMigrations(t, ctx, pg)
-
-	appReq := testcontainers.ContainerRequest{
-		Image:        sharedHubImage(t),
-		ExposedPorts: []string{"8080/tcp"},
-		Networks:     []string{network.Name},
-		NetworkAliases: map[string][]string{
-			network.Name: {"hub"},
-		},
-		Files: []testcontainers.ContainerFile{{
-			HostFilePath:      repoPath(t, "config/auth/permissions.yaml"),
-			ContainerFilePath: "/app/config/auth/permissions.yaml",
-			FileMode:          0o644,
-		}},
-		Env: map[string]string{
-			"HTTP_LISTEN_ADDR":           ":8080",
-			"POSTGRES_URL":               "postgres://postgres:postgres@postgres:5432/openrtls?sslmode=disable",
-			"VALKEY_URL":                 "redis://valkey:6379/0",
-			"MQTT_BROKER_URL":            "tcp://mosquitto:1883",
-			"AUTH_MODE":                  "oidc",
-			"AUTH_ISSUER":                "http://dex:5556/dex",
-			"AUTH_AUDIENCE":              "open-rtls-cli",
-			"AUTH_ALLOWED_ALGS":          "RS256",
-			"AUTH_PERMISSIONS_FILE":      "/app/config/auth/permissions.yaml",
-			"AUTH_ROLES_CLAIM":           "email",
-			"AUTH_OWNED_RESOURCES_CLAIM": "owned_resources",
-			"AUTH_OIDC_REFRESH_TTL":      "10m",
-			"AUTH_HTTP_TIMEOUT":          "5s",
-			"AUTH_CLOCK_SKEW":            "30s",
-		},
-		WaitingFor: wait.ForHTTP("/healthz").
-			WithPort("8080/tcp").
-			WithStartupTimeout(60 * time.Second),
-	}
-	app, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: appReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("docker/app unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = app.Terminate(ctx) })
-
-	adminToken := fetchDexIDToken(t, ctx, dex, "admin@example.com", "testpass123")
-	readerToken := fetchDexIDToken(t, ctx, dex, "reader@example.com", "testpass123")
-	ownerToken := fetchDexIDToken(t, ctx, dex, "owner@example.com", "testpass123")
-
-	appBaseURL := mappedHTTPURL(t, ctx, app, "8080/tcp")
+	_, appBaseURL, _ := sharedHub(t)
+	adminToken, readerToken, ownerToken := authTokens(t)
+	zoneName := scopedID(t, "test-zone")
 
 	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", ""), http.StatusUnauthorized)
 	assertStatusAndClose(t, request(t, http.MethodGet, appBaseURL+"/v2/zones", "definitely-not-a-jwt"), http.StatusUnauthorized)
@@ -156,7 +41,7 @@ func TestDexBackedAuthorization(t *testing.T) {
 		"type":                     "uwb",
 		"incomplete_configuration": true,
 		"ground_control_points":    []map[string]any{},
-		"name":                     "Test Zone",
+		"name":                     zoneName,
 	})
 	assertStatus(t, createResp, http.StatusCreated)
 
@@ -216,6 +101,7 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 		if err != nil {
 			t.Fatalf("read migration %s failed: %v", name, err)
 		}
+		content = gooseUpOnlySQL(content)
 		target := "/tmp/" + name
 		if err := pg.CopyToContainer(ctx, content, target, 0o644); err != nil {
 			t.Fatalf("copy migration %s failed: %v", name, err)
@@ -229,6 +115,55 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 			t.Fatalf("migration %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
 		}
 	}
+}
+
+func gooseUpOnlySQL(content []byte) []byte {
+	text := string(content)
+	if idx := strings.Index(text, "\n-- +goose Down"); idx >= 0 {
+		text = text[:idx]
+	}
+	return []byte(text)
+}
+
+func startLoggedContainer(ctx context.Context, req testcontainers.ContainerRequest) (testcontainers.Container, error) {
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          false,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := container.Start(ctx); err != nil {
+		return container, err
+	}
+	return container, nil
+}
+
+func logContainerOutput(t *testing.T, ctx context.Context, name string, container testcontainers.Container) {
+	t.Helper()
+	if container == nil {
+		return
+	}
+	logs, err := container.Logs(ctx)
+	if err != nil {
+		t.Logf("%s logs unavailable: %v", name, err)
+		return
+	}
+	defer logs.Close()
+
+	data, err := io.ReadAll(logs)
+	if err != nil {
+		t.Logf("%s logs unreadable: %v", name, err)
+		return
+	}
+	if len(data) == 0 {
+		t.Logf("%s logs empty", name)
+		return
+	}
+	if len(data) > integrationLogTailBytes {
+		data = data[len(data)-integrationLogTailBytes:]
+	}
+	t.Logf("%s logs (tail):\n%s", name, strings.TrimSpace(string(data)))
 }
 
 func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers.Container, name string) {
@@ -259,7 +194,7 @@ func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers
 	}
 }
 
-func startPostgres(ctx context.Context, networkName string) (testcontainers.Container, error) {
+func startPostgres(t *testing.T, ctx context.Context, networkName string) (testcontainers.Container, error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:17",
 		ExposedPorts: []string{"5432/tcp"},
@@ -279,10 +214,12 @@ func startPostgres(ctx context.Context, networkName string) (testcontainers.Cont
 			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
 		).WithStartupTimeout(30 * time.Second),
 	}
-	return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	container, err := startLoggedContainer(ctx, req)
+	if err != nil {
+		logContainerOutput(t, ctx, "postgres", container)
+		return nil, err
+	}
+	return container, nil
 }
 
 func fetchDexIDToken(t *testing.T, ctx context.Context, container testcontainers.Container, username, password string) string {
