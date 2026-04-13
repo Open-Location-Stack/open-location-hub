@@ -210,6 +210,7 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	ensurePostgresDatabase(t, ctx, pg, "openrtls")
 	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql"} {
 		content, err := os.ReadFile(repoPath(t, filepath.Join("migrations", name)))
 		if err != nil {
@@ -227,6 +228,23 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 			data, _ := io.ReadAll(output)
 			t.Fatalf("migration %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
 		}
+	}
+}
+
+func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers.Container, name string) {
+	t.Helper()
+	createStmt := fmt.Sprintf(
+		"SELECT 'CREATE DATABASE %s' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '%s')\\gexec",
+		name,
+		name,
+	)
+	exitCode, output, err := pg.Exec(ctx, []string{"psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-c", createStmt})
+	if err != nil {
+		t.Fatalf("ensure postgres database %s failed: %v", name, err)
+	}
+	if exitCode != 0 {
+		data, _ := io.ReadAll(output)
+		t.Fatalf("ensure postgres database %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
 	}
 }
 
