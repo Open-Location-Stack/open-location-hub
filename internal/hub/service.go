@@ -66,6 +66,7 @@ type Service struct {
 	telemetryRuntime *observability.Runtime
 	nativeQueue      derivedLocationSubmitter
 	derivedQueue     derivedLocationSubmitter
+	collisionQueue   collisionWorkSubmitter
 	decisionStage    decisionLocationStage
 }
 
@@ -93,7 +94,10 @@ func (s *Service) Start(ctx context.Context) {
 		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
 	}
 	if s.derivedQueue == nil {
-		s.derivedQueue = startDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+		s.derivedQueue = startShardedDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, decisionWorkerCount(), "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+	}
+	if s.cfg.CollisionsEnabled && s.collisionQueue == nil {
+		s.collisionQueue = startCollisionMotionProcessor(ctx, s, s.cfg.DerivedLocationBuffer)
 	}
 	if s.metadata == nil || s.queries == nil {
 		return
@@ -1010,7 +1014,7 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		s.logger.Warn("fence event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	if s.cfg.CollisionsEnabled {
-		if err := s.publishCollisionEvents(ctx, motions); err != nil {
+		if err := s.enqueueCollisionWork(ctx, motions); err != nil {
 			s.logger.Warn("collision event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 		}
 	}
@@ -1104,7 +1108,7 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 				return err
 			}
 			if s.cfg.CollisionsEnabled {
-				if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
 					return err
 				}
 			}
@@ -1124,11 +1128,26 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 			if err != nil {
 				return err
 			}
-			if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+			if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
+
+func (s *Service) enqueueCollisionWork(ctx context.Context, motions []gen.TrackableMotion) error {
+	if !s.cfg.CollisionsEnabled || len(motions) == 0 {
+		return nil
+	}
+	if s.collisionQueue == nil {
+		return s.publishCollisionEvents(ctx, motions)
+	}
+	s.collisionQueue.Submit(collisionWork{
+		Context:    ctx,
+		Motions:    append([]gen.TrackableMotion(nil), motions...),
+		EnqueuedAt: time.Now(),
+	})
 	return nil
 }
 

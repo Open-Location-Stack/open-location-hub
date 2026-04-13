@@ -29,10 +29,12 @@
 1. REST, MQTT, or WebSocket ingest enters the shared hub service.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
 3. A buffered native-publication stage emits native location and motion events without blocking ingest on downstream fan-out.
-4. A second buffered decision stage is the insertion point for future filtered or smoothed track processing and currently drives alternate-CRS publication, geofence evaluation, and optional collision evaluation.
-5. The decision worker drains queued locations in bounded batches before processing them so bursty ingest spends less time on per-item queue churn.
-6. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
-7. When any non-critical queue fills, the hub drops newer work on that path rather than backpressuring raw ingest.
+4. A second buffered decision stage is the insertion point for future filtered or smoothed track processing and currently drives alternate-CRS publication and geofence evaluation.
+5. Decision work is sharded by provider/source so one hot stream does not serialize the entire derived path, while updates for the same stream stay ordered on the same worker.
+6. The sharded decision workers drain queued locations in bounded batches before processing them so bursty ingest spends less time on per-item queue churn.
+7. Collision evaluation runs as its own downstream stage fed from the decision output so pairwise collision work does not block the rest of the derived path.
+8. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
+9. When any non-critical queue fills, the hub drops newer work on that path rather than backpressuring raw ingest.
 
 Implications:
 - ingest logic is shared across REST, MQTT, and WebSocket

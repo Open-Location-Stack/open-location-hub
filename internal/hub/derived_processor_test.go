@@ -72,3 +72,20 @@ func TestDecisionQueueProcessorDrainsBatch(t *testing.T) {
 		t.Fatalf("expected first batch size 3, got %d", batchSizes[0])
 	}
 }
+
+func TestDecisionShardIndexKeepsSameStreamOnSameWorker(t *testing.T) {
+	t.Parallel()
+
+	first := derivedLocationWork{Location: gen.Location{ProviderId: "provider-a", Source: "source-a"}}
+	second := derivedLocationWork{Location: gen.Location{ProviderId: "provider-a", Source: "source-a"}}
+	other := derivedLocationWork{Location: gen.Location{ProviderId: "provider-a", Source: "source-b"}}
+
+	left := decisionShardIndex(first, 4)
+	right := decisionShardIndex(second, 4)
+	if left != right {
+		t.Fatalf("expected identical stream keys to map to same shard, got %d and %d", left, right)
+	}
+	if decisionShardIndex(other, 4) < 0 || decisionShardIndex(other, 4) >= 4 {
+		t.Fatal("expected shard index within range")
+	}
+}

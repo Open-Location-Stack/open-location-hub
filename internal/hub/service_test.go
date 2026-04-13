@@ -824,6 +824,37 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 	}
 }
 
+type captureCollisionQueue struct {
+	works []collisionWork
+}
+
+func (q *captureCollisionQueue) Submit(work collisionWork) {
+	q.works = append(q.works, work)
+}
+
+func TestEnqueueCollisionWorkUsesCollisionQueueWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	queue := &captureCollisionQueue{}
+	service := &Service{
+		cfg: Config{
+			CollisionsEnabled: true,
+		},
+		collisionQueue: queue,
+	}
+	motions := []gen.TrackableMotion{{Id: "trackable-a"}}
+
+	if err := service.enqueueCollisionWork(context.Background(), motions); err != nil {
+		t.Fatalf("enqueueCollisionWork failed: %v", err)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one collision work item, got %d", len(queue.works))
+	}
+	if len(queue.works[0].Motions) != 1 || queue.works[0].Motions[0].Id != "trackable-a" {
+		t.Fatalf("unexpected queued motions: %+v", queue.works[0].Motions)
+	}
+}
+
 type capturingDerivedSubmitter struct {
 	works []derivedLocationWork
 }

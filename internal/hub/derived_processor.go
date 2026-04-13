@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"hash/fnv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,6 +12,7 @@ import (
 )
 
 const decisionQueueBatchSize = 64
+const defaultDecisionWorkerCount = 4
 
 type derivedLocationWork struct {
 	Context    context.Context
@@ -18,8 +20,18 @@ type derivedLocationWork struct {
 	EnqueuedAt time.Time
 }
 
+type collisionWork struct {
+	Context    context.Context
+	Motions    []gen.TrackableMotion
+	EnqueuedAt time.Time
+}
+
 type derivedLocationSubmitter interface {
 	Submit(work derivedLocationWork)
+}
+
+type collisionWorkSubmitter interface {
+	Submit(work collisionWork)
 }
 
 type derivedLocationProcessor struct {
@@ -31,6 +43,8 @@ type derivedLocationProcessor struct {
 	onProcess      func(context.Context, gen.Location) error
 	onProcessBatch func(context.Context, []derivedLocationWork) error
 	maxBatchSize   int
+	reportDepth    func(int64)
+	queueDepth     func() int64
 	dropped        atomic.Uint64
 }
 
@@ -53,12 +67,110 @@ func startDerivedLocationProcessor(
 		onDrop:    onDrop,
 		onProcess: onProcess,
 	}
+	processor.reportDepth = processor.defaultDepthReporter()
+	processor.queueDepth = func() int64 { return int64(len(processor.queue)) }
 	if label == "decision location queue" {
 		processor.maxBatchSize = decisionQueueBatchSize
 		processor.onProcessBatch = service.processDecisionLocationBatch
 	}
 	go processor.run(ctx)
 	return processor
+}
+
+func startShardedDerivedLocationProcessor(
+	ctx context.Context,
+	service *Service,
+	buffer int,
+	workers int,
+	label string,
+	onDrop func() uint64,
+	onProcess func(context.Context, gen.Location) error,
+) derivedLocationSubmitter {
+	if service == nil || buffer <= 0 {
+		return nil
+	}
+	if workers <= 1 {
+		return startDerivedLocationProcessor(ctx, service, buffer, label, onDrop, onProcess)
+	}
+	if workers > buffer {
+		workers = buffer
+	}
+	if workers <= 1 {
+		return startDerivedLocationProcessor(ctx, service, buffer, label, onDrop, onProcess)
+	}
+	group := &shardedDerivedLocationProcessor{
+		shards:      make([]*derivedLocationProcessor, 0, workers),
+		queueDepths: make([]atomic.Int64, workers),
+	}
+	perShardBuffer := max(1, (buffer+workers-1)/workers)
+	for i := 0; i < workers; i++ {
+		shard := &derivedLocationProcessor{
+			service:   service,
+			logger:    service.logger,
+			queue:     make(chan derivedLocationWork, perShardBuffer),
+			label:     label,
+			onDrop:    onDrop,
+			onProcess: onProcess,
+		}
+		if label == "decision location queue" {
+			shard.maxBatchSize = decisionQueueBatchSize
+			shard.onProcessBatch = service.processDecisionLocationBatch
+		}
+		index := i
+		shard.reportDepth = func(depth int64) {
+			group.queueDepths[index].Store(depth)
+			group.reportDepth(service, label)
+		}
+		shard.queueDepth = func() int64 {
+			return group.totalDepth()
+		}
+		group.shards = append(group.shards, shard)
+		go shard.run(ctx)
+	}
+	return group
+}
+
+type shardedDerivedLocationProcessor struct {
+	shards      []*derivedLocationProcessor
+	queueDepths []atomic.Int64
+}
+
+func (p *shardedDerivedLocationProcessor) Submit(work derivedLocationWork) {
+	if len(p.shards) == 0 {
+		return
+	}
+	p.shards[decisionShardIndex(work, len(p.shards))].Submit(work)
+}
+
+func (p *shardedDerivedLocationProcessor) totalDepth() int64 {
+	var total int64
+	for i := range p.queueDepths {
+		total += p.queueDepths[i].Load()
+	}
+	return total
+}
+
+func (p *shardedDerivedLocationProcessor) reportDepth(service *Service, label string) {
+	if service == nil || service.stats == nil {
+		return
+	}
+	switch label {
+	case "decision location queue":
+		service.stats.SetDecisionQueueDepth(p.totalDepth())
+	case "native location queue":
+		service.stats.SetNativeQueueDepth(p.totalDepth())
+	}
+}
+
+func decisionShardIndex(work derivedLocationWork, count int) int {
+	if count <= 1 {
+		return 0
+	}
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(work.Location.ProviderId))
+	_, _ = hasher.Write([]byte{0})
+	_, _ = hasher.Write([]byte(work.Location.Source))
+	return int(hasher.Sum32() % uint32(count))
 }
 
 func (p *derivedLocationProcessor) Submit(work derivedLocationWork) {
@@ -69,6 +181,9 @@ func (p *derivedLocationProcessor) Submit(work derivedLocationWork) {
 		dropped := p.dropped.Add(1)
 		if p.service != nil && p.service.stats != nil {
 			depth := int64(len(p.queue))
+			if p.queueDepth != nil {
+				depth = p.queueDepth()
+			}
 			switch p.label {
 			case "native location queue":
 				dropped = p.service.stats.RecordNativeQueueDrop(work, depth)
@@ -143,16 +258,87 @@ func (p *derivedLocationProcessor) processBatch(ctx context.Context, batch []der
 }
 
 func (p *derivedLocationProcessor) updateDepth() {
+	depth := int64(len(p.queue))
+	if p.reportDepth != nil {
+		p.reportDepth(depth)
+		return
+	}
 	if p.service == nil || p.service.stats == nil {
 		return
 	}
-	depth := int64(len(p.queue))
-	switch p.label {
-	case "native location queue":
-		p.service.stats.SetNativeQueueDepth(depth)
-	case "decision location queue":
-		p.service.stats.SetDecisionQueueDepth(depth)
+}
+
+func (p *derivedLocationProcessor) defaultDepthReporter() func(int64) {
+	return func(depth int64) {
+		if p.service == nil || p.service.stats == nil {
+			return
+		}
+		switch p.label {
+		case "native location queue":
+			p.service.stats.SetNativeQueueDepth(depth)
+		case "decision location queue":
+			p.service.stats.SetDecisionQueueDepth(depth)
+		}
 	}
+}
+
+type collisionMotionProcessor struct {
+	service   *Service
+	logger    *zap.Logger
+	queue     chan collisionWork
+	queueWait string
+}
+
+func startCollisionMotionProcessor(ctx context.Context, service *Service, buffer int) collisionWorkSubmitter {
+	if service == nil || buffer <= 0 {
+		return nil
+	}
+	processor := &collisionMotionProcessor{
+		service:   service,
+		logger:    service.logger,
+		queue:     make(chan collisionWork, buffer),
+		queueWait: "collision queue",
+	}
+	go processor.run(ctx)
+	return processor
+}
+
+func (p *collisionMotionProcessor) Submit(work collisionWork) {
+	if len(work.Motions) == 0 {
+		return
+	}
+	select {
+	case p.queue <- work:
+	default:
+		p.logger.Debug("collision queue full; dropping collision work", zap.Int("motions", len(work.Motions)))
+	}
+}
+
+func (p *collisionMotionProcessor) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case work := <-p.queue:
+			if !work.EnqueuedAt.IsZero() {
+				p.service.telemetry().RecordQueueWait(work.Context, p.queueWait, time.Since(work.EnqueuedAt))
+			}
+			if err := p.service.publishCollisionEvents(work.Context, work.Motions); err != nil {
+				p.logger.Warn("collision queue processing failed", zap.Any("context", work.Context), zap.Int("motions", len(work.Motions)), zap.Error(err))
+			}
+		}
+	}
+}
+
+func decisionWorkerCount() int {
+	return defaultDecisionWorkerCount
+}
+
+func max(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 type decisionLocationStage interface {
