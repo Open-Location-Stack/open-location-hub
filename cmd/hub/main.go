@@ -300,6 +300,12 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	r.Get("/debug/runtime/drops", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(service.RuntimeStatsSnapshot()); err != nil {
+			http.Error(w, "encode runtime drop diagnostics", http.StatusInternalServerError)
+		}
+	})
 
 	h := handlers.New(handlers.Dependencies{
 		Logger:                logger,

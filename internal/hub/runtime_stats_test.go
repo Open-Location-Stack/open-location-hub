@@ -1,6 +1,10 @@
 package hub
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+)
 
 func TestRuntimeStatsTelemetrySnapshotIncludesDropCounters(t *testing.T) {
 	stats := newRuntimeStats()
@@ -43,5 +47,37 @@ func TestRuntimeStatsTelemetrySnapshotIncludesDropCounters(t *testing.T) {
 	}
 	if snapshot.WebSocketOutboundDepth != 13 {
 		t.Fatalf("expected websocket outbound depth to be 13, got %d", snapshot.WebSocketOutboundDepth)
+	}
+}
+
+func TestRuntimeStatsSnapshotIncludesRecentDropSamples(t *testing.T) {
+	stats := newRuntimeStats()
+
+	stats.RecordEventBusDrop(Event{
+		Kind:        EventLocation,
+		Scope:       ScopeEPSG4326,
+		ProviderID:  "provider-a",
+		TrackableID: "trackable-a",
+	})
+	stats.RecordNativeQueueDrop(derivedLocationWork{
+		Location: gen.Location{
+			ProviderId: "provider-b",
+			Source:     "source-b",
+		},
+	}, 17)
+	stats.RecordWebSocketOutboundDrop("trackable_motions", 5)
+
+	snapshot := stats.Snapshot()
+	if len(snapshot.RecentDrops) != 3 {
+		t.Fatalf("expected 3 recent drops, got %d", len(snapshot.RecentDrops))
+	}
+	if snapshot.RecentDrops[0].Stage != "event_bus" || snapshot.RecentDrops[0].Reason != "subscriber_channel_full" {
+		t.Fatalf("unexpected first drop sample: %+v", snapshot.RecentDrops[0])
+	}
+	if snapshot.RecentDrops[1].Stage != "native_queue" || snapshot.RecentDrops[1].ProviderID != "provider-b" || snapshot.RecentDrops[1].Source != "source-b" {
+		t.Fatalf("unexpected second drop sample: %+v", snapshot.RecentDrops[1])
+	}
+	if snapshot.RecentDrops[2].Stage != "websocket_outbound" || snapshot.RecentDrops[2].Topic != "trackable_motions" {
+		t.Fatalf("unexpected third drop sample: %+v", snapshot.RecentDrops[2])
 	}
 }

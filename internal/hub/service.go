@@ -218,6 +218,14 @@ func (s *Service) telemetry() *observability.Runtime {
 	return s.telemetryRuntime
 }
 
+// RuntimeStatsSnapshot returns the current overload and queue diagnostics.
+func (s *Service) RuntimeStatsSnapshot() RuntimeStatsSnapshot {
+	if s == nil || s.stats == nil {
+		return RuntimeStatsSnapshot{}
+	}
+	return s.stats.Snapshot()
+}
+
 func (s *Service) metadataCache() *MetadataCache {
 	return s.metadata
 }

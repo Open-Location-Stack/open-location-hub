@@ -1,5 +1,7 @@
 admin@example.com:
   description: Full administrative access for local Dex development and tests.
+  /debug/runtime/*:
+    - READ_ANY
   /v2/*:
     - CREATE_ANY
     - READ_ANY

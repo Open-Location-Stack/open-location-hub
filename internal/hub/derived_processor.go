@@ -59,11 +59,25 @@ func (p *derivedLocationProcessor) Submit(work derivedLocationWork) {
 		p.updateDepth()
 	default:
 		dropped := p.dropped.Add(1)
-		if p.onDrop != nil {
+		if p.service != nil && p.service.stats != nil {
+			depth := int64(len(p.queue))
+			switch p.label {
+			case "native location queue":
+				dropped = p.service.stats.RecordNativeQueueDrop(work, depth)
+			case "decision location queue":
+				dropped = p.service.stats.RecordDecisionQueueDrop(work, depth)
+			}
+		} else if p.onDrop != nil {
 			dropped = p.onDrop()
 		}
 		if dropped == 1 || dropped%100 == 0 {
-			p.logger.Warn(p.label+" full; dropping location work", zap.Uint64("dropped", dropped))
+			p.logger.Warn(
+				p.label+" full; dropping location work",
+				zap.Uint64("dropped", dropped),
+				zap.String("provider_id", work.Location.ProviderId),
+				zap.String("source", work.Location.Source),
+				zap.Int("queue_depth", len(p.queue)),
+			)
 		}
 	}
 }

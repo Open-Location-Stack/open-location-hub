@@ -491,7 +491,7 @@ func (c *connection) sendWrapper(msg wrapper) {
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "queued", time.Since(start))
 	default:
 		if c.hub.stats != nil {
-			c.hub.stats.IncWebSocketOutboundDrops()
+			c.hub.stats.RecordWebSocketOutboundDrop(msg.Topic, int64(len(c.send)))
 		}
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "dropped", time.Since(start))
 		c.hub.logger.Debug("websocket outbound buffer full; dropping outbound payload")

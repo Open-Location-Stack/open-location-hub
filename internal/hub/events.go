@@ -249,7 +249,7 @@ func (b *EventBus) Emit(event Event) {
 		case ch <- event:
 		default:
 			if b.stats != nil {
-				b.stats.IncEventBusDrops()
+				b.stats.RecordEventBusDrop(event)
 			}
 		}
 	}
