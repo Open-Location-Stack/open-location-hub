@@ -75,6 +75,8 @@ type Runtime struct {
 type telemetryInstruments struct {
 	ingestRecordsTotal        metric.Int64Counter
 	processingDuration        metric.Float64Histogram
+	processingBatchSize       metric.Int64Histogram
+	processingBatchDuration   metric.Float64Histogram
 	queueWaitDuration         metric.Float64Histogram
 	endToEndDuration          metric.Float64Histogram
 	dependencyEventsTotal     metric.Int64Counter
@@ -294,6 +296,8 @@ func firstNonEmpty(values ...string) string {
 func (r *Runtime) initInstruments() {
 	r.instruments.ingestRecordsTotal, _ = r.meter.Int64Counter("hub.ingest.records_total")
 	r.instruments.processingDuration, _ = r.meter.Float64Histogram("hub.processing.duration", metric.WithUnit("s"))
+	r.instruments.processingBatchSize, _ = r.meter.Int64Histogram("hub.processing.batch_size")
+	r.instruments.processingBatchDuration, _ = r.meter.Float64Histogram("hub.processing.batch_duration", metric.WithUnit("s"))
 	r.instruments.queueWaitDuration, _ = r.meter.Float64Histogram("hub.processing.queue_wait_duration", metric.WithUnit("s"))
 	r.instruments.endToEndDuration, _ = r.meter.Float64Histogram("hub.processing.end_to_end_duration", metric.WithUnit("s"))
 	r.instruments.dependencyEventsTotal, _ = r.meter.Int64Counter("hub.runtime.dependency_events_total")
@@ -485,6 +489,16 @@ func (r *Runtime) RecordProcessingDuration(ctx context.Context, stage, signal st
 			attribute.String("signal", signal),
 			attribute.String("transport", IngestTransportFromContext(ctx)),
 		))
+}
+
+// RecordBatchProcessing records batch size and duration for low-cardinality stages.
+func (r *Runtime) RecordBatchProcessing(ctx context.Context, stage string, size int, duration time.Duration) {
+	if !r.metricsReady() {
+		return
+	}
+	attrs := metric.WithAttributes(attribute.String("stage", stage))
+	r.instruments.processingBatchSize.Record(ctx, int64(size), attrs)
+	r.instruments.processingBatchDuration.Record(ctx, duration.Seconds(), attrs)
 }
 
 // RecordQueueWait records queue wait time for a stage.

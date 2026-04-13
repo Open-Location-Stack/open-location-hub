@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -1046,6 +1047,26 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 		attribute.String("provider_id", location.ProviderId),
 		attribute.String("source", location.Source),
 	)
+	defer span.End()
+	return s.processDecisionLocationStage(stageCtx, span, location)
+}
+
+func (s *Service) processDecisionLocationBatch(ctx context.Context, batch []derivedLocationWork) error {
+	var batchErr error
+	for _, work := range batch {
+		stageCtx, span := s.telemetry().StartSpan(work.Context, "hub.process.decision_location",
+			attribute.String("provider_id", work.Location.ProviderId),
+			attribute.String("source", work.Location.Source),
+		)
+		if err := s.processDecisionLocationStage(stageCtx, span, work.Location); err != nil && batchErr == nil {
+			batchErr = err
+		}
+		span.End()
+	}
+	return batchErr
+}
+
+func (s *Service) processDecisionLocationStage(stageCtx context.Context, span oteltrace.Span, location gen.Location) error {
 	start := time.Now()
 	decisionLocation, ok, err := s.decisionStage.Process(stageCtx, location)
 	if err != nil || !ok {
@@ -1053,7 +1074,6 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 			span.RecordError(err)
 		}
 		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-		span.End()
 		return err
 	}
 	err = s.processDerivedLocation(stageCtx, decisionLocation)
@@ -1061,7 +1081,6 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 		span.RecordError(err)
 	}
 	s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-	span.End()
 	return err
 }
 

@@ -10,6 +10,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const decisionQueueBatchSize = 64
+
 type derivedLocationWork struct {
 	Context    context.Context
 	Location   gen.Location
@@ -21,13 +23,15 @@ type derivedLocationSubmitter interface {
 }
 
 type derivedLocationProcessor struct {
-	service   *Service
-	logger    *zap.Logger
-	queue     chan derivedLocationWork
-	label     string
-	onDrop    func() uint64
-	onProcess func(context.Context, gen.Location) error
-	dropped   atomic.Uint64
+	service        *Service
+	logger         *zap.Logger
+	queue          chan derivedLocationWork
+	label          string
+	onDrop         func() uint64
+	onProcess      func(context.Context, gen.Location) error
+	onProcessBatch func(context.Context, []derivedLocationWork) error
+	maxBatchSize   int
+	dropped        atomic.Uint64
 }
 
 func startDerivedLocationProcessor(
@@ -48,6 +52,10 @@ func startDerivedLocationProcessor(
 		label:     label,
 		onDrop:    onDrop,
 		onProcess: onProcess,
+	}
+	if label == "decision location queue" {
+		processor.maxBatchSize = decisionQueueBatchSize
+		processor.onProcessBatch = service.processDecisionLocationBatch
 	}
 	go processor.run(ctx)
 	return processor
@@ -88,6 +96,13 @@ func (p *derivedLocationProcessor) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case work := <-p.queue:
+			if p.onProcessBatch != nil && p.maxBatchSize > 1 {
+				batch := p.dequeueBatch(work)
+				if err := p.processBatch(ctx, batch); err != nil {
+					p.logger.Warn(p.label+" batch processing failed", zap.Any("context", ctx), zap.Int("batch_size", len(batch)), zap.Error(err))
+				}
+				continue
+			}
 			p.updateDepth()
 			if !work.EnqueuedAt.IsZero() {
 				p.service.telemetry().RecordQueueWait(work.Context, p.label, time.Since(work.EnqueuedAt))
@@ -97,6 +112,34 @@ func (p *derivedLocationProcessor) run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (p *derivedLocationProcessor) dequeueBatch(first derivedLocationWork) []derivedLocationWork {
+	batch := make([]derivedLocationWork, 0, p.maxBatchSize)
+	batch = append(batch, first)
+	for len(batch) < p.maxBatchSize {
+		select {
+		case work := <-p.queue:
+			batch = append(batch, work)
+		default:
+			p.updateDepth()
+			return batch
+		}
+	}
+	p.updateDepth()
+	return batch
+}
+
+func (p *derivedLocationProcessor) processBatch(ctx context.Context, batch []derivedLocationWork) error {
+	start := time.Now()
+	for _, work := range batch {
+		if !work.EnqueuedAt.IsZero() {
+			p.service.telemetry().RecordQueueWait(work.Context, p.label, time.Since(work.EnqueuedAt))
+		}
+	}
+	err := p.onProcessBatch(ctx, batch)
+	p.service.telemetry().RecordBatchProcessing(ctx, p.label, len(batch), time.Since(start))
+	return err
 }
 
 func (p *derivedLocationProcessor) updateDepth() {
