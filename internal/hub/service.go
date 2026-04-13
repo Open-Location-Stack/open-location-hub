@@ -1148,6 +1148,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 	if err != nil {
 		return err
 	}
+	events := make([]Event, 0, 2)
 	if variants.Local != nil {
 		feature, err := locationGeoJSONFeatureCollection(*variants.Local)
 		if err != nil {
@@ -1157,7 +1158,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
 	if variants.WGS84 != nil {
 		feature, err := locationGeoJSONFeatureCollection(*variants.WGS84)
@@ -1168,8 +1169,9 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
+	s.bus.EmitBatch(events)
 	return nil
 }
 
@@ -1198,6 +1200,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		return nil, err
 	}
 	wgsMotions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
+	events := make([]Event, 0, len(*location.Trackables)*2)
 	for _, id := range *location.Trackables {
 		baseMotion := gen.TrackableMotion{Id: id}
 		if cache := s.metadataCache(); cache != nil {
@@ -1223,7 +1226,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 			if err != nil {
 				return nil, err
 			}
-			s.bus.Emit(event)
+			events = append(events, event)
 		}
 		if variants.WGS84 != nil {
 			motion := baseMotion
@@ -1232,10 +1235,11 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 			if err != nil {
 				return nil, err
 			}
-			s.bus.Emit(event)
+			events = append(events, event)
 			wgsMotions = append(wgsMotions, motion)
 		}
 	}
+	s.bus.EmitBatch(events)
 	return wgsMotions, nil
 }
 
@@ -1267,13 +1271,15 @@ func (s *Service) publishTrackableMotionEvents(providerID string, scope EventSco
 	if s.bus == nil {
 		return nil
 	}
+	events := make([]Event, 0, len(motions))
 	for _, motion := range motions {
 		event, err := newEvent(EventTrackableMotion, scope, locationTime(motion.Location), providerID, motion.Id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
+	s.bus.EmitBatch(events)
 	return nil
 }
 

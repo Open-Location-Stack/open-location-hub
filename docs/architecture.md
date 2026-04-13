@@ -40,6 +40,7 @@ Implications:
 - the internal event seam decouples downstream publication from MQTT-specific topics
 - location ingest latency is protected from slower transport fan-out, geofence work, or collision work
 - the decision-stage queue is the intended insertion point for future filtered or smoothed track processing before fence/collision decisions
+- lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
 - WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance

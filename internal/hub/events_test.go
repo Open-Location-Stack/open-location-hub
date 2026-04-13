@@ -1,79 +1,121 @@
 package hub
 
 import (
-	"bytes"
 	"testing"
 	"time"
 
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 )
 
-func TestNewEventPreparesCachedLocationJSON(t *testing.T) {
+func TestEventBusCoalescesLaggingLocationEvents(t *testing.T) {
 	t.Parallel()
 
-	crs := "local"
-	location := gen.Location{
-		ProviderId: "provider-a",
-		Source:     "source-a",
-		Crs:        &crs,
-	}
-	feature := GeoJSONFeatureCollection{Type: "FeatureCollection"}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(1)
+	defer unsubscribe()
 
-	event, err := newEvent(
+	first, err := newEvent(
 		EventLocation,
-		ScopeLocal,
-		time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
-		location.ProviderId,
+		ScopeEPSG4326,
+		time.Now(),
+		"provider-a",
 		"",
 		"",
 		"hub-a",
-		LocationEnvelope{Location: location, GeoJSON: feature},
+		LocationEnvelope{Location: gen.Location{ProviderId: "provider-a", Source: "source-a"}},
 	)
 	if err != nil {
-		t.Fatalf("newEvent failed: %v", err)
+		t.Fatalf("first event: %v", err)
+	}
+	second, err := newEvent(
+		EventLocation,
+		ScopeEPSG4326,
+		time.Now().Add(time.Millisecond),
+		"provider-a",
+		"",
+		"",
+		"hub-a",
+		LocationEnvelope{Location: gen.Location{ProviderId: "provider-a", Source: "source-a"}},
+	)
+	if err != nil {
+		t.Fatalf("second event: %v", err)
+	}
+	third, err := newEvent(
+		EventLocation,
+		ScopeEPSG4326,
+		time.Now().Add(2*time.Millisecond),
+		"provider-a",
+		"",
+		"",
+		"hub-a",
+		LocationEnvelope{Location: gen.Location{ProviderId: "provider-a", Source: "source-a"}},
+	)
+	if err != nil {
+		t.Fatalf("third event: %v", err)
 	}
 
-	envelope, ok := event.Payload.(LocationEnvelope)
-	if !ok {
-		t.Fatalf("unexpected payload type: %T", event.Payload)
+	bus.Emit(first)
+	bus.Emit(second)
+	bus.Emit(third)
+
+	gotFirst := <-ch
+	if gotFirst.EventTime != first.EventTime {
+		t.Fatalf("expected first queued event, got %v", gotFirst.EventTime)
 	}
-	if len(envelope.locationJSON) == 0 {
-		t.Fatal("expected cached location json")
+
+	select {
+	case gotSecond := <-ch:
+		if gotSecond.EventTime != third.EventTime {
+			t.Fatalf("expected latest coalesced event, got %v want %v", gotSecond.EventTime, third.EventTime)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for coalesced event")
 	}
-	if len(envelope.geoJSONJSON) == 0 {
-		t.Fatal("expected cached geojson json")
-	}
-	if !bytes.Equal(envelope.LocationItemJSON(), envelope.locationJSON) {
-		t.Fatal("expected location accessor to reuse cached json")
-	}
-	if !bytes.Equal(envelope.GeoJSONItemJSON(), envelope.geoJSONJSON) {
-		t.Fatal("expected geojson accessor to reuse cached json")
+
+	if drops := bus.Stats().Snapshot().EventBusDrops; drops != 0 {
+		t.Fatalf("expected no event bus drops for coalesced locations, got %d", drops)
 	}
 }
 
-func TestNewEventPreparesCachedMetadataJSON(t *testing.T) {
+func TestEventBusStillDropsDiscreteEventsWhenSubscriberIsFull(t *testing.T) {
 	t.Parallel()
 
-	change := MetadataChange{
-		ID:        "zone-1",
-		Type:      "zone",
-		Operation: "update",
-		Timestamp: time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC),
-	}
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(1)
+	defer unsubscribe()
 
-	event, err := newEvent(EventMetadataChange, ScopeMetadata, change.Timestamp, "", "", "", "hub-a", change)
+	first, err := newEvent(
+		EventFenceEvent,
+		ScopeDerived,
+		time.Now(),
+		"provider-a",
+		"trackable-a",
+		"fence-a",
+		"hub-a",
+		FenceEventEnvelope{},
+	)
 	if err != nil {
-		t.Fatalf("newEvent failed: %v", err)
+		t.Fatalf("first event: %v", err)
+	}
+	second, err := newEvent(
+		EventFenceEvent,
+		ScopeDerived,
+		time.Now().Add(time.Millisecond),
+		"provider-a",
+		"trackable-a",
+		"fence-a",
+		"hub-a",
+		FenceEventEnvelope{},
+	)
+	if err != nil {
+		t.Fatalf("second event: %v", err)
 	}
 
-	out, ok := event.Payload.(MetadataChange)
-	if !ok {
-		t.Fatalf("unexpected payload type: %T", event.Payload)
-	}
-	if len(out.changeJSON) == 0 {
-		t.Fatal("expected cached metadata json")
-	}
-	if !bytes.Equal(out.ItemJSON(), out.changeJSON) {
-		t.Fatal("expected metadata accessor to reuse cached json")
+	bus.Emit(first)
+	bus.Emit(second)
+
+	<-ch
+	if drops := bus.Stats().Snapshot().EventBusDrops; drops != 1 {
+		t.Fatalf("expected one event bus drop for discrete events, got %d", drops)
 	}
 }

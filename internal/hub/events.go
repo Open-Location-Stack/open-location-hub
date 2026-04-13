@@ -189,13 +189,27 @@ func Decode[T any](event Event) (T, error) {
 type EventBus struct {
 	mu          sync.RWMutex
 	nextID      int
-	subscribers map[int]chan Event
+	subscribers map[int]*eventSubscriber
 	stats       *RuntimeStats
+}
+
+const (
+	subscriberFlushSignalBuffer = 1
+	subscriberPendingLimit      = 1024
+)
+
+type eventSubscriber struct {
+	ch           chan Event
+	done         chan struct{}
+	flushSignal  chan struct{}
+	mu           sync.Mutex
+	pending      map[string]Event
+	pendingOrder []string
 }
 
 // NewEventBus constructs an EventBus.
 func NewEventBus() *EventBus {
-	return &EventBus{subscribers: map[int]chan Event{}, stats: newRuntimeStats()}
+	return &EventBus{subscribers: map[int]*eventSubscriber{}, stats: newRuntimeStats()}
 }
 
 // Subscribe registers a buffered event subscriber.
@@ -203,21 +217,21 @@ func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
 	if buffer <= 0 {
 		buffer = 1
 	}
-	ch := make(chan Event, buffer)
+	sub := newEventSubscriber(buffer)
 	b.mu.Lock()
 	id := b.nextID
 	b.nextID++
-	b.subscribers[id] = ch
+	b.subscribers[id] = sub
 	b.mu.Unlock()
 	if b.stats != nil {
 		b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
 	}
 
-	return ch, func() {
+	return sub.ch, func() {
 		b.mu.Lock()
 		if existing, ok := b.subscribers[id]; ok {
 			delete(b.subscribers, id)
-			close(existing)
+			existing.close()
 		}
 		if b.stats != nil {
 			b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
@@ -236,24 +250,203 @@ func (b *EventBus) Stats() *RuntimeStats {
 
 // Emit publishes an event to all subscribers.
 func (b *EventBus) Emit(event Event) {
+	b.EmitBatch([]Event{event})
+}
+
+// EmitBatch publishes multiple events to all subscribers in a single pass.
+func (b *EventBus) EmitBatch(events []Event) {
+	if len(events) == 0 {
+		return
+	}
 	start := time.Now()
 	b.mu.RLock()
-	subs := make([]chan Event, 0, len(b.subscribers))
-	for _, ch := range b.subscribers {
-		subs = append(subs, ch)
+	subs := make([]*eventSubscriber, 0, len(b.subscribers))
+	for _, sub := range b.subscribers {
+		subs = append(subs, sub)
 	}
 	b.mu.RUnlock()
 
-	for _, ch := range subs {
-		select {
-		case ch <- event:
-		default:
-			if b.stats != nil {
+	for _, event := range events {
+		for _, sub := range subs {
+			if !sub.deliver(event) && b.stats != nil {
 				b.stats.RecordEventBusDrop(event)
 			}
 		}
 	}
-	observability.Global().RecordEventBusEmit(context.Background(), string(event.Kind), time.Since(start))
+	kind := string(events[0].Kind)
+	if len(events) > 1 {
+		kind = "batch"
+	}
+	observability.Global().RecordEventBusEmit(context.Background(), kind, time.Since(start))
+}
+
+func newEventSubscriber(buffer int) *eventSubscriber {
+	sub := &eventSubscriber{
+		ch:          make(chan Event, buffer),
+		done:        make(chan struct{}),
+		flushSignal: make(chan struct{}, subscriberFlushSignalBuffer),
+		pending:     make(map[string]Event),
+	}
+	go sub.flushLoop()
+	return sub
+}
+
+func (s *eventSubscriber) close() {
+	close(s.done)
+}
+
+func (s *eventSubscriber) deliver(event Event) bool {
+	key, coalescible := eventCoalescingKey(event)
+	if coalescible {
+		s.mu.Lock()
+		if _, exists := s.pending[key]; exists {
+			s.pending[key] = event
+			s.mu.Unlock()
+			s.signalFlush()
+			return true
+		}
+		hasBacklog := len(s.pendingOrder) > 0
+		s.mu.Unlock()
+		if hasBacklog {
+			return s.enqueuePending(key, event)
+		}
+	}
+
+	select {
+	case <-s.done:
+		return false
+	case s.ch <- event:
+		if coalescible {
+			s.clearPending(key)
+		}
+		return true
+	default:
+		if !coalescible {
+			return false
+		}
+		return s.enqueuePending(key, event)
+	}
+}
+
+func (s *eventSubscriber) enqueuePending(key string, event Event) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.pending[key]; exists {
+		s.pending[key] = event
+		s.signalFlushLocked()
+		return true
+	}
+	if len(s.pendingOrder) >= subscriberPendingLimit {
+		return false
+	}
+	s.pending[key] = event
+	s.pendingOrder = append(s.pendingOrder, key)
+	s.signalFlushLocked()
+	return true
+}
+
+func (s *eventSubscriber) clearPending(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.pending[key]; !exists {
+		return
+	}
+	delete(s.pending, key)
+	for i, pendingKey := range s.pendingOrder {
+		if pendingKey == key {
+			s.pendingOrder = append(s.pendingOrder[:i], s.pendingOrder[i+1:]...)
+			return
+		}
+	}
+}
+
+func (s *eventSubscriber) flushLoop() {
+	for {
+		select {
+		case <-s.done:
+			close(s.ch)
+			return
+		case <-s.flushSignal:
+			s.flushPending()
+		}
+	}
+}
+
+func (s *eventSubscriber) flushPending() {
+	for {
+		key, event, ok := s.peekPending()
+		if !ok {
+			return
+		}
+		select {
+		case <-s.done:
+			return
+		case s.ch <- event:
+			s.removePending(key)
+		default:
+			return
+		}
+	}
+}
+
+func (s *eventSubscriber) peekPending() (string, Event, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for len(s.pendingOrder) > 0 {
+		key := s.pendingOrder[0]
+		event, ok := s.pending[key]
+		if ok {
+			return key, event, true
+		}
+		s.pendingOrder = s.pendingOrder[1:]
+	}
+	return "", Event{}, false
+}
+
+func (s *eventSubscriber) removePending(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pending, key)
+	if len(s.pendingOrder) == 0 {
+		return
+	}
+	if s.pendingOrder[0] == key {
+		s.pendingOrder = s.pendingOrder[1:]
+		return
+	}
+	for i, pendingKey := range s.pendingOrder {
+		if pendingKey == key {
+			s.pendingOrder = append(s.pendingOrder[:i], s.pendingOrder[i+1:]...)
+			return
+		}
+	}
+}
+
+func (s *eventSubscriber) signalFlush() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.signalFlushLocked()
+}
+
+func (s *eventSubscriber) signalFlushLocked() {
+	select {
+	case s.flushSignal <- struct{}{}:
+	default:
+	}
+}
+
+func eventCoalescingKey(event Event) (string, bool) {
+	switch event.Kind {
+	case EventLocation:
+		if payload, ok := event.Payload.(LocationEnvelope); ok {
+			return string(event.Kind) + "|" + string(event.Scope) + "|" + payload.Location.ProviderId + "|" + payload.Location.Source, true
+		}
+	case EventTrackableMotion:
+		if payload, ok := event.Payload.(TrackableMotionEnvelope); ok {
+			return string(event.Kind) + "|" + string(event.Scope) + "|" + payload.Motion.Location.ProviderId + "|" + payload.Motion.Id, true
+		}
+	}
+	return "", false
 }
 
 func newEvent[P EventPayload](kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID, originHubID string, payload P) (Event, error) {
