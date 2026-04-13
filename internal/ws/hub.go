@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +69,8 @@ type connection struct {
 	hub      *Hub
 	conn     *websocket.Conn
 	send     chan []byte
+	sendMu   sync.Mutex
+	pending  map[string][]byte
 	mu       sync.RWMutex
 	nextID   int
 	subs     map[int]subscription
@@ -183,12 +186,13 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &connection{
-		hub:    h,
-		conn:   conn,
-		send:   make(chan []byte, h.outboundBuffer),
-		subs:   map[int]subscription{},
-		nextID: 1,
-		done:   make(chan struct{}),
+		hub:     h,
+		conn:    conn,
+		send:    make(chan []byte, h.outboundBuffer),
+		pending: map[string][]byte{},
+		subs:    map[int]subscription{},
+		nextID:  1,
+		done:    make(chan struct{}),
 	}
 	c.configureSocket()
 	h.mu.Lock()
@@ -311,7 +315,9 @@ func (c *connection) writeLoop() {
 				c.close()
 				return
 			}
+			c.flushPending()
 		case <-ticker.C:
+			c.flushPending()
 			if err := c.writeFrame(websocket.PingMessage, nil); err != nil {
 				if !isExpectedClose(err) && !isNetClosed(err) {
 					c.hub.logger.Debug("websocket ping failed", zap.Error(err))
@@ -490,6 +496,10 @@ func (c *connection) sendWrapper(msg wrapper) {
 		}
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "queued", time.Since(start))
 	default:
+		if c.storePending(msg, raw) {
+			c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "coalesced", time.Since(start))
+			return
+		}
 		if c.hub.stats != nil {
 			c.hub.stats.RecordWebSocketOutboundDrop(msg.Topic, int64(len(c.send)))
 		}
@@ -500,6 +510,47 @@ func (c *connection) sendWrapper(msg wrapper) {
 
 func (c *connection) sendError(code int, description string) {
 	c.sendWrapper(wrapper{Event: "error", Code: &code, Description: &description})
+}
+
+func (c *connection) storePending(msg wrapper, raw []byte) bool {
+	key, ok := coalescibleWrapperKey(msg)
+	if !ok {
+		return false
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	c.pending[key] = raw
+	return true
+}
+
+func (c *connection) flushPending() {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	for key, raw := range c.pending {
+		select {
+		case <-c.done:
+			return
+		case c.send <- raw:
+			if c.hub.stats != nil {
+				c.hub.stats.AddWebSocketOutboundDepth(1)
+			}
+			delete(c.pending, key)
+		default:
+			return
+		}
+	}
+}
+
+func coalescibleWrapperKey(msg wrapper) (string, bool) {
+	if msg.Event != "message" || msg.SubscriptionID == nil {
+		return "", false
+	}
+	switch msg.Topic {
+	case topicLocationUpdates, topicLocationGeoJSON, topicTrackableMotions:
+		return msg.Topic + "|" + strconv.Itoa(*msg.SubscriptionID), true
+	default:
+		return "", false
+	}
 }
 
 func knownTopic(topic string) bool {

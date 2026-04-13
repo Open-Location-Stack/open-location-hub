@@ -196,6 +196,71 @@ func TestSendWrapperSafeDuringConcurrentClose(t *testing.T) {
 	wg.Wait()
 }
 
+func TestSendWrapperCoalescesHotTopicsWhenOutboundBufferIsFull(t *testing.T) {
+	t.Parallel()
+
+	bus := hub.NewEventBus()
+	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
+	conn := &connection{
+		hub:     h,
+		send:    make(chan []byte, 1),
+		pending: map[string][]byte{},
+		done:    make(chan struct{}),
+	}
+	subscriptionID := 7
+
+	conn.send <- []byte(`{"buffered":true}`)
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicLocationUpdates, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"source":"old"}]`)})
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicLocationUpdates, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"source":"new"}]`)})
+
+	if len(conn.pending) != 1 {
+		t.Fatalf("expected one pending coalesced payload, got %d", len(conn.pending))
+	}
+	conn.flushPending()
+	if len(conn.pending) != 1 {
+		t.Fatal("expected pending payload to remain while channel is still full")
+	}
+
+	<-conn.send
+	conn.flushPending()
+	if len(conn.pending) != 0 {
+		t.Fatal("expected pending payload to flush once channel has room")
+	}
+
+	raw := <-conn.send
+	var msg wrapper
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("decode coalesced wrapper failed: %v", err)
+	}
+	if string(msg.Payload) != `[{"source":"new"}]` {
+		t.Fatalf("expected latest payload to win, got %s", string(msg.Payload))
+	}
+}
+
+func TestSendWrapperStillDropsNonCoalescibleTopicsWhenOutboundBufferIsFull(t *testing.T) {
+	t.Parallel()
+
+	bus := hub.NewEventBus()
+	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
+	conn := &connection{
+		hub:     h,
+		send:    make(chan []byte, 1),
+		pending: map[string][]byte{},
+		done:    make(chan struct{}),
+	}
+	subscriptionID := 9
+
+	conn.send <- []byte(`{"buffered":true}`)
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicFenceEvents, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"id":"fence-1"}]`)})
+
+	if len(conn.pending) != 0 {
+		t.Fatal("expected discrete topic not to be coalesced")
+	}
+	if got := h.stats.Snapshot().WebSocketOutboundDrops; got != 1 {
+		t.Fatalf("expected one outbound drop, got %d", got)
+	}
+}
+
 func startTestHub(t *testing.T, bus *hub.EventBus, collisionsEnabled bool) (*websocket.Conn, func()) {
 	t.Helper()
 	server := httptest.NewServer(httpHandler(t, bus, collisionsEnabled))
