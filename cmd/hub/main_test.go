@@ -94,6 +94,20 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 	}
 }
 
+func TestFirstNonWhitespaceByte(t *testing.T) {
+	t.Parallel()
+
+	if got := firstNonWhitespaceByte([]byte(" \n\t[{")); got != '[' {
+		t.Fatalf("unexpected array prefix: %q", got)
+	}
+	if got := firstNonWhitespaceByte([]byte("\r\n {")); got != '{' {
+		t.Fatalf("unexpected object prefix: %q", got)
+	}
+	if got := firstNonWhitespaceByte([]byte(" \n\t")); got != 0 {
+		t.Fatalf("expected zero for whitespace-only payload, got %q", got)
+	}
+}
+
 func TestRunReturnsMQTTSubscriptionFailure(t *testing.T) {
 	t.Parallel()
 

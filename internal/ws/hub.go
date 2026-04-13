@@ -531,9 +531,9 @@ func parseFilter(topic string, params map[string]any) (any, error) {
 }
 
 func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.RawMessage, bool) {
+	items := make([]json.RawMessage, 0, len(events))
 	switch sub.topic {
 	case topicLocationUpdates:
-		items := make([]gen.Location, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventLocation {
 				continue
@@ -542,14 +542,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
-			items = append(items, envelope.Location)
+			items = append(items, envelope.LocationItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicLocationGeoJSON:
-		items := make([]hub.GeoJSONFeatureCollection, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventLocation {
 				continue
@@ -558,14 +553,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
-			items = append(items, envelope.GeoJSON)
+			items = append(items, envelope.GeoJSONItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicProximityUpdates:
-		items := make([]gen.Proximity, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventProximity {
 				continue
@@ -574,14 +564,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok {
 				continue
 			}
-			items = append(items, envelope.Proximity)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicTrackableMotions:
-		items := make([]gen.TrackableMotion, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventTrackableMotion {
 				continue
@@ -590,14 +575,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchMotion(sub.filter.(motionFilter), envelope.Motion) {
 				continue
 			}
-			items = append(items, envelope.Motion)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicFenceEvents:
-		items := make([]gen.FenceEvent, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventFenceEvent {
 				continue
@@ -606,14 +586,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.Event)
+			items = append(items, envelope.EventItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicFenceGeoJSON:
-		items := make([]hub.GeoJSONFeatureCollection, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventFenceEvent {
 				continue
@@ -622,14 +597,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.GeoJSON)
+			items = append(items, envelope.GeoJSONItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicCollisionEvents:
-		items := make([]gen.CollisionEvent, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventCollisionEvent {
 				continue
@@ -638,14 +608,9 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchCollision(sub.filter.(collisionFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.Event)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicMetadataChanges:
-		items := make([]hub.MetadataChange, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventMetadataChange {
 				continue
@@ -654,20 +619,36 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if !ok || !matchMetadata(sub.filter.(metadataFilter), change) {
 				continue
 			}
-			items = append(items, change)
+			items = append(items, change.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	default:
 		return nil, false
 	}
+	return marshalJSONArray(items)
 }
 
-func marshalPayload(value any) (json.RawMessage, bool) {
-	raw, err := json.Marshal(value)
-	return raw, err == nil
+func marshalJSONArray(items []json.RawMessage) (json.RawMessage, bool) {
+	if len(items) == 0 {
+		return nil, false
+	}
+	size := 2
+	for _, item := range items {
+		if len(item) == 0 {
+			return nil, false
+		}
+		size += len(item)
+	}
+	size += len(items) - 1
+	raw := make([]byte, 0, size)
+	raw = append(raw, '[')
+	for i, item := range items {
+		if i > 0 {
+			raw = append(raw, ',')
+		}
+		raw = append(raw, item...)
+	}
+	raw = append(raw, ']')
+	return raw, true
 }
 
 func parseLocationFilter(params map[string]any) locationFilter {

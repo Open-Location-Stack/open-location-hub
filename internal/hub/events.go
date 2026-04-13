@@ -62,6 +62,9 @@ type FenceEventEnvelope struct {
 	Event   gen.FenceEvent           `json:"event"`
 	Fence   gen.Fence                `json:"fence"`
 	GeoJSON GeoJSONFeatureCollection `json:"geojson,omitempty"`
+
+	eventJSON   json.RawMessage `json:"-"`
+	geoJSONJSON json.RawMessage `json:"-"`
 }
 
 // LocationEnvelope keeps a location payload together with its original input
@@ -69,22 +72,31 @@ type FenceEventEnvelope struct {
 type LocationEnvelope struct {
 	Location gen.Location             `json:"location"`
 	GeoJSON  GeoJSONFeatureCollection `json:"geojson,omitempty"`
+
+	locationJSON json.RawMessage `json:"-"`
+	geoJSONJSON  json.RawMessage `json:"-"`
 }
 
 // ProximityEnvelope is the outbound bus representation for raw proximities.
 type ProximityEnvelope struct {
 	Proximity gen.Proximity `json:"proximity"`
+
+	proximityJSON json.RawMessage `json:"-"`
 }
 
 // TrackableMotionEnvelope keeps a motion payload together with its GeoJSON
 // representation when useful for downstream consumers.
 type TrackableMotionEnvelope struct {
 	Motion gen.TrackableMotion `json:"motion"`
+
+	motionJSON json.RawMessage `json:"-"`
 }
 
 // CollisionEnvelope wraps a collision event.
 type CollisionEnvelope struct {
 	Event gen.CollisionEvent `json:"event"`
+
+	eventJSON json.RawMessage `json:"-"`
 }
 
 // MetadataChange is the lightweight resource-change notification emitted for
@@ -94,6 +106,8 @@ type MetadataChange struct {
 	Type      string    `json:"type"`
 	Operation string    `json:"operation"`
 	Timestamp time.Time `json:"timestamp"`
+
+	changeJSON json.RawMessage `json:"-"`
 }
 
 type EventPayload interface {
@@ -106,6 +120,38 @@ func (TrackableMotionEnvelope) eventPayload() {}
 func (FenceEventEnvelope) eventPayload()      {}
 func (CollisionEnvelope) eventPayload()       {}
 func (MetadataChange) eventPayload()          {}
+
+func (e LocationEnvelope) LocationItemJSON() json.RawMessage {
+	return itemJSON(e.locationJSON, e.Location)
+}
+
+func (e LocationEnvelope) GeoJSONItemJSON() json.RawMessage {
+	return itemJSON(e.geoJSONJSON, e.GeoJSON)
+}
+
+func (e ProximityEnvelope) ItemJSON() json.RawMessage {
+	return itemJSON(e.proximityJSON, e.Proximity)
+}
+
+func (e TrackableMotionEnvelope) ItemJSON() json.RawMessage {
+	return itemJSON(e.motionJSON, e.Motion)
+}
+
+func (e FenceEventEnvelope) EventItemJSON() json.RawMessage {
+	return itemJSON(e.eventJSON, e.Event)
+}
+
+func (e FenceEventEnvelope) GeoJSONItemJSON() json.RawMessage {
+	return itemJSON(e.geoJSONJSON, e.GeoJSON)
+}
+
+func (e CollisionEnvelope) ItemJSON() json.RawMessage {
+	return itemJSON(e.eventJSON, e.Event)
+}
+
+func (e MetadataChange) ItemJSON() json.RawMessage {
+	return itemJSON(e.changeJSON, metadataChangePublic(e))
+}
 
 // Event is the normalized hub event emitted once and then consumed by
 // transport-specific publishers such as MQTT and WebSocket.
@@ -214,6 +260,10 @@ func newEvent[P EventPayload](kind EventKind, scope EventScope, eventTime time.T
 	if eventTime.IsZero() {
 		eventTime = time.Now().UTC()
 	}
+	prepared, err := preparePayload(payload)
+	if err != nil {
+		return Event{}, err
+	}
 	event := Event{
 		Kind:        kind,
 		Scope:       scope,
@@ -223,8 +273,99 @@ func newEvent[P EventPayload](kind EventKind, scope EventScope, eventTime time.T
 		TrackableID: trackableID,
 		FenceID:     fenceID,
 		OriginHubID: originHubID,
-		Payload:     payload,
+		Payload:     prepared,
 	}
 	observability.Global().RecordEndToEnd(context.Background(), string(kind), string(scope), event.ProcessedAt.Sub(event.EventTime))
 	return event, nil
+}
+
+func itemJSON(raw json.RawMessage, value any) json.RawMessage {
+	if len(raw) != 0 {
+		return raw
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	return encoded
+}
+
+func preparePayload(payload EventPayload) (EventPayload, error) {
+	switch p := payload.(type) {
+	case LocationEnvelope:
+		if len(p.locationJSON) == 0 {
+			raw, err := json.Marshal(p.Location)
+			if err != nil {
+				return nil, err
+			}
+			p.locationJSON = raw
+		}
+		if len(p.geoJSONJSON) == 0 {
+			raw, err := json.Marshal(p.GeoJSON)
+			if err != nil {
+				return nil, err
+			}
+			p.geoJSONJSON = raw
+		}
+		return p, nil
+	case ProximityEnvelope:
+		if len(p.proximityJSON) == 0 {
+			raw, err := json.Marshal(p.Proximity)
+			if err != nil {
+				return nil, err
+			}
+			p.proximityJSON = raw
+		}
+		return p, nil
+	case TrackableMotionEnvelope:
+		if len(p.motionJSON) == 0 {
+			raw, err := json.Marshal(p.Motion)
+			if err != nil {
+				return nil, err
+			}
+			p.motionJSON = raw
+		}
+		return p, nil
+	case FenceEventEnvelope:
+		if len(p.eventJSON) == 0 {
+			raw, err := json.Marshal(p.Event)
+			if err != nil {
+				return nil, err
+			}
+			p.eventJSON = raw
+		}
+		if len(p.geoJSONJSON) == 0 {
+			raw, err := json.Marshal(p.GeoJSON)
+			if err != nil {
+				return nil, err
+			}
+			p.geoJSONJSON = raw
+		}
+		return p, nil
+	case CollisionEnvelope:
+		if len(p.eventJSON) == 0 {
+			raw, err := json.Marshal(p.Event)
+			if err != nil {
+				return nil, err
+			}
+			p.eventJSON = raw
+		}
+		return p, nil
+	case MetadataChange:
+		if len(p.changeJSON) == 0 {
+			raw, err := json.Marshal(metadataChangePublic(p))
+			if err != nil {
+				return nil, err
+			}
+			p.changeJSON = raw
+		}
+		return p, nil
+	default:
+		return payload, nil
+	}
+}
+
+func metadataChangePublic(change MetadataChange) MetadataChange {
+	change.changeJSON = nil
+	return change
 }

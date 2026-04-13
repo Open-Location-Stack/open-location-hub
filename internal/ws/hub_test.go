@@ -107,6 +107,32 @@ func TestMetadataChangeEventReachesSubscribedClient(t *testing.T) {
 	}
 }
 
+func TestPayloadBatchForSubscriptionBuildsJSONArrayFromCachedItems(t *testing.T) {
+	t.Parallel()
+
+	location := testLocation(t)
+	raw, ok := payloadBatchForSubscription(subscription{
+		id:     1,
+		topic:  topicLocationUpdates,
+		filter: locationFilter{},
+	}, []hub.Event{{
+		Kind:    hub.EventLocation,
+		Scope:   hub.ScopeLocal,
+		Payload: hub.LocationEnvelope{Location: location},
+	}})
+	if !ok {
+		t.Fatal("expected payload batch")
+	}
+
+	var body []gen.Location
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode batch payload failed: %v", err)
+	}
+	if len(body) != 1 || body[0].ProviderId != location.ProviderId {
+		t.Fatalf("unexpected payload: %+v", body)
+	}
+}
+
 func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 	t.Parallel()
 
