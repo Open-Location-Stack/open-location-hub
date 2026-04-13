@@ -17,8 +17,6 @@ import (
 )
 
 func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -26,7 +24,13 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 	}()
 
 	_, appBaseURL, brokerURL := startHubNoAuth(t)
-	providers := []string{"scenario-rest-1", "scenario-rest-2", "scenario-rest-3", "scenario-rest-4"}
+	token := adminToken(t)
+	providers := []string{
+		scopedID(t, "scenario-rest-1"),
+		scopedID(t, "scenario-rest-2"),
+		scopedID(t, "scenario-rest-3"),
+		scopedID(t, "scenario-rest-4"),
+	}
 
 	topics := make([]string, 0, len(providers)*2)
 	for _, providerID := range providers {
@@ -37,13 +41,17 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 
 	wsConn := dialWS(t, appBaseURL)
 	defer wsConn.Close()
-	writeWSJSON(t, wsConn, map[string]any{"event": "subscribe", "topic": "location_updates"})
+	writeWSJSON(t, wsConn, map[string]any{
+		"event":  "subscribe",
+		"topic":  "location_updates",
+		"params": map[string]any{"token": token},
+	})
 	ack := readWSJSON(t, wsConn)
 	if ack.Event != "subscribed" || ack.SubscriptionID == nil {
 		t.Fatalf("unexpected subscribe ack: %+v", ack)
 	}
 
-	zoneID := createScenarioZone(t, appBaseURL)
+	zoneID := createScenarioZone(t, appBaseURL, token)
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(providers))
@@ -51,7 +59,7 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 		wg.Add(1)
 		go func(index int, provider string) {
 			defer wg.Done()
-			resp, err := requestJSONNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", []map[string]any{{
+			resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 				"crs":           "local",
 				"position":      pointPayload(float64(5+index), float64(7+index)),
 				"provider_id":   provider,
@@ -93,8 +101,6 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 }
 
 func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -102,7 +108,8 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 	}()
 
 	_, appBaseURL, brokerURL := startHubNoAuth(t)
-	providers := []string{"scenario-rest", "scenario-mqtt"}
+	token := adminToken(t)
+	providers := []string{scopedID(t, "scenario-rest"), scopedID(t, "scenario-mqtt")}
 
 	topics := []string{
 		mqtt.TopicLocationLocal(providers[0]),
@@ -115,13 +122,17 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 
 	wsConn := dialWS(t, appBaseURL)
 	defer wsConn.Close()
-	writeWSJSON(t, wsConn, map[string]any{"event": "subscribe", "topic": "location_updates"})
+	writeWSJSON(t, wsConn, map[string]any{
+		"event":  "subscribe",
+		"topic":  "location_updates",
+		"params": map[string]any{"token": token},
+	})
 	ack := readWSJSON(t, wsConn)
 	if ack.Event != "subscribed" || ack.SubscriptionID == nil {
 		t.Fatalf("unexpected subscribe ack: %+v", ack)
 	}
 
-	zoneID := createScenarioZone(t, appBaseURL)
+	zoneID := createScenarioZone(t, appBaseURL, token)
 
 	publisher := mqttPublisher(t, brokerURL)
 	defer publisher.Disconnect(250)
@@ -131,7 +142,7 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		resp, err := requestJSONNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", []map[string]any{{
+		resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 			"crs":           "local",
 			"position":      pointPayload(5, 7),
 			"provider_id":   providers[0],
@@ -187,8 +198,6 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 }
 
 func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -196,19 +205,20 @@ func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
 	}()
 
 	_, appBaseURL, brokerURL := startHubNoAuth(t)
-	zoneID := createScenarioZone(t, appBaseURL)
+	token := adminToken(t)
+	zoneID := createScenarioZone(t, appBaseURL, token)
 
 	fences := []scenarioFence{
-		createLocalPointFence(t, appBaseURL, zoneID, "receiving", 10, 10, 4),
-		createLocalPointFence(t, appBaseURL, zoneID, "storage", 30, 10, 4),
-		createLocalPointFence(t, appBaseURL, zoneID, "shipping", 50, 10, 4),
+		createLocalPointFence(t, appBaseURL, token, zoneID, "receiving", 10, 10, 4),
+		createLocalPointFence(t, appBaseURL, token, zoneID, "storage", 30, 10, 4),
+		createLocalPointFence(t, appBaseURL, token, zoneID, "shipping", 50, 10, 4),
 	}
 
 	objects := make([]movingObject, 0, 10)
 	topics := make([]string, 0, 20)
 	for i := range 10 {
-		providerID := fmt.Sprintf("mover-%02d", i+1)
-		trackableID := createTrackable(t, appBaseURL, fmt.Sprintf("Object %02d", i+1))
+		providerID := scopedID(t, fmt.Sprintf("mover-%02d", i+1))
+		trackableID := createTrackable(t, appBaseURL, token, fmt.Sprintf("%s-object-%02d", scopedID(t, "trackable"), i+1))
 		laneY := float64(10)
 		if i%2 == 1 {
 			laneY = 12
@@ -235,7 +245,7 @@ func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
 	}
 
 	for _, step := range steps {
-		postMovementStep(t, appBaseURL, zoneID, objects, step.x)
+		postMovementStep(t, appBaseURL, token, zoneID, objects, step.x)
 		for _, object := range objects {
 			motion := waitForTrackableMotion(t, messages[mqtt.TopicTrackableMotionLocal(object.trackableID)], 10*time.Second)
 			assertMotionLocation(t, motion, object, step.x)
@@ -253,10 +263,12 @@ func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
 	assertNoFenceEvents(t, messages, objects, 250*time.Millisecond)
 }
 
-func createScenarioZone(t *testing.T, appBaseURL string) string {
+func createScenarioZone(t *testing.T, appBaseURL, token string) string {
 	t.Helper()
 
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", "", georeferencedZonePayload(0.5, 0.5, false))
+	payload := georeferencedZonePayload(0.5, 0.5, false)
+	payload["name"] = scopedID(t, "scenario-zone")
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", token, payload)
 	assertStatus(t, createResp, http.StatusCreated)
 	var zone struct {
 		ID string `json:"id"`
@@ -268,10 +280,10 @@ func createScenarioZone(t *testing.T, appBaseURL string) string {
 	return zone.ID
 }
 
-func createTrackable(t *testing.T, appBaseURL, name string) string {
+func createTrackable(t *testing.T, appBaseURL, token, name string) string {
 	t.Helper()
 
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/trackables", "", map[string]any{
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/trackables", token, map[string]any{
 		"type": "omlox",
 		"name": name,
 	})
@@ -286,10 +298,11 @@ func createTrackable(t *testing.T, appBaseURL, name string) string {
 	return trackable.ID
 }
 
-func createLocalPointFence(t *testing.T, appBaseURL, zoneID, foreignID string, x, y, radius float64) scenarioFence {
+func createLocalPointFence(t *testing.T, appBaseURL, token, zoneID, foreignID string, x, y, radius float64) scenarioFence {
 	t.Helper()
+	foreignID = scopedID(t, foreignID)
 
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/fences", "", map[string]any{
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/fences", token, map[string]any{
 		"crs":        "local",
 		"zone_id":    zoneID,
 		"foreign_id": foreignID,
@@ -310,7 +323,7 @@ func createLocalPointFence(t *testing.T, appBaseURL, zoneID, foreignID string, x
 	}
 }
 
-func postMovementStep(t *testing.T, appBaseURL, zoneID string, objects []movingObject, x float64) {
+func postMovementStep(t *testing.T, appBaseURL, token, zoneID string, objects []movingObject, x float64) {
 	t.Helper()
 
 	var wg sync.WaitGroup
@@ -319,7 +332,7 @@ func postMovementStep(t *testing.T, appBaseURL, zoneID string, objects []movingO
 		wg.Add(1)
 		go func(object movingObject) {
 			defer wg.Done()
-			resp, err := requestJSONNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", []map[string]any{{
+			resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 				"crs":           "local",
 				"position":      pointPayload(x, object.laneY),
 				"provider_id":   object.providerID,
@@ -509,6 +522,10 @@ func minDuration(a, b time.Duration) time.Duration {
 }
 
 func requestJSONNoFail(method, target string, body any) (*http.Response, error) {
+	return requestJSONAuthorizedNoFail(method, target, "", body)
+}
+
+func requestJSONAuthorizedNoFail(method, target, token string, body any) (*http.Response, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("json marshal failed: %w", err)
@@ -518,6 +535,9 @@ func requestJSONNoFail(method, target string, body any) (*http.Response, error) 
 		return nil, fmt.Errorf("request creation failed: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)

@@ -16,7 +16,7 @@ Key fields from section 6.7.13:
 - `name` (string)
 - `geometry` (Polygon)
 - `extrusion` (number)
-- `radius` (number)
+- `radius` (number, meters; per-trackable override for collision and fallback geometry extent)
 - `location_providers` (list of provider IDs)
 - geofencing/collision parameters:
   - `fence_timeout`

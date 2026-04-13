@@ -41,6 +41,7 @@ type Config struct {
 	CollisionsEnabled                     bool
 	CollisionStateTTL                     time.Duration
 	CollisionCollidingDebounce            time.Duration
+	CollisionDefaultRadiusMeters          float64
 	ProximityResolutionEntryConfidenceMin float64
 	ProximityResolutionExitGraceDuration  time.Duration
 	ProximityResolutionBoundaryGrace      float64
@@ -141,6 +142,7 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		CollisionsEnabled:                     boolEnvWithLookup(lookup, "COLLISIONS_ENABLED", false),
 		CollisionStateTTL:                     durationEnvWithLookup(lookup, "COLLISION_STATE_TTL", 2*time.Minute),
 		CollisionCollidingDebounce:            durationEnvWithLookup(lookup, "COLLISION_COLLIDING_DEBOUNCE", 5*time.Second),
+		CollisionDefaultRadiusMeters:          floatEnvWithLookup(lookup, "COLLISION_DEFAULT_RADIUS_METERS", 0.5),
 		ProximityResolutionEntryConfidenceMin: floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
 		ProximityResolutionExitGraceDuration:  durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
 		ProximityResolutionBoundaryGrace:      floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
@@ -225,6 +227,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.CollisionCollidingDebounce < 0 {
 		return Config{}, fmt.Errorf("COLLISION_COLLIDING_DEBOUNCE must be >= 0")
+	}
+	if cfg.CollisionDefaultRadiusMeters <= 0 {
+		return Config{}, fmt.Errorf("COLLISION_DEFAULT_RADIUS_METERS must be > 0")
 	}
 	if cfg.ProximityResolutionEntryConfidenceMin < 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN must be >= 0")

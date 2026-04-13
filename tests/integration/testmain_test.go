@@ -2,13 +2,27 @@ package integration
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"testing"
 )
 
 func init() {
 	configureTestcontainersDockerEnv()
+}
+
+func TestMain(m *testing.M) {
+	configureTestcontainersDockerEnv()
+	code := m.Run()
+	if err := shutdownIntegrationSuite(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "integration suite shutdown failed: %v\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
+	os.Exit(code)
 }
 
 func configureTestcontainersDockerEnv() {

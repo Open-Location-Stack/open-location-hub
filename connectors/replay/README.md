@@ -14,8 +14,10 @@ Replay behavior:
   `--interpolation-rate-hz`
 - batches due replay emissions into fewer WebSocket publishes via
   `--batch-window-ms` and `--max-batch-size`
-- best-effort bootstraps referenced providers and trackables when `HUB_HTTP_URL`
-  is configured
+- best-effort bootstraps referenced providers and, optionally, trackables when
+  `HUB_HTTP_URL` is configured
+- applies a configurable default trackable radius during bootstrap so collision
+  benchmarking can match the dataset
 
 ## Files
 
@@ -55,6 +57,10 @@ Optional but recommended:
 - `REPLAY_BATCH_WINDOW_MS`: coalesce replay events due inside this window into one
   WebSocket publish
 - `REPLAY_MAX_BATCH_SIZE`: cap the number of locations sent in one replay publish
+- `REPLAY_BOOTSTRAP_TRACKABLES`: create or update referenced trackables before
+  replay, default `true`
+- `REPLAY_TRACKABLE_RADIUS_METERS`: radius applied to bootstrapped trackables,
+  default `2.0`
 
 ## Setup
 
@@ -137,6 +143,52 @@ uv run --project connectors/replay python connectors/replay/connector.py \
   --max-batch-size 256
 ```
 
+Replay without trackable bootstrap:
+
+```bash
+uv run --project connectors/replay python connectors/replay/connector.py \
+  --env-file connectors/replay/.env.local \
+  --input connectors/opensky/logs/location_updates.ndjson \
+  --no-bootstrap-trackables
+```
+
+## Benchmark Runner
+
+The replay connector also includes a repeatable benchmark script that runs the
+same captured dataset at several interpolation rates and writes CSV summaries to
+`connectors/replay/reports/`.
+
+Default benchmark profile:
+
+- dataset: `connectors/replay/benchmarks/opensky-germany-2026-04-08/location_updates.ndjson`
+- interpolation rates: `1`, `2`, `4`, and `10` Hz
+- target replay duration per run: about 30 seconds
+- timeout per run: 35 seconds
+- batch settings: `25 ms` window and `256` max batch size
+- trackable bootstrap enabled with `50 m` radius for aircraft
+
+The benchmark script computes an acceleration factor automatically so the full
+replay window is compressed to the target duration. For each run it records:
+
+- expected replay window and actual runtime
+- logged, scheduled, and synthetic location counts
+- whether the run finished before timeout
+- native and decision queue drop deltas from the hub runtime
+- raw `location_updates` observed during replay
+- derived `trackable_motions` observed during replay
+- `fence_events` split into entry and exit counts
+- `collision_events` count plus whether collision reporting was enabled
+
+Run it against the shared local hub:
+
+```bash
+uv run --project connectors/replay python connectors/replay/benchmark.py
+```
+
+The script uses `HUB_HTTP_URL`, `HUB_WS_URL`, and `HUB_TOKEN` when set. If
+`HUB_TOKEN` is missing, it falls back to `local-hub/fetch_demo_token.sh` when
+available.
+
 ## Input Format
 
 The connector expects the NDJSON shape produced by the shared logging scripts:
@@ -194,3 +246,5 @@ Batching behavior:
 - only GeoJSON `Point` locations are supported
 - replay can recreate provider and trackable IDs, but it cannot restore
   metadata that was never present in the logged location payload
+- trackable bootstrap writes only the replay-visible fields: provider mapping,
+  name, properties, and configured radius

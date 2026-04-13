@@ -51,6 +51,18 @@ compose-down:
 compose-logs:
 	docker compose logs -f --tail=200
 
+local-hub-up:
+	./local-hub/start_demo.sh
+
+local-hub-down:
+	./local-hub/stop_demo.sh
+
+local-hub-token:
+	./local-hub/fetch_demo_token.sh
+
+local-hub-logs service="hub":
+	docker compose -f local-hub/demo-compose.yml --env-file local-hub/demo.env logs -f --tail=200 {{service}}
+
 fmt:
 	gofmt -w cmd internal tests
 

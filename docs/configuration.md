@@ -48,6 +48,7 @@ HTTP request decoding behavior:
 - `COLLISIONS_ENABLED` (`true`/`false`, default `false`)
 - `COLLISION_STATE_TTL` (duration, default `2m`)
 - `COLLISION_COLLIDING_DEBOUNCE` (duration, default `5s`)
+- `COLLISION_DEFAULT_RADIUS_METERS` (number, default `0.5`)
 
 Stateful ingest behavior:
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed in the in-memory processing state before fan-out work
@@ -62,6 +63,10 @@ Stateful ingest behavior:
 - when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
+- collision thresholds are expressed in meters
+- `Trackable.radius` is the per-trackable collision-radius override in meters; when it is absent, the hub falls back to `COLLISION_DEFAULT_RADIUS_METERS`
+- WGS84 collision checks use a cheap short-range planar approximation that converts lon/lat deltas to approximate meters before threshold comparison; this favors hot-path throughput over geodesic precision
+- fallback collision geometry for trackables without explicit polygon geometry uses the same meter-based approximation so emitted geometry remains consistent with the runtime threshold model
 - `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
 
 RPC behavior:
@@ -128,7 +133,7 @@ Telemetry behavior:
 - invalid telemetry configuration fails startup only when telemetry is enabled
 - metrics are intentionally low-cardinality and are labeled only with bounded dimensions such as transport, signal type, stage, feature, and outcome
 - entity identifiers such as `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision pair identifiers are emitted on spans and structured logs for drill-down, not on normal metric series
-- runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
+- runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, queue and outbound drop counters, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
 - the local demo stack under [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) enables all three OTLP signals by default and routes them to SigNoz
 
 ## RPC Security Defaults

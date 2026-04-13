@@ -184,6 +184,7 @@ type Collision struct {
 
 // CollisionEvent Collision event model reserved for future collision processing support.
 type CollisionEvent struct {
+	// CenterDistance Approximate center-to-center separation in meters at evaluation time.
 	CenterDistance *float32                      `json:"center_distance,omitempty"`
 	CollisionArea  *CollisionEvent_CollisionArea `json:"collision_area,omitempty"`
 	CollisionTime  *time.Time                    `json:"collision_time,omitempty"`
@@ -622,7 +623,10 @@ type Trackable struct {
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
-	Radius     *float32             `json:"radius,omitempty"`
+
+	// Radius Collision and fallback-geometry radius in meters. When present, this
+	// overrides the runtime default collision radius for this trackable.
+	Radius *float32 `json:"radius,omitempty"`
 
 	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
@@ -675,7 +679,10 @@ type TrackableWrite struct {
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
-	Radius     *float32             `json:"radius,omitempty"`
+
+	// Radius Collision and fallback-geometry radius in meters. When present, this
+	// overrides the runtime default collision radius for this trackable.
+	Radius *float32 `json:"radius,omitempty"`
 
 	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`

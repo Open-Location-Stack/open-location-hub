@@ -21,56 +21,63 @@ type wsMessage struct {
 }
 
 func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
 		}
 	}()
 	_, appBaseURL, _ := startHubNoAuth(t)
+	token := adminToken(t)
+	providerID := scopedID(t, "provider-ws")
 	conn := dialWS(t, appBaseURL)
 	defer conn.Close()
 
-	writeWSJSON(t, conn, map[string]any{"event": "subscribe", "topic": "location_updates"})
+	writeWSJSON(t, conn, map[string]any{
+		"event":  "subscribe",
+		"topic":  "location_updates",
+		"params": map[string]any{"token": token},
+	})
 	ack := readWSJSON(t, conn)
 	if ack.Event != "subscribed" || ack.SubscriptionID == nil {
 		t.Fatalf("unexpected subscribe ack: %+v", ack)
 	}
 
 	zonePayload := georeferencedZonePayload(0.5, 0.5, false)
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", "", zonePayload)
+	zonePayload["name"] = scopedID(t, "websocket-zone")
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", token, zonePayload)
 	assertStatus(t, createResp, http.StatusCreated)
 	var zone struct {
 		ID string `json:"id"`
 	}
 	decodeResponse(t, createResp, &zone)
 
-	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", "", []map[string]any{{
+	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
-		"provider_id":   "provider-ws",
+		"provider_id":   providerID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
 	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
 
-	msg := readWSJSON(t, conn)
-	if msg.Event != "message" || msg.Topic != "location_updates" {
-		t.Fatalf("unexpected ws location message: %+v", msg)
+	body := waitForWSProvider(t, conn, providerID, 10*time.Second)
+	seenCRS := map[string]bool{}
+	seenProvider := false
+	for _, location := range body {
+		if location.ProviderId != providerID {
+			continue
+		}
+		seenProvider = true
+		if location.Crs != nil {
+			seenCRS[*location.Crs] = true
+		}
 	}
-	var body []gen.Location
-	if err := json.Unmarshal(msg.Payload, &body); err != nil {
-		t.Fatalf("decode ws payload failed: %v", err)
-	}
-	if len(body) != 1 || body[0].ProviderId != "provider-ws" {
-		t.Fatalf("unexpected ws body: %+v", body)
+	if !seenProvider || !seenCRS["local"] {
+		t.Fatalf("unexpected ws body for %s: %+v", providerID, body)
 	}
 }
 
 func TestWebSocketRejectsDisabledCollisionTopic(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker/testcontainers unavailable: %v", r)
@@ -115,4 +122,27 @@ func readWSJSON(t *testing.T, conn *websocket.Conn) wsMessage {
 		t.Fatalf("read websocket failed: %v", err)
 	}
 	return msg
+}
+
+func waitForWSProvider(t *testing.T, conn *websocket.Conn, providerID string, timeout time.Duration) []gen.Location {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		msg := readWSJSON(t, conn)
+		if msg.Event != "message" || msg.Topic != "location_updates" {
+			continue
+		}
+		var body []gen.Location
+		if err := json.Unmarshal(msg.Payload, &body); err != nil {
+			t.Fatalf("decode ws payload failed: %v", err)
+		}
+		for _, item := range body {
+			if item.ProviderId == providerID {
+				return body
+			}
+		}
+	}
+	t.Fatalf("timed out waiting for websocket provider %s", providerID)
+	return nil
 }

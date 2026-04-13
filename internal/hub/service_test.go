@@ -99,6 +99,84 @@ func TestFenceContainsPointForPointFence(t *testing.T) {
 	}
 }
 
+func TestEffectiveRadiusMetersUsesConfiguredDefault(t *testing.T) {
+	t.Parallel()
+
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox}
+	if got := effectiveRadiusMeters(trackable, 12.5); got != 12.5 {
+		t.Fatalf("expected configured default radius, got %v", got)
+	}
+}
+
+func TestEffectiveRadiusMetersPrefersTrackableOverride(t *testing.T) {
+	t.Parallel()
+
+	trackable := gen.Trackable{
+		Id:     uuidAsOpenAPI(uuid.New()),
+		Type:   gen.TrackableTypeOmlox,
+		Radius: float32Ptr(7),
+	}
+	if got := effectiveRadiusMeters(trackable, 12.5); got != 7 {
+		t.Fatalf("expected trackable radius override, got %v", got)
+	}
+}
+
+func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
+	t.Parallel()
+
+	crs := "EPSG:4326"
+	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
+	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.3778})}
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(50)}
+
+	if motionsMayCollide(leftMotion, trackable, rightMotion, trackable, defaultCollisionRadiusMeters) {
+		t.Fatal("expected motions about 100m apart not to collide with 50m radii")
+	}
+}
+
+func TestMotionsCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
+	t.Parallel()
+
+	crs := "EPSG:4326"
+	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
+	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.37735})}
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(30)}
+	leftPoint, err := point2D(leftMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("left point decode failed: %v", err)
+	}
+	rightPoint, err := point2D(rightMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("right point decode failed: %v", err)
+	}
+
+	colliding, _, distance := motionsCollide(leftMotion, trackable, rightMotion, trackable, leftPoint, rightPoint, defaultCollisionRadiusMeters)
+	if !colliding {
+		t.Fatal("expected motions about 50m apart to collide with 30m radii")
+	}
+	if distance < 40 || distance > 60 {
+		t.Fatalf("expected distance near 50m, got %v", distance)
+	}
+}
+
+func TestPointSquarePolygonConvertsMetersForWGS84(t *testing.T) {
+	t.Parallel()
+
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "point", [2]float32{8.5411, 47.3769})
+	polygon := pointSquarePolygon(location, 50)
+	if polygon == nil {
+		t.Fatal("expected fallback polygon")
+	}
+	bounds, err := polygonBounds(*polygon)
+	if err != nil {
+		t.Fatalf("polygon bounds failed: %v", err)
+	}
+	if bounds.maxY-bounds.minY >= 0.01 {
+		t.Fatalf("expected meter-based WGS84 envelope, got latitude span %v", bounds.maxY-bounds.minY)
+	}
+}
+
 func TestNormalizeZoneRejectsInvalidProximityResolutionProperties(t *testing.T) {
 	t.Parallel()
 

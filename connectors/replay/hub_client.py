@@ -56,6 +56,7 @@ class HubRESTClient:
         trackable_id: str,
         name: str,
         provider_id: str,
+        radius: float | None = None,
         properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not self.config.http_url:
@@ -67,6 +68,8 @@ class HubRESTClient:
             "location_providers": [provider_id],
             "properties": properties or {},
         }
+        if radius is not None:
+            payload["radius"] = radius
         return self._ensure_resource("/v2/trackables", f"/v2/trackables/{trackable_id}", payload)
 
     def _ensure_resource(self, collection_path: str, item_path: str, payload: dict[str, Any]) -> dict[str, Any]:

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import copy
 import json
+import math
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -58,15 +58,14 @@ def load_logged_locations(path: str) -> list[LoggedLocation]:
             for payload_index, raw_location in enumerate(payload):
                 if not isinstance(raw_location, dict):
                     continue
-                location = copy.deepcopy(raw_location)
-                timestamp = parse_timestamp(location.get("timestamp_generated")) or fallback_timestamp
+                timestamp = parse_timestamp(raw_location.get("timestamp_generated")) or fallback_timestamp
                 if timestamp is None:
                     raise ValueError(f"{path}:{line_number} is missing both timestamp_generated and received_at")
                 logged_locations.append(
                     LoggedLocation(
                         order=(line_number * 1000) + payload_index,
                         timestamp=timestamp,
-                        location=location,
+                        location=raw_location,
                     )
                 )
     if not logged_locations:
@@ -102,6 +101,13 @@ def build_replay_schedule(
             )
         )
     return replay_schedule
+
+
+@dataclass(frozen=True)
+class ReplaySchedulePreview:
+    scheduled_locations: int
+    synthetic_locations: int
+    source_span_seconds: float
 
 
 @dataclass(frozen=True)
@@ -162,14 +168,46 @@ def interpolate_logged_locations(
         )
         previous_by_key[key] = item
 
-    return sorted(expanded, key=lambda item: (item.timestamp, item.order))
+    return expanded
+
+
+def preview_replay_schedule(
+    logged_locations: list[LoggedLocation],
+    interpolation_rate_hz: float,
+) -> ReplaySchedulePreview:
+    if not logged_locations:
+        raise ValueError("logged_locations must not be empty")
+    if interpolation_rate_hz < 0:
+        raise ValueError("interpolation_rate_hz must be greater than or equal to 0")
+
+    synthetic_locations = 0
+    scheduled_locations = len(logged_locations)
+    if interpolation_rate_hz > 0:
+        interval_seconds = 1.0 / interpolation_rate_hz
+        previous_by_key: dict[str, LoggedLocation] = {}
+        for item in logged_locations:
+            key = replay_object_key(item.location)
+            previous = previous_by_key.get(key)
+            if previous is not None:
+                elapsed = (item.timestamp - previous.timestamp).total_seconds()
+                if elapsed > interval_seconds:
+                    synthetic_locations += int(math.nextafter(elapsed, 0.0) / interval_seconds)
+            previous_by_key[key] = item
+        scheduled_locations += synthetic_locations
+
+    source_span_seconds = (logged_locations[-1].timestamp - logged_locations[0].timestamp).total_seconds()
+    return ReplaySchedulePreview(
+        scheduled_locations=scheduled_locations,
+        synthetic_locations=synthetic_locations,
+        source_span_seconds=source_span_seconds,
+    )
 
 
 def interpolate_location(previous: dict[str, Any], current: dict[str, Any], fraction: float) -> dict[str, Any]:
     previous_coordinates = coordinates(previous)
     current_coordinates = coordinates(current)
 
-    synthetic = copy.deepcopy(current)
+    synthetic = dict(current)
     synthetic["position"] = {
         "type": "Point",
         "coordinates": [
@@ -190,12 +228,13 @@ def prepare_location_for_replay(
     replay_timestamp: datetime,
     synthetic: bool,
 ) -> dict[str, Any]:
-    replay_location = copy.deepcopy(location)
+    replay_location = dict(location)
     replay_location["timestamp_generated"] = replay_timestamp.astimezone(UTC).isoformat()
-    properties = replay_location.setdefault("properties", {})
-    if isinstance(properties, dict):
-        properties["replay_original_timestamp_generated"] = original_timestamp.astimezone(UTC).isoformat()
-        properties["replay_synthetic_interpolation"] = synthetic
+    raw_properties = replay_location.get("properties")
+    properties = dict(raw_properties) if isinstance(raw_properties, dict) else {}
+    properties["replay_original_timestamp_generated"] = original_timestamp.astimezone(UTC).isoformat()
+    properties["replay_synthetic_interpolation"] = synthetic
+    replay_location["properties"] = properties
     return replay_location
 
 

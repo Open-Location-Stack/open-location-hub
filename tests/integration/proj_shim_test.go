@@ -8,8 +8,6 @@ import (
 )
 
 func TestProjPkgConfigShimBuildsInDockerWithoutSystemPkgConfig(t *testing.T) {
-	t.Parallel()
-
 	defer func() {
 		if r := recover(); r != nil {
 			t.Skipf("docker build unavailable: %v", r)

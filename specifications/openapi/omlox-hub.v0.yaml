@@ -921,6 +921,9 @@ components:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         radius:
           type: number
+          description: |
+            Collision and fallback-geometry radius in meters. When present, this
+            overrides the runtime default collision radius for this trackable.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
@@ -962,6 +965,9 @@ components:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         radius:
           type: number
+          description: |
+            Collision and fallback-geometry radius in meters. When present, this
+            overrides the runtime default collision radius for this trackable.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
@@ -1292,6 +1298,7 @@ components:
             - $ref: '#/components/schemas/Point'
         center_distance:
           type: number
+          description: Approximate center-to-center separation in meters at evaluation time.
 
     TrackableMotion:
       type: object

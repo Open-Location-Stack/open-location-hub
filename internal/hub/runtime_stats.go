@@ -60,6 +60,10 @@ func (s *RuntimeStats) TelemetrySnapshot() observability.RuntimeMetricsSnapshot 
 		return observability.RuntimeMetricsSnapshot{}
 	}
 	return observability.RuntimeMetricsSnapshot{
+		EventBusDrops:          int64(s.eventBusDrops.Load()),
+		NativeQueueDrops:       int64(s.nativeQueueDrops.Load()),
+		DecisionQueueDrops:     int64(s.decisionQueueDrops.Load()),
+		WebSocketOutboundDrops: int64(s.websocketOutboundDrops.Load()),
 		NativeQueueDepth:       s.nativeQueueDepth.Load(),
 		DecisionQueueDepth:     s.decisionQueueDepth.Load(),
 		EventBusSubscribers:    s.eventBusSubscribers.Load(),

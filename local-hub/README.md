@@ -42,7 +42,7 @@ Useful next stops after the stack is up:
 Start the local stack:
 
 ```bash
-local-hub/start_demo.sh
+just local-hub-up
 ```
 
 The first run also clones the pinned SigNoz deploy repository revision declared
@@ -53,12 +53,26 @@ account and provisions the default Open RTLS Hub dashboards.
 Stop it:
 
 ```bash
-local-hub/stop_demo.sh
+just local-hub-down
 ```
 
 Fetch an admin token:
 
 ```bash
+just local-hub-token
+```
+
+Tail hub logs:
+
+```bash
+just local-hub-logs
+```
+
+The underlying scripts remain available when you want to call them directly:
+
+```bash
+local-hub/start_demo.sh
+local-hub/stop_demo.sh
 local-hub/fetch_demo_token.sh
 ```
 

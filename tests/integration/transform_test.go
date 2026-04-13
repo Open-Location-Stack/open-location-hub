@@ -3,56 +3,51 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/mqtt"
 	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/modules/redis"
-	tcnetwork "github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
-	t.Parallel()
-
 	ctx, appBaseURL, brokerURL := startHubNoAuth(t)
+	token := adminToken(t)
+	providerLocalID := scopedID(t, "provider-local")
+	providerWGSID := scopedID(t, "provider-wgs")
 	subscriber, messages := mqttSubscriber(t, brokerURL,
-		mqtt.TopicLocationLocal("provider-local"),
-		mqtt.TopicLocationEPSG4326("provider-local"),
-		mqtt.TopicLocationLocal("provider-wgs"),
-		mqtt.TopicLocationEPSG4326("provider-wgs"),
+		mqtt.TopicLocationLocal(providerLocalID),
+		mqtt.TopicLocationEPSG4326(providerLocalID),
+		mqtt.TopicLocationLocal(providerWGSID),
+		mqtt.TopicLocationEPSG4326(providerWGSID),
 	)
 	defer subscriber.Disconnect(250)
 
 	zonePayload := georeferencedZonePayload(0.5, 0.5, false)
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", "", zonePayload)
+	zonePayload["name"] = scopedID(t, "transform-zone")
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", token, zonePayload)
 	assertStatus(t, createResp, http.StatusCreated)
 	var zone struct {
 		ID string `json:"id"`
 	}
 	decodeResponse(t, createResp, &zone)
 
-	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", "", []map[string]any{{
+	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
-		"provider_id":   "provider-local",
+		"provider_id":   providerLocalID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
 	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
 
-	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-local")], 10*time.Second)
-	wgsPublished := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326("provider-local")], 10*time.Second)
+	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerLocalID)], 10*time.Second)
+	wgsPublished := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326(providerLocalID)], 10*time.Second)
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
 		t.Fatal("expected local publication to remain local")
 	}
@@ -73,17 +68,17 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 	}
 	assertPointClose(t, localPublished.Position, roundTrip, 0.5)
 
-	createWGSResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", "", []map[string]any{{
+	createWGSResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "EPSG:4326",
 		"position":      pointPayload(0.50005, 0.50004),
-		"provider_id":   "provider-wgs",
+		"provider_id":   providerWGSID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
 	assertStatusAndClose(t, createWGSResp, http.StatusAccepted)
 
-	localFromWGS := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-wgs")], 10*time.Second)
-	wgsFromWGS := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326("provider-wgs")], 10*time.Second)
+	localFromWGS := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerWGSID)], 10*time.Second)
+	wgsFromWGS := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326(providerWGSID)], 10*time.Second)
 	if localFromWGS.Crs == nil || *localFromWGS.Crs != "local" {
 		t.Fatal("expected local publication for WGS84 input")
 	}
@@ -103,19 +98,19 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 }
 
 func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) {
-	t.Parallel()
-
 	_, appBaseURL, brokerURL := startHubNoAuth(t)
+	token := adminToken(t)
+	providerID := scopedID(t, "provider-missing")
 	subscriber, messages := mqttSubscriber(t, brokerURL,
-		mqtt.TopicLocationLocal("provider-missing"),
-		mqtt.TopicLocationEPSG4326("provider-missing"),
+		mqtt.TopicLocationLocal(providerID),
+		mqtt.TopicLocationEPSG4326(providerID),
 	)
 	defer subscriber.Disconnect(250)
 
-	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", "", map[string]any{
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", token, map[string]any{
 		"type":                     "uwb",
 		"incomplete_configuration": true,
-		"name":                     "Incomplete Zone",
+		"name":                     scopedID(t, "incomplete-zone"),
 	})
 	assertStatus(t, createResp, http.StatusCreated)
 	var zone struct {
@@ -123,21 +118,21 @@ func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) 
 	}
 	decodeResponse(t, createResp, &zone)
 
-	publishResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", "", []map[string]any{{
+	publishResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(3, 4),
-		"provider_id":   "provider-missing",
+		"provider_id":   providerID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
 	assertStatusAndClose(t, publishResp, http.StatusAccepted)
 
-	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal("provider-missing")], 10*time.Second)
+	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerID)], 10*time.Second)
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
 		t.Fatal("expected local publication to remain available")
 	}
 	select {
-	case payload := <-messages[mqtt.TopicLocationEPSG4326("provider-missing")]:
+	case payload := <-messages[mqtt.TopicLocationEPSG4326(providerID)]:
 		t.Fatalf("unexpected WGS84 payload: %s", string(payload))
 	case <-time.After(2 * time.Second):
 	}
@@ -145,96 +140,7 @@ func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) 
 
 func startHubNoAuth(t *testing.T) (context.Context, string, string) {
 	t.Helper()
-	ctx := context.Background()
-	network, err := tcnetwork.New(ctx)
-	if err != nil {
-		t.Skipf("docker network unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = network.Remove(ctx) })
-
-	pg, err := postgres.Run(ctx, "postgres:17",
-		postgres.WithDatabase("openrtls"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		tcnetwork.WithNetwork([]string{"postgres"}, network),
-	)
-	if err != nil {
-		t.Skipf("docker/postgres unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = pg.Terminate(ctx) })
-
-	vk, err := redis.Run(ctx, "valkey/valkey:8-alpine", tcnetwork.WithNetwork([]string{"valkey"}, network))
-	if err != nil {
-		t.Skipf("docker/valkey unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = vk.Terminate(ctx) })
-
-	mqReq := testcontainers.ContainerRequest{
-		Image:        "eclipse-mosquitto:2.0",
-		ExposedPorts: []string{"1883/tcp"},
-		Networks:     []string{network.Name},
-		NetworkAliases: map[string][]string{
-			network.Name: {"mosquitto"},
-		},
-		WaitingFor: wait.ForListeningPort("1883/tcp").WithStartupTimeout(30 * time.Second),
-		Files: []testcontainers.ContainerFile{{
-			HostFilePath:      repoPath(t, "tools/mqtt/mosquitto.conf"),
-			ContainerFilePath: "/mosquitto/config/mosquitto.conf",
-			FileMode:          0o644,
-		}},
-	}
-	mq, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: mqReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Skipf("docker/mosquitto unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = mq.Terminate(ctx) })
-
-	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("dsn failed: %v", err)
-	}
-	runMigrations(t, ctx, dsn)
-
-	appReq := testcontainers.ContainerRequest{
-		Image:        sharedHubImage(t),
-		ExposedPorts: []string{"8080/tcp"},
-		Networks:     []string{network.Name},
-		NetworkAliases: map[string][]string{
-			network.Name: {"hub"},
-		},
-		Env: map[string]string{
-			"HTTP_LISTEN_ADDR": ":8080",
-			"POSTGRES_URL":     "postgres://postgres:postgres@postgres:5432/openrtls?sslmode=disable",
-			"VALKEY_URL":       "redis://valkey:6379/0",
-			"MQTT_BROKER_URL":  "tcp://mosquitto:1883",
-			"AUTH_ENABLED":     "false",
-			"AUTH_MODE":        "none",
-		},
-		WaitingFor: wait.ForHTTP("/healthz").
-			WithPort("8080/tcp").
-			WithStartupTimeout(90 * time.Second),
-	}
-	app, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: appReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("docker/app unavailable: %v", err)
-	}
-	t.Cleanup(func() { _ = app.Terminate(ctx) })
-
-	mqHost, err := mq.Host(ctx)
-	if err != nil {
-		t.Fatalf("mqtt host lookup failed: %v", err)
-	}
-	mqPort, err := mq.MappedPort(ctx, nat.Port("1883/tcp"))
-	if err != nil {
-		t.Fatalf("mqtt port lookup failed: %v", err)
-	}
-	return ctx, mappedHTTPURL(t, ctx, app, "8080/tcp"), fmt.Sprintf("tcp://%s:%s", mqHost, mqPort.Port())
+	return sharedHub(t)
 }
 
 func mqttSubscriber(t *testing.T, brokerURL string, topics ...string) (pahomqtt.Client, map[string]chan []byte) {
