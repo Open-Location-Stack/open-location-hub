@@ -203,6 +203,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		CollisionsEnabled:                     cfg.CollisionsEnabled,
 		CollisionStateTTL:                     cfg.CollisionStateTTL,
 		CollisionCollidingDebounce:            cfg.CollisionCollidingDebounce,
+		CollisionDefaultRadiusMeters:          cfg.CollisionDefaultRadiusMeters,
 		ProximityResolutionEntryConfidenceMin: cfg.ProximityResolutionEntryConfidenceMin,
 		ProximityResolutionExitGraceDuration:  cfg.ProximityResolutionExitGraceDuration,
 		ProximityResolutionBoundaryGrace:      cfg.ProximityResolutionBoundaryGrace,

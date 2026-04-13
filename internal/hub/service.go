@@ -46,6 +46,7 @@ type Config struct {
 	CollisionsEnabled                     bool
 	CollisionStateTTL                     time.Duration
 	CollisionCollidingDebounce            time.Duration
+	CollisionDefaultRadiusMeters          float64
 }
 
 // Service implements the hub's CRUD and ingest behavior over storage, cache,
@@ -1532,7 +1533,7 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			if err != nil {
 				continue
 			}
-			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable) {
+			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
 				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
 				continue
 			}
@@ -1603,7 +1604,7 @@ func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackabl
 	if err != nil {
 		return nil, false, nil
 	}
-	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint)
+	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint, s.cfg.CollisionDefaultRadiusMeters)
 	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
 	var state activeCollisionState
 	if existing, ok := s.processingState().GetCollisionState(key); ok {
@@ -1614,30 +1615,30 @@ func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackabl
 			return nil, false, nil
 		}
 		now := s.now().UTC()
-		event := collisionEventForPair(gen.CollisionEnd, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+		event := collisionEventForPair(gen.CollisionEnd, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
 		event.EndTime = &now
 		return &event, false, nil
 	}
 	now := s.now().UTC()
 	if !state.Active {
-		event := collisionEventForPair(gen.CollisionStart, now, now, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+		event := collisionEventForPair(gen.CollisionStart, now, now, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
 		return &event, true, nil
 	}
 	if s.cfg.CollisionCollidingDebounce > 0 && !state.LastEmitted.IsZero() && now.Sub(state.LastEmitted) < s.cfg.CollisionCollidingDebounce {
 		return nil, true, nil
 	}
-	event := collisionEventForPair(gen.Colliding, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance)
+	event := collisionEventForPair(gen.Colliding, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
 	return &event, true, nil
 }
 
-func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float32) gen.CollisionEvent {
+func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float32, defaultRadiusMeters float64) gen.CollisionEvent {
 	event := gen.CollisionEvent{
 		Id:            openapi_types.UUID(ids.NewUUID()),
 		CollisionType: kind,
 		CollisionTime: &at,
 		Collisions: []gen.Collision{
-			collisionFromMotion(leftMotion, leftTrackable),
-			collisionFromMotion(rightMotion, rightTrackable),
+			collisionFromMotion(leftMotion, leftTrackable, defaultRadiusMeters),
+			collisionFromMotion(rightMotion, rightTrackable, defaultRadiusMeters),
 		},
 		CenterDistance: &distance,
 	}
@@ -1650,7 +1651,7 @@ func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.
 	return event
 }
 
-func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable) gen.Collision {
+func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable, defaultRadiusMeters float64) gen.Collision {
 	id := uuid.Nil
 	if parsed, err := uuid.Parse(motion.Id); err == nil {
 		id = parsed
@@ -1660,7 +1661,7 @@ func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable) ge
 		geometry = trackable.Geometry
 	}
 	if geometry == nil {
-		geometry = pointSquarePolygon(motion.Location.Position, effectiveRadius(trackable))
+		geometry = pointSquarePolygon(motion.Location, effectiveRadiusMeters(trackable, defaultRadiusMeters))
 	}
 	return gen.Collision{
 		Id:         openapi_types.UUID(id),
@@ -1670,21 +1671,23 @@ func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable) ge
 	}
 }
 
-func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, leftPoint, rightPoint [2]float64) (bool, *gen.CollisionEvent_CollisionArea, float32) {
-	distance := float32(math.Hypot(leftPoint[0]-rightPoint[0], leftPoint[1]-rightPoint[1]))
+func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, leftPoint, rightPoint [2]float64, defaultRadiusMeters float64) (bool, *gen.CollisionEvent_CollisionArea, float32) {
+	distanceSquared := collisionDistanceSquaredMeters(leftMotion.Location, rightMotion.Location, leftPoint, rightPoint)
+	distanceMeters := math.Sqrt(distanceSquared)
+	distance := float32(distanceMeters)
 	if leftMotion.Geometry != nil && rightMotion.Geometry != nil && polygonsOverlap(*leftMotion.Geometry, *rightMotion.Geometry) {
 		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
 		return true, &area, distance
 	}
-	radius := effectiveRadius(leftTrackable) + effectiveRadius(rightTrackable)
-	if float64(distance) <= radius {
+	radius := effectiveRadiusMeters(leftTrackable, defaultRadiusMeters) + effectiveRadiusMeters(rightTrackable, defaultRadiusMeters)
+	if distanceSquared <= radius*radius {
 		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
 		return true, &area, distance
 	}
 	return false, nil, distance
 }
 
-func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) bool {
+func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, defaultRadiusMeters float64) bool {
 	leftPoint, err := point2D(leftMotion.Location.Position)
 	if err != nil {
 		return false
@@ -1693,8 +1696,9 @@ func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackab
 	if err != nil {
 		return false
 	}
-	maxDistance := effectiveRadius(leftTrackable) + effectiveRadius(rightTrackable)
-	return math.Abs(leftPoint[0]-rightPoint[0]) <= maxDistance && math.Abs(leftPoint[1]-rightPoint[1]) <= maxDistance
+	maxDistanceMeters := effectiveRadiusMeters(leftTrackable, defaultRadiusMeters) + effectiveRadiusMeters(rightTrackable, defaultRadiusMeters)
+	dxMeters, dyMeters := collisionAxisDistancesMeters(leftMotion.Location, rightMotion.Location, leftPoint, rightPoint)
+	return dxMeters <= maxDistanceMeters && dyMeters <= maxDistanceMeters
 }
 
 func collisionPairKey(leftID, rightID string) string {
@@ -1817,30 +1821,36 @@ func collisionAreaPoint(point [2]float64) gen.CollisionEvent_CollisionArea {
 	return area
 }
 
-func effectiveRadius(trackable gen.Trackable) float64 {
+const defaultCollisionRadiusMeters = 0.5
+
+func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64) float64 {
 	if trackable.Radius != nil && *trackable.Radius > 0 {
 		return float64(*trackable.Radius)
 	}
-	return 0.5
+	if defaultRadiusMeters > 0 {
+		return defaultRadiusMeters
+	}
+	return defaultCollisionRadiusMeters
 }
 
-func pointSquarePolygon(center gen.Point, radius float64) *gen.Polygon {
-	point, err := point2D(center)
+func pointSquarePolygon(location gen.Location, radiusMeters float64) *gen.Polygon {
+	point, err := point2D(location.Position)
 	if err != nil {
 		return nil
 	}
-	return squarePolygon(point, radius)
+	return squarePolygon(point, locationCRS(location), radiusMeters)
 }
 
-func squarePolygon(center [2]float64, radius float64) *gen.Polygon {
+func squarePolygon(center [2]float64, crs string, radiusMeters float64) *gen.Polygon {
+	dx, dy := collisionMetersToCoordinateOffsets(crs, center, radiusMeters)
 	polygon := gen.Polygon{Type: "Polygon"}
 	ring := []gen.GeoJsonPosition{}
 	points := [][2]float64{
-		{center[0] - radius, center[1] - radius},
-		{center[0] + radius, center[1] - radius},
-		{center[0] + radius, center[1] + radius},
-		{center[0] - radius, center[1] + radius},
-		{center[0] - radius, center[1] - radius},
+		{center[0] - dx, center[1] - dy},
+		{center[0] + dx, center[1] - dy},
+		{center[0] + dx, center[1] + dy},
+		{center[0] - dx, center[1] + dy},
+		{center[0] - dx, center[1] - dy},
 	}
 	for _, p := range points {
 		pos := gen.GeoJsonPosition{}
@@ -1849,6 +1859,53 @@ func squarePolygon(center [2]float64, radius float64) *gen.Polygon {
 	}
 	polygon.Coordinates = [][]gen.GeoJsonPosition{ring}
 	return &polygon
+}
+
+func collisionDistanceSquaredMeters(leftLocation, rightLocation gen.Location, leftPoint, rightPoint [2]float64) float64 {
+	dx, dy := collisionAxisDistancesMeters(leftLocation, rightLocation, leftPoint, rightPoint)
+	return dx*dx + dy*dy
+}
+
+func collisionAxisDistancesMeters(leftLocation, rightLocation gen.Location, leftPoint, rightPoint [2]float64) (float64, float64) {
+	if collisionUsesWGS84(leftLocation, rightLocation) {
+		// Tradeoff: use a cheap equirectangular-style approximation instead of
+		// haversine/geodesic math so collision candidate checks stay lightweight
+		// on the decision hot path. This is accurate enough for the short-range
+		// thresholds the hub currently evaluates, but it is not intended for
+		// long-distance navigation or great-circle measurements.
+		latRad := degreesToRadians((leftPoint[1] + rightPoint[1]) / 2)
+		return metersPerLongitudeDegreeAtLatitude(latRad) * math.Abs(leftPoint[0]-rightPoint[0]), metersPerLatitudeDegree * math.Abs(leftPoint[1]-rightPoint[1])
+	}
+	return math.Abs(leftPoint[0] - rightPoint[0]), math.Abs(leftPoint[1] - rightPoint[1])
+}
+
+func collisionMetersToCoordinateOffsets(crs string, center [2]float64, radiusMeters float64) (float64, float64) {
+	if strings.TrimSpace(crs) == "EPSG:4326" {
+		// Tradeoff: derive a square envelope from the same planar approximation
+		// used for distance checks so fallback collision geometry stays fast and
+		// consistent with the runtime threshold model.
+		latRad := degreesToRadians(center[1])
+		return radiusMeters / metersPerLongitudeDegreeAtLatitude(latRad), radiusMeters / metersPerLatitudeDegree
+	}
+	return radiusMeters, radiusMeters
+}
+
+func collisionUsesWGS84(leftLocation, rightLocation gen.Location) bool {
+	return strings.TrimSpace(locationCRS(leftLocation)) == "EPSG:4326" && strings.TrimSpace(locationCRS(rightLocation)) == "EPSG:4326"
+}
+
+const metersPerLatitudeDegree = 111_320.0
+
+func metersPerLongitudeDegreeAtLatitude(latitudeRadians float64) float64 {
+	value := metersPerLatitudeDegree * math.Cos(latitudeRadians)
+	if math.Abs(value) < math.SmallestNonzeroFloat64 {
+		return math.SmallestNonzeroFloat64
+	}
+	return value
+}
+
+func degreesToRadians(value float64) float64 {
+	return value * math.Pi / 180
 }
 
 func polygonsOverlap(left, right gen.Polygon) bool {
