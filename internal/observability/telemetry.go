@@ -38,6 +38,10 @@ type ingestTransportKey struct{}
 // RuntimeMetricsSnapshot is the stable callback shape used for asynchronous
 // queue and connection gauges.
 type RuntimeMetricsSnapshot struct {
+	EventBusDrops          int64
+	NativeQueueDrops       int64
+	DecisionQueueDrops     int64
+	WebSocketOutboundDrops int64
 	NativeQueueDepth       int64
 	DecisionQueueDepth     int64
 	EventBusSubscribers    int64
@@ -80,6 +84,10 @@ type telemetryInstruments struct {
 	rpcDuration               metric.Float64Histogram
 	rpcTotal                  metric.Int64Counter
 	eventBusEmitDuration      metric.Float64Histogram
+	eventBusDrops             metric.Int64ObservableCounter
+	nativeQueueDrops          metric.Int64ObservableCounter
+	decisionQueueDrops        metric.Int64ObservableCounter
+	websocketOutboundDrops    metric.Int64ObservableCounter
 	nativeQueueDepth          metric.Int64ObservableGauge
 	decisionQueueDepth        metric.Int64ObservableGauge
 	eventBusSubscribers       metric.Int64ObservableGauge
@@ -294,6 +302,10 @@ func (r *Runtime) initInstruments() {
 	r.instruments.rpcDuration, _ = r.meter.Float64Histogram("hub.rpc.duration", metric.WithUnit("s"))
 	r.instruments.rpcTotal, _ = r.meter.Int64Counter("hub.rpc.requests_total")
 	r.instruments.eventBusEmitDuration, _ = r.meter.Float64Histogram("hub.event_bus.emit_duration", metric.WithUnit("s"))
+	r.instruments.eventBusDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.event_bus_drops_total")
+	r.instruments.nativeQueueDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.native_queue_drops_total")
+	r.instruments.decisionQueueDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.decision_queue_drops_total")
+	r.instruments.websocketOutboundDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.websocket_outbound_drops_total")
 	r.instruments.nativeQueueDepth, _ = r.meter.Int64ObservableGauge("hub.runtime.native_queue_depth")
 	r.instruments.decisionQueueDepth, _ = r.meter.Int64ObservableGauge("hub.runtime.decision_queue_depth")
 	r.instruments.eventBusSubscribers, _ = r.meter.Int64ObservableGauge("hub.runtime.event_bus_subscribers")
@@ -419,6 +431,10 @@ func (r *Runtime) RegisterRuntimeMetricsSource(source RuntimeMetricsSource) erro
 	}
 	reg, err := r.meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
 		snapshot := source.TelemetrySnapshot()
+		observer.ObserveInt64(r.instruments.eventBusDrops, snapshot.EventBusDrops)
+		observer.ObserveInt64(r.instruments.nativeQueueDrops, snapshot.NativeQueueDrops)
+		observer.ObserveInt64(r.instruments.decisionQueueDrops, snapshot.DecisionQueueDrops)
+		observer.ObserveInt64(r.instruments.websocketOutboundDrops, snapshot.WebSocketOutboundDrops)
 		observer.ObserveInt64(r.instruments.nativeQueueDepth, snapshot.NativeQueueDepth)
 		observer.ObserveInt64(r.instruments.decisionQueueDepth, snapshot.DecisionQueueDepth)
 		observer.ObserveInt64(r.instruments.eventBusSubscribers, snapshot.EventBusSubscribers)
@@ -426,6 +442,10 @@ func (r *Runtime) RegisterRuntimeMetricsSource(source RuntimeMetricsSource) erro
 		observer.ObserveInt64(r.instruments.websocketOutboundDepth, snapshot.WebSocketOutboundDepth)
 		return nil
 	},
+		r.instruments.eventBusDrops,
+		r.instruments.nativeQueueDrops,
+		r.instruments.decisionQueueDrops,
+		r.instruments.websocketOutboundDrops,
 		r.instruments.nativeQueueDepth,
 		r.instruments.decisionQueueDepth,
 		r.instruments.eventBusSubscribers,
