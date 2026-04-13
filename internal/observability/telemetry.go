@@ -78,6 +78,7 @@ type telemetryInstruments struct {
 	queueWaitDuration         metric.Float64Histogram
 	endToEndDuration          metric.Float64Histogram
 	dependencyEventsTotal     metric.Int64Counter
+	runtimeDropEventsTotal    metric.Int64Counter
 	mqttPublishDuration       metric.Float64Histogram
 	websocketDispatchDuration metric.Float64Histogram
 	websocketDispatchTotal    metric.Int64Counter
@@ -296,6 +297,7 @@ func (r *Runtime) initInstruments() {
 	r.instruments.queueWaitDuration, _ = r.meter.Float64Histogram("hub.processing.queue_wait_duration", metric.WithUnit("s"))
 	r.instruments.endToEndDuration, _ = r.meter.Float64Histogram("hub.processing.end_to_end_duration", metric.WithUnit("s"))
 	r.instruments.dependencyEventsTotal, _ = r.meter.Int64Counter("hub.runtime.dependency_events_total")
+	r.instruments.runtimeDropEventsTotal, _ = r.meter.Int64Counter("hub.runtime.drop_events_total")
 	r.instruments.mqttPublishDuration, _ = r.meter.Float64Histogram("hub.mqtt.publish_duration", metric.WithUnit("s"))
 	r.instruments.websocketDispatchDuration, _ = r.meter.Float64Histogram("hub.websocket.dispatch_duration", metric.WithUnit("s"))
 	r.instruments.websocketDispatchTotal, _ = r.meter.Int64Counter("hub.websocket.dispatch_total")
@@ -519,6 +521,18 @@ func (r *Runtime) RecordDependencyEvent(ctx context.Context, dependency, event, 
 			attribute.String("dependency", dependency),
 			attribute.String("event", event),
 			attribute.String("outcome", outcome),
+		))
+}
+
+// RecordRuntimeDrop records a dropped work item or event with bounded cause labels.
+func (r *Runtime) RecordRuntimeDrop(ctx context.Context, stage, reason string) {
+	if !r.metricsReady() {
+		return
+	}
+	r.instruments.runtimeDropEventsTotal.Add(ctx, 1,
+		metric.WithAttributes(
+			attribute.String("stage", stage),
+			attribute.String("reason", reason),
 		))
 }
 

@@ -52,6 +52,7 @@ Implications:
 - Asset-, provider-, zone-, and fence-centric identifiers belong on traces and structured logs only. They are intentionally excluded from normal metric labels so dashboards remain queryable under sustained ingest volume.
 - Zap remains the application logging API. When OTLP logs are enabled, the logger tees into the OpenTelemetry bridge so the same structured events still appear locally while also being exported to the collector.
 - Runtime drop counters and gauges for queue occupancy, event-bus subscribers, and WebSocket connections are exposed from `internal/hub` through observable instruments so the e2e stack can dashboard overload and degraded states without adding lock-heavy bookkeeping to the ingest path.
+- Per-drop OTLP attribution is also exported via `hub.runtime.drop_events_total{stage,reason}` so dashboards can break overload down by bounded cause labels without relying on the local debug endpoint.
 - For local troubleshooting, the hub also exposes an auth-protected `/debug/runtime/drops` endpoint that returns the current drop counters plus a bounded set of recent sampled drops with stage and object context.
 - Collision thresholds are meter-based even on the WGS84 collision path; the runtime uses a short-range planar approximation instead of geodesic math so collision checks stay cheap in the decision stage.
 

@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -160,10 +161,14 @@ func (s *RuntimeStats) AddWebSocketOutboundDepth(delta int64) int64 {
 }
 
 func (s *RuntimeStats) RecordEventBusDrop(event Event) uint64 {
+	const (
+		stage  = "event_bus"
+		reason = "subscriber_channel_full"
+	)
 	total := s.IncEventBusDrops()
 	s.recordDrop(DropSample{
-		Stage:       "event_bus",
-		Reason:      "subscriber_channel_full",
+		Stage:       stage,
+		Reason:      reason,
 		Total:       total,
 		RecordedAt:  time.Now().UTC(),
 		EventKind:   string(event.Kind),
@@ -172,47 +177,63 @@ func (s *RuntimeStats) RecordEventBusDrop(event Event) uint64 {
 		TrackableID: event.TrackableID,
 		FenceID:     event.FenceID,
 	})
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 	return total
 }
 
 func (s *RuntimeStats) RecordNativeQueueDrop(work derivedLocationWork, depth int64) uint64 {
+	const (
+		stage  = "native_queue"
+		reason = "queue_full"
+	)
 	total := s.IncNativeQueueDrops()
 	s.recordDrop(DropSample{
-		Stage:      "native_queue",
-		Reason:     "queue_full",
+		Stage:      stage,
+		Reason:     reason,
 		Total:      total,
 		RecordedAt: time.Now().UTC(),
 		QueueDepth: depth,
 		ProviderID: work.Location.ProviderId,
 		Source:     work.Location.Source,
 	})
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 	return total
 }
 
 func (s *RuntimeStats) RecordDecisionQueueDrop(work derivedLocationWork, depth int64) uint64 {
+	const (
+		stage  = "decision_queue"
+		reason = "queue_full"
+	)
 	total := s.IncDecisionQueueDrops()
 	s.recordDrop(DropSample{
-		Stage:      "decision_queue",
-		Reason:     "queue_full",
+		Stage:      stage,
+		Reason:     reason,
 		Total:      total,
 		RecordedAt: time.Now().UTC(),
 		QueueDepth: depth,
 		ProviderID: work.Location.ProviderId,
 		Source:     work.Location.Source,
 	})
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 	return total
 }
 
 func (s *RuntimeStats) RecordWebSocketOutboundDrop(topic string, depth int64) uint64 {
+	const (
+		stage  = "websocket_outbound"
+		reason = "outbound_buffer_full"
+	)
 	total := s.IncWebSocketOutboundDrops()
 	s.recordDrop(DropSample{
-		Stage:      "websocket_outbound",
-		Reason:     "outbound_buffer_full",
+		Stage:      stage,
+		Reason:     reason,
 		Total:      total,
 		RecordedAt: time.Now().UTC(),
 		QueueDepth: depth,
 		Topic:      topic,
 	})
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 	return total
 }
 
