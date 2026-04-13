@@ -1567,16 +1567,18 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			if otherID == motion.Id {
 				continue
 			}
+			pairKey := collisionPairKey(motion.Id, otherID)
 			otherMotion := candidate.motion
+			otherPoint := candidate.point
 			otherTrackable, ok := getTrackable(otherID)
 			if !ok {
 				continue
 			}
-			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
-				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
+			if !motionsMayCollide(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
+				s.processingState().DeleteCollisionState(pairKey)
 				continue
 			}
-			event, active, err := s.evaluateCollision(motion, leftTrackable, otherMotion, otherTrackable)
+			event, active, err := s.evaluateCollision(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable)
 			if err != nil {
 				span.RecordError(err)
 				return err
@@ -1590,13 +1592,13 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 					}
 					s.bus.Emit(busEvent)
 				}
-				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
+				s.processingState().DeleteCollisionState(pairKey)
 				continue
 			}
 			if event == nil {
 				continue
 			}
-			s.processingState().SetCollisionState(collisionPairKey(motion.Id, otherID), activeCollisionState{
+			s.processingState().SetCollisionState(pairKey, activeCollisionState{
 				Active:      true,
 				StartTime:   timeValue(event.StartTime),
 				LastSeen:    timeValue(event.CollisionTime),
@@ -1700,15 +1702,7 @@ func newIndexedCollisionMotion(motion gen.TrackableMotion, point [2]float64) (in
 	}, true
 }
 
-func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
-	leftPoint, err := point2D(leftMotion.Location.Position)
-	if err != nil {
-		return nil, false, nil
-	}
-	rightPoint, err := point2D(rightMotion.Location.Position)
-	if err != nil {
-		return nil, false, nil
-	}
+func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftPoint [2]float64, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightPoint [2]float64, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
 	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint, s.cfg.CollisionDefaultRadiusMeters)
 	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
 	var state activeCollisionState
@@ -1792,15 +1786,7 @@ func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable,
 	return false, nil, distance
 }
 
-func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, defaultRadiusMeters float64) bool {
-	leftPoint, err := point2D(leftMotion.Location.Position)
-	if err != nil {
-		return false
-	}
-	rightPoint, err := point2D(rightMotion.Location.Position)
-	if err != nil {
-		return false
-	}
+func motionsMayCollide(leftMotion gen.TrackableMotion, leftPoint [2]float64, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightPoint [2]float64, rightTrackable gen.Trackable, defaultRadiusMeters float64) bool {
 	maxDistanceMeters := effectiveRadiusMeters(leftTrackable, defaultRadiusMeters) + effectiveRadiusMeters(rightTrackable, defaultRadiusMeters)
 	dxMeters, dyMeters := collisionAxisDistancesMeters(leftMotion.Location, rightMotion.Location, leftPoint, rightPoint)
 	return dxMeters <= maxDistanceMeters && dyMeters <= maxDistanceMeters

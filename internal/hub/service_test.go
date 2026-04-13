@@ -196,8 +196,16 @@ func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
 	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.3778})}
 	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(50)}
+	leftPoint, err := point2D(leftMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("left point decode failed: %v", err)
+	}
+	rightPoint, err := point2D(rightMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("right point decode failed: %v", err)
+	}
 
-	if motionsMayCollide(leftMotion, trackable, rightMotion, trackable, defaultCollisionRadiusMeters) {
+	if motionsMayCollide(leftMotion, leftPoint, trackable, rightMotion, rightPoint, trackable, defaultCollisionRadiusMeters) {
 		t.Fatal("expected motions about 100m apart not to collide with 50m radii")
 	}
 }
