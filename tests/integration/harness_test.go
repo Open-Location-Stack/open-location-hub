@@ -233,18 +233,25 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 
 func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers.Container, name string) {
 	t.Helper()
-	createStmt := fmt.Sprintf(
-		"SELECT 'CREATE DATABASE %s' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = '%s')\\gexec",
-		name,
-		name,
-	)
-	exitCode, output, err := pg.Exec(ctx, []string{"psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-c", createStmt})
+	exitCode, output, err := pg.Exec(ctx, []string{"psql", "-tA", "-U", "postgres", "-d", "postgres", "-c", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", name)})
 	if err != nil {
-		t.Fatalf("ensure postgres database %s failed: %v", name, err)
+		t.Fatalf("check postgres database %s failed: %v", name, err)
 	}
 	if exitCode != 0 {
 		data, _ := io.ReadAll(output)
-		t.Fatalf("ensure postgres database %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
+		t.Fatalf("check postgres database %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
+	}
+	data, _ := io.ReadAll(output)
+	if strings.TrimSpace(string(data)) == "1" {
+		return
+	}
+	exitCode, output, err = pg.Exec(ctx, []string{"createdb", "-U", "postgres", name})
+	if err != nil {
+		t.Fatalf("create postgres database %s failed: %v", name, err)
+	}
+	if exitCode != 0 {
+		data, _ := io.ReadAll(output)
+		t.Fatalf("create postgres database %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
 	}
 }
 
@@ -261,7 +268,12 @@ func startPostgres(ctx context.Context, networkName string) (testcontainers.Cont
 		NetworkAliases: map[string][]string{
 			networkName: {"postgres"},
 		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		// Wait for the port and for the second readiness log line so initialization
+		// has completed before tests exec psql/createdb inside the container.
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("5432/tcp"),
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+		).WithStartupTimeout(30 * time.Second),
 	}
 	return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
