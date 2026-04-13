@@ -3,7 +3,7 @@ services:
     image: ghcr.io/dexidp/dex:v2.43.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes:
-      - ../../tools/dex/config.yaml:/etc/dex/config.yaml:ro
+      - ../tools/dex/config.yaml:/etc/dex/config.yaml:ro
     ports:
       - "${DEMO_DEX_PORT:-5556}:5556"
     healthcheck:
@@ -34,7 +34,7 @@ services:
       - "${DEMO_MQTT_PORT:-1883}:1883"
       - "${DEMO_MQTT_WS_PORT:-9001}:9001"
     volumes:
-      - ../../tools/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../tools/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "mosquitto -h >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -50,14 +50,14 @@ services:
     environment:
       POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
     volumes:
-      - ../../:/workspace
+      - ../:/workspace
     depends_on:
       postgres:
         condition: service_healthy
 
   hub:
     build:
-      context: ../..
+      context: ..
     environment:
       HTTP_LISTEN_ADDR: ":8080"
       POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
@@ -82,7 +82,7 @@ services:
     ports:
       - "${DEMO_APP_PORT:-8080}:8080"
     volumes:
-      - ../../config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
+      - ../config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
     networks:
       - default
       - signoz-net

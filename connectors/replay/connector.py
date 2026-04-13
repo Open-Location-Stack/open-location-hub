@@ -14,6 +14,7 @@ from replay_support import build_replay_schedule, load_env_file, load_logged_loc
 
 
 LOGGER = logging.getLogger("replay.connector")
+DEFAULT_TRACKABLE_RADIUS_METERS = 2.0
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -44,6 +45,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=int(os.getenv("REPLAY_MAX_BATCH_SIZE", "256")),
         help="Maximum number of locations to send in one replay publish.",
     )
+    parser.add_argument(
+        "--bootstrap-trackables",
+        action=argparse.BooleanOptionalAction,
+        default=(os.getenv("REPLAY_BOOTSTRAP_TRACKABLES", "true").strip().lower() not in {"0", "false", "no"}),
+        help="Create or update referenced trackables over REST before replay when HUB_HTTP_URL is configured.",
+    )
+    parser.add_argument(
+        "--trackable-radius-meters",
+        type=float,
+        default=float(os.getenv("REPLAY_TRACKABLE_RADIUS_METERS", str(DEFAULT_TRACKABLE_RADIUS_METERS))),
+        help="Trackable radius applied during REST bootstrap. Defaults to 2 m for indoor-style replay datasets.",
+    )
     return parser
 
 
@@ -61,6 +74,8 @@ def main() -> int:
         raise SystemExit("--batch-window-ms must be greater than or equal to 0")
     if args.max_batch_size <= 0:
         raise SystemExit("--max-batch-size must be greater than 0")
+    if args.trackable_radius_meters <= 0:
+        raise SystemExit("--trackable-radius-meters must be greater than 0")
 
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -91,7 +106,12 @@ def main() -> int:
         replay_start.isoformat(),
     )
 
-    ensure_hub_resources(hub_rest, replay_schedule)
+    ensure_hub_resources(
+        hub_rest,
+        replay_schedule,
+        bootstrap_trackables=args.bootstrap_trackables,
+        trackable_radius_meters=args.trackable_radius_meters,
+    )
 
     start_monotonic = time.monotonic()
     try:
@@ -115,7 +135,13 @@ def main() -> int:
     return 0
 
 
-def ensure_hub_resources(hub_rest: HubRESTClient, replay_schedule: list) -> None:
+def ensure_hub_resources(
+    hub_rest: HubRESTClient,
+    replay_schedule: list,
+    *,
+    bootstrap_trackables: bool,
+    trackable_radius_meters: float,
+) -> None:
     if not hub_rest.config.http_url:
         LOGGER.info("HUB_HTTP_URL not set; skipping provider and trackable bootstrap")
         return
@@ -136,6 +162,8 @@ def ensure_hub_resources(hub_rest: HubRESTClient, replay_schedule: list) -> None
             known_providers.add(provider_id)
 
         trackables = location.get("trackables")
+        if not bootstrap_trackables:
+            continue
         if not isinstance(trackables, list) or not isinstance(provider_id, str) or not provider_id:
             continue
         for trackable_id in trackables:
@@ -145,9 +173,15 @@ def ensure_hub_resources(hub_rest: HubRESTClient, replay_schedule: list) -> None
                 trackable_id=trackable_id,
                 name=trackable_name(location, trackable_id),
                 provider_id=provider_id,
+                radius=trackable_radius_meters,
                 properties=trackable_properties(location),
             )
             known_trackables.add(trackable_id)
+
+    if bootstrap_trackables:
+        LOGGER.info("bootstrapped %d providers and %d trackables with radius %.2f m", len(known_providers), len(known_trackables), trackable_radius_meters)
+    else:
+        LOGGER.info("bootstrapped %d providers and skipped trackable bootstrap by configuration", len(known_providers))
 
 
 def trackable_name(location: dict[str, object], trackable_id: str) -> str:
