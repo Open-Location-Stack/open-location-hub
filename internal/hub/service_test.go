@@ -121,6 +121,74 @@ func TestEffectiveRadiusMetersPrefersTrackableOverride(t *testing.T) {
 	}
 }
 
+func TestLocationPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
+	t.Parallel()
+
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, "source-a", [2]float32{1, 2})
+	location.ProviderId = "provider-a"
+	accuracy := float32(1.5)
+	location.Accuracy = &accuracy
+	location.Properties = &gen.ExtensionProperties{"label": "test"}
+
+	properties := locationProperties(location)
+
+	if _, ok := properties["position"]; ok {
+		t.Fatal("location properties should not include position")
+	}
+	if got := properties["provider_id"]; got != location.ProviderId {
+		t.Fatalf("expected provider_id %q, got %#v", location.ProviderId, got)
+	}
+	if got := properties["source"]; got != location.Source {
+		t.Fatalf("expected source %q, got %#v", location.Source, got)
+	}
+	if got := properties["accuracy"]; got != accuracy {
+		t.Fatalf("expected accuracy %v, got %#v", accuracy, got)
+	}
+	nested, ok := properties["properties"].(map[string]any)
+	if !ok || nested["label"] != "test" {
+		t.Fatalf("expected nested extension properties, got %#v", properties["properties"])
+	}
+}
+
+func TestFenceEventPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
+	t.Parallel()
+
+	fenceID := uuidAsOpenAPI(uuid.New())
+	eventID := uuidAsOpenAPI(uuid.New())
+	trackableID := "trackable-a"
+	providerID := "provider-a"
+	entryTime := time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC)
+	event := gen.FenceEvent{
+		Id:          eventID,
+		FenceId:     fenceID,
+		EventType:   gen.FenceEventEventType("region_entry"),
+		EntryTime:   &entryTime,
+		TrackableId: &trackableID,
+		ProviderId:  &providerID,
+		Properties:  &gen.ExtensionProperties{"label": "test"},
+	}
+
+	properties := fenceEventProperties(event)
+
+	if _, ok := properties["region"]; ok {
+		t.Fatal("fence event properties should not include region")
+	}
+	if got, ok := properties["fence_id"].(uuid.UUID); !ok || got != uuid.UUID(fenceID) {
+		t.Fatalf("expected fence_id %#v, got %#v", uuid.UUID(fenceID), properties["fence_id"])
+	}
+	if got := properties["event_type"]; got != event.EventType {
+		t.Fatalf("expected event_type %q, got %#v", event.EventType, got)
+	}
+	if got := properties["provider_id"]; got != providerID {
+		t.Fatalf("expected provider_id %q, got %#v", providerID, got)
+	}
+	nested, ok := properties["properties"].(map[string]any)
+	if !ok || nested["label"] != "test" {
+		t.Fatalf("expected nested extension properties, got %#v", properties["properties"])
+	}
+}
+
 func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	t.Parallel()
 
@@ -128,8 +196,16 @@ func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
 	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.3778})}
 	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(50)}
+	leftPoint, err := point2D(leftMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("left point decode failed: %v", err)
+	}
+	rightPoint, err := point2D(rightMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("right point decode failed: %v", err)
+	}
 
-	if motionsMayCollide(leftMotion, trackable, rightMotion, trackable, defaultCollisionRadiusMeters) {
+	if motionsMayCollide(leftMotion, leftPoint, trackable, rightMotion, rightPoint, trackable, defaultCollisionRadiusMeters) {
 		t.Fatal("expected motions about 100m apart not to collide with 50m radii")
 	}
 }
@@ -174,6 +250,84 @@ func TestPointSquarePolygonConvertsMetersForWGS84(t *testing.T) {
 	}
 	if bounds.maxY-bounds.minY >= 0.01 {
 		t.Fatalf("expected meter-based WGS84 envelope, got latitude span %v", bounds.maxY-bounds.minY)
+	}
+}
+
+func TestCollisionSpatialIndexNearbyFiltersFarWGS84Candidates(t *testing.T) {
+	t.Parallel()
+
+	crs := "EPSG:4326"
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{8.5411, 47.37735})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{8.5411, 47.39})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{8.5411, 47.3769})}
+
+	var indexed []indexedCollisionMotion
+	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
+		point, err := point2D(motion.Location.Position)
+		if err != nil {
+			t.Fatalf("point decode failed: %v", err)
+		}
+		item, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			t.Fatal("expected indexed motion")
+		}
+		indexed = append(indexed, item)
+	}
+	index := newCollisionSpatialIndex(indexed)
+	queryPoint, err := point2D(queryMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("query point decode failed: %v", err)
+	}
+
+	candidates := index.Nearby(queryMotion.Location, queryPoint, 120)
+	ids := map[string]bool{}
+	for _, candidate := range candidates {
+		ids[candidate.motion.Id] = true
+	}
+	if !ids["near"] {
+		t.Fatal("expected nearby motion candidate")
+	}
+	if ids["far"] {
+		t.Fatal("did not expect far motion candidate")
+	}
+}
+
+func TestCollisionSpatialIndexNearbyFiltersFarLocalCandidates(t *testing.T) {
+	t.Parallel()
+
+	crs := "local"
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{20, 20})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{600, 600})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{0, 0})}
+
+	var indexed []indexedCollisionMotion
+	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
+		point, err := point2D(motion.Location.Position)
+		if err != nil {
+			t.Fatalf("point decode failed: %v", err)
+		}
+		item, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			t.Fatal("expected indexed motion")
+		}
+		indexed = append(indexed, item)
+	}
+	index := newCollisionSpatialIndex(indexed)
+	queryPoint, err := point2D(queryMotion.Location.Position)
+	if err != nil {
+		t.Fatalf("query point decode failed: %v", err)
+	}
+
+	candidates := index.Nearby(queryMotion.Location, queryPoint, 100)
+	ids := map[string]bool{}
+	for _, candidate := range candidates {
+		ids[candidate.motion.Id] = true
+	}
+	if !ids["near"] {
+		t.Fatal("expected nearby local motion candidate")
+	}
+	if ids["far"] {
+		t.Fatal("did not expect far local motion candidate")
 	}
 }
 
@@ -667,6 +821,37 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 
 	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
 		t.Fatal("expected fence membership state to be held in memory")
+	}
+}
+
+type captureCollisionQueue struct {
+	works []collisionWork
+}
+
+func (q *captureCollisionQueue) Submit(work collisionWork) {
+	q.works = append(q.works, work)
+}
+
+func TestEnqueueCollisionWorkUsesCollisionQueueWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	queue := &captureCollisionQueue{}
+	service := &Service{
+		cfg: Config{
+			CollisionsEnabled: true,
+		},
+		collisionQueue: queue,
+	}
+	motions := []gen.TrackableMotion{{Id: "trackable-a"}}
+
+	if err := service.enqueueCollisionWork(context.Background(), motions); err != nil {
+		t.Fatalf("enqueueCollisionWork failed: %v", err)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one collision work item, got %d", len(queue.works))
+	}
+	if len(queue.works[0].Motions) != 1 || queue.works[0].Motions[0].Id != "trackable-a" {
+		t.Fatalf("unexpected queued motions: %+v", queue.works[0].Motions)
 	}
 }
 

@@ -68,6 +68,13 @@ Tail hub logs:
 just local-hub-logs
 ```
 
+Inspect recent overload-driven drops:
+
+```bash
+TOKEN="$(just -q local-hub-token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+curl -sS -H "Authorization: Bearer $TOKEN" http://localhost:8080/debug/runtime/drops | jq
+```
+
 The underlying scripts remain available when you want to call them directly:
 
 ```bash

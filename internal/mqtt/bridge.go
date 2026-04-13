@@ -24,42 +24,43 @@ func (p *EventPublisher) Handle(ctx context.Context, event hub.Event) error {
 	}
 	switch event.Kind {
 	case hub.EventLocation:
-		location, err := hub.Decode[hub.LocationEnvelope](event)
-		if err != nil {
-			return err
+		location, ok := event.Payload.(hub.LocationEnvelope)
+		if !ok {
+			return nil
 		}
 		switch event.Scope {
 		case hub.ScopeLocal:
-			return p.client.PublishJSON(ctx, TopicLocationLocal(location.Location.ProviderId), location.Location, false)
+			return p.client.PublishRawJSON(ctx, TopicLocationLocal(location.Location.ProviderId), location.LocationItemJSON(), false)
 		case hub.ScopeEPSG4326:
-			return p.client.PublishJSON(ctx, TopicLocationEPSG4326(location.Location.ProviderId), location.Location, false)
+			return p.client.PublishRawJSON(ctx, TopicLocationEPSG4326(location.Location.ProviderId), location.LocationItemJSON(), false)
 		}
 	case hub.EventTrackableMotion:
-		motion, err := hub.Decode[hub.TrackableMotionEnvelope](event)
-		if err != nil {
-			return err
+		motion, ok := event.Payload.(hub.TrackableMotionEnvelope)
+		if !ok {
+			return nil
 		}
 		switch event.Scope {
 		case hub.ScopeLocal:
-			return p.client.PublishJSON(ctx, TopicTrackableMotionLocal(motion.Motion.Id), motion.Motion, false)
+			return p.client.PublishRawJSON(ctx, TopicTrackableMotionLocal(motion.Motion.Id), motion.ItemJSON(), false)
 		case hub.ScopeEPSG4326:
-			return p.client.PublishJSON(ctx, TopicTrackableMotionEPSG4326(motion.Motion.Id), motion.Motion, false)
+			return p.client.PublishRawJSON(ctx, TopicTrackableMotionEPSG4326(motion.Motion.Id), motion.ItemJSON(), false)
 		}
 	case hub.EventFenceEvent:
-		envelope, err := hub.Decode[hub.FenceEventEnvelope](event)
-		if err != nil {
-			return err
+		envelope, ok := event.Payload.(hub.FenceEventEnvelope)
+		if !ok {
+			return nil
 		}
-		if err := p.client.PublishJSON(ctx, TopicFenceEvent(envelope.Event.FenceId.String()), envelope.Event, false); err != nil {
+		eventJSON := envelope.EventItemJSON()
+		if err := p.client.PublishRawJSON(ctx, TopicFenceEvent(envelope.Event.FenceId.String()), eventJSON, false); err != nil {
 			return err
 		}
 		if envelope.Event.TrackableId != nil {
-			if err := p.client.PublishJSON(ctx, TopicFenceEventTrackable(*envelope.Event.TrackableId), envelope.Event, false); err != nil {
+			if err := p.client.PublishRawJSON(ctx, TopicFenceEventTrackable(*envelope.Event.TrackableId), eventJSON, false); err != nil {
 				return err
 			}
 		}
 		if envelope.Event.ProviderId != nil {
-			if err := p.client.PublishJSON(ctx, TopicFenceEventProvider(*envelope.Event.ProviderId), envelope.Event, false); err != nil {
+			if err := p.client.PublishRawJSON(ctx, TopicFenceEventProvider(*envelope.Event.ProviderId), eventJSON, false); err != nil {
 				return err
 			}
 		}
@@ -68,11 +69,11 @@ func (p *EventPublisher) Handle(ctx context.Context, event hub.Event) error {
 		if event.Scope != hub.ScopeEPSG4326 {
 			return nil
 		}
-		collision, err := hub.Decode[hub.CollisionEnvelope](event)
-		if err != nil {
-			return err
+		collision, ok := event.Payload.(hub.CollisionEnvelope)
+		if !ok {
+			return nil
 		}
-		return p.client.PublishJSON(ctx, TopicCollisionEventEPSG4326(), collision.Event, false)
+		return p.client.PublishRawJSON(ctx, TopicCollisionEventEPSG4326(), collision.ItemJSON(), false)
 	}
 	return nil
 }

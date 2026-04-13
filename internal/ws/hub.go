@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +69,8 @@ type connection struct {
 	hub      *Hub
 	conn     *websocket.Conn
 	send     chan []byte
+	sendMu   sync.Mutex
+	pending  map[string][]byte
 	mu       sync.RWMutex
 	nextID   int
 	subs     map[int]subscription
@@ -183,12 +186,13 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &connection{
-		hub:    h,
-		conn:   conn,
-		send:   make(chan []byte, h.outboundBuffer),
-		subs:   map[int]subscription{},
-		nextID: 1,
-		done:   make(chan struct{}),
+		hub:     h,
+		conn:    conn,
+		send:    make(chan []byte, h.outboundBuffer),
+		pending: map[string][]byte{},
+		subs:    map[int]subscription{},
+		nextID:  1,
+		done:    make(chan struct{}),
 	}
 	c.configureSocket()
 	h.mu.Lock()
@@ -311,7 +315,9 @@ func (c *connection) writeLoop() {
 				c.close()
 				return
 			}
+			c.flushPending()
 		case <-ticker.C:
+			c.flushPending()
 			if err := c.writeFrame(websocket.PingMessage, nil); err != nil {
 				if !isExpectedClose(err) && !isNetClosed(err) {
 					c.hub.logger.Debug("websocket ping failed", zap.Error(err))
@@ -490,8 +496,12 @@ func (c *connection) sendWrapper(msg wrapper) {
 		}
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "queued", time.Since(start))
 	default:
+		if c.storePending(msg, raw) {
+			c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "coalesced", time.Since(start))
+			return
+		}
 		if c.hub.stats != nil {
-			c.hub.stats.IncWebSocketOutboundDrops()
+			c.hub.stats.RecordWebSocketOutboundDrop(msg.Topic, int64(len(c.send)))
 		}
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "dropped", time.Since(start))
 		c.hub.logger.Debug("websocket outbound buffer full; dropping outbound payload")
@@ -500,6 +510,47 @@ func (c *connection) sendWrapper(msg wrapper) {
 
 func (c *connection) sendError(code int, description string) {
 	c.sendWrapper(wrapper{Event: "error", Code: &code, Description: &description})
+}
+
+func (c *connection) storePending(msg wrapper, raw []byte) bool {
+	key, ok := coalescibleWrapperKey(msg)
+	if !ok {
+		return false
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	c.pending[key] = raw
+	return true
+}
+
+func (c *connection) flushPending() {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	for key, raw := range c.pending {
+		select {
+		case <-c.done:
+			return
+		case c.send <- raw:
+			if c.hub.stats != nil {
+				c.hub.stats.AddWebSocketOutboundDepth(1)
+			}
+			delete(c.pending, key)
+		default:
+			return
+		}
+	}
+}
+
+func coalescibleWrapperKey(msg wrapper) (string, bool) {
+	if msg.Event != "message" || msg.SubscriptionID == nil {
+		return "", false
+	}
+	switch msg.Topic {
+	case topicLocationUpdates, topicLocationGeoJSON, topicTrackableMotions:
+		return msg.Topic + "|" + strconv.Itoa(*msg.SubscriptionID), true
+	default:
+		return "", false
+	}
 }
 
 func knownTopic(topic string) bool {
@@ -531,143 +582,124 @@ func parseFilter(topic string, params map[string]any) (any, error) {
 }
 
 func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.RawMessage, bool) {
+	items := make([]json.RawMessage, 0, len(events))
 	switch sub.topic {
 	case topicLocationUpdates:
-		items := make([]gen.Location, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventLocation {
 				continue
 			}
-			envelope, err := hub.Decode[hub.LocationEnvelope](event)
-			if err != nil || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
+			envelope, ok := event.Payload.(hub.LocationEnvelope)
+			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
-			items = append(items, envelope.Location)
+			items = append(items, envelope.LocationItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicLocationGeoJSON:
-		items := make([]hub.GeoJSONFeatureCollection, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventLocation {
 				continue
 			}
-			envelope, err := hub.Decode[hub.LocationEnvelope](event)
-			if err != nil || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
+			envelope, ok := event.Payload.(hub.LocationEnvelope)
+			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
-			items = append(items, envelope.GeoJSON)
+			items = append(items, envelope.GeoJSONItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicProximityUpdates:
-		items := make([]gen.Proximity, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventProximity {
 				continue
 			}
-			envelope, err := hub.Decode[hub.ProximityEnvelope](event)
-			if err != nil {
+			envelope, ok := event.Payload.(hub.ProximityEnvelope)
+			if !ok {
 				continue
 			}
-			items = append(items, envelope.Proximity)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicTrackableMotions:
-		items := make([]gen.TrackableMotion, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventTrackableMotion {
 				continue
 			}
-			envelope, err := hub.Decode[hub.TrackableMotionEnvelope](event)
-			if err != nil || !matchMotion(sub.filter.(motionFilter), envelope.Motion) {
+			envelope, ok := event.Payload.(hub.TrackableMotionEnvelope)
+			if !ok || !matchMotion(sub.filter.(motionFilter), envelope.Motion) {
 				continue
 			}
-			items = append(items, envelope.Motion)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicFenceEvents:
-		items := make([]gen.FenceEvent, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventFenceEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.FenceEventEnvelope](event)
-			if err != nil || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.FenceEventEnvelope)
+			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.Event)
+			items = append(items, envelope.EventItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicFenceGeoJSON:
-		items := make([]hub.GeoJSONFeatureCollection, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventFenceEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.FenceEventEnvelope](event)
-			if err != nil || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.FenceEventEnvelope)
+			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.GeoJSON)
+			items = append(items, envelope.GeoJSONItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicCollisionEvents:
-		items := make([]gen.CollisionEvent, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventCollisionEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.CollisionEnvelope](event)
-			if err != nil || !matchCollision(sub.filter.(collisionFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.CollisionEnvelope)
+			if !ok || !matchCollision(sub.filter.(collisionFilter), envelope.Event) {
 				continue
 			}
-			items = append(items, envelope.Event)
+			items = append(items, envelope.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	case topicMetadataChanges:
-		items := make([]hub.MetadataChange, 0, len(events))
 		for _, event := range events {
 			if event.Kind != hub.EventMetadataChange {
 				continue
 			}
-			change, err := hub.Decode[hub.MetadataChange](event)
-			if err != nil || !matchMetadata(sub.filter.(metadataFilter), change) {
+			change, ok := event.Payload.(hub.MetadataChange)
+			if !ok || !matchMetadata(sub.filter.(metadataFilter), change) {
 				continue
 			}
-			items = append(items, change)
+			items = append(items, change.ItemJSON())
 		}
-		if len(items) == 0 {
-			return nil, false
-		}
-		return marshalPayload(items)
 	default:
 		return nil, false
 	}
+	return marshalJSONArray(items)
 }
 
-func marshalPayload(value any) (json.RawMessage, bool) {
-	raw, err := json.Marshal(value)
-	return raw, err == nil
+func marshalJSONArray(items []json.RawMessage) (json.RawMessage, bool) {
+	if len(items) == 0 {
+		return nil, false
+	}
+	size := 2
+	for _, item := range items {
+		if len(item) == 0 {
+			return nil, false
+		}
+		size += len(item)
+	}
+	size += len(items) - 1
+	raw := make([]byte, 0, size)
+	raw = append(raw, '[')
+	for i, item := range items {
+		if i > 0 {
+			raw = append(raw, ',')
+		}
+		raw = append(raw, item...)
+	}
+	raw = append(raw, ']')
+	return raw, true
 }
 
 func parseLocationFilter(params map[string]any) locationFilter {

@@ -254,30 +254,40 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 
 	if err := mq.Subscribe(mqtt.TopicLocationPubWildcard(), func(ctx context.Context, _ string, payload []byte) error {
 		ctx = observability.WithIngestTransport(ctx, "mqtt")
-		var body []gen.Location
-		if err := json.Unmarshal(payload, &body); err == nil {
+		switch firstNonWhitespaceByte(payload) {
+		case '[':
+			var body []gen.Location
+			if err := json.Unmarshal(payload, &body); err != nil {
+				return err
+			}
 			return service.ProcessLocations(ctx, body)
+		default:
+			var single gen.Location
+			if err := json.Unmarshal(payload, &single); err != nil {
+				return err
+			}
+			return service.ProcessLocations(ctx, []gen.Location{single})
 		}
-		var single gen.Location
-		if err := json.Unmarshal(payload, &single); err != nil {
-			return err
-		}
-		return service.ProcessLocations(ctx, []gen.Location{single})
 	}); err != nil {
 		return fmt.Errorf("mqtt location subscription failed: %w", err)
 	}
 
 	if err := mq.Subscribe(mqtt.TopicProximityWildcard(), func(ctx context.Context, _ string, payload []byte) error {
 		ctx = observability.WithIngestTransport(ctx, "mqtt")
-		var body []gen.Proximity
-		if err := json.Unmarshal(payload, &body); err == nil {
+		switch firstNonWhitespaceByte(payload) {
+		case '[':
+			var body []gen.Proximity
+			if err := json.Unmarshal(payload, &body); err != nil {
+				return err
+			}
 			return service.ProcessProximities(ctx, body)
+		default:
+			var single gen.Proximity
+			if err := json.Unmarshal(payload, &single); err != nil {
+				return err
+			}
+			return service.ProcessProximities(ctx, []gen.Proximity{single})
 		}
-		var single gen.Proximity
-		if err := json.Unmarshal(payload, &single); err != nil {
-			return err
-		}
-		return service.ProcessProximities(ctx, []gen.Proximity{single})
 	}); err != nil {
 		return fmt.Errorf("mqtt proximity subscription failed: %w", err)
 	}
@@ -289,6 +299,12 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
+	})
+	r.Get("/debug/runtime/drops", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(service.RuntimeStatsSnapshot()); err != nil {
+			http.Error(w, "encode runtime drop diagnostics", http.StatusInternalServerError)
+		}
 	})
 
 	h := handlers.New(handlers.Dependencies{
@@ -362,4 +378,16 @@ func runEventPublisher(ctx context.Context, logger *zap.Logger, events <-chan hu
 		}
 	}()
 	return done
+}
+
+func firstNonWhitespaceByte(payload []byte) byte {
+	for _, b := range payload {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		default:
+			return b
+		}
+	}
+	return 0
 }

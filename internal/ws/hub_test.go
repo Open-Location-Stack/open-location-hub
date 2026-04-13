@@ -59,11 +59,7 @@ func TestBusEventReachesSubscribedClient(t *testing.T) {
 	}
 
 	location := testLocation(t)
-	payload, err := json.Marshal(hub.LocationEnvelope{Location: location})
-	if err != nil {
-		t.Fatalf("marshal event payload failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: hub.LocationEnvelope{Location: location}})
 
 	msg := readWS(t, client)
 	if msg.Event != "message" || msg.Topic != topicLocationUpdates {
@@ -91,16 +87,12 @@ func TestMetadataChangeEventReachesSubscribedClient(t *testing.T) {
 		t.Fatalf("unexpected subscribe ack: %+v", ack)
 	}
 
-	payload, err := json.Marshal(hub.MetadataChange{
+	bus.Emit(hub.Event{Kind: hub.EventMetadataChange, Scope: hub.ScopeMetadata, Payload: hub.MetadataChange{
 		ID:        "zone-1",
 		Type:      "zone",
 		Operation: "update",
 		Timestamp: time.Date(2026, 3, 27, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("marshal metadata change failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventMetadataChange, Scope: hub.ScopeMetadata, Payload: payload})
+	}})
 
 	msg := readWS(t, client)
 	if msg.Event != "message" || msg.Topic != topicMetadataChanges {
@@ -115,6 +107,32 @@ func TestMetadataChangeEventReachesSubscribedClient(t *testing.T) {
 	}
 }
 
+func TestPayloadBatchForSubscriptionBuildsJSONArrayFromCachedItems(t *testing.T) {
+	t.Parallel()
+
+	location := testLocation(t)
+	raw, ok := payloadBatchForSubscription(subscription{
+		id:     1,
+		topic:  topicLocationUpdates,
+		filter: locationFilter{},
+	}, []hub.Event{{
+		Kind:    hub.EventLocation,
+		Scope:   hub.ScopeLocal,
+		Payload: hub.LocationEnvelope{Location: location},
+	}})
+	if !ok {
+		t.Fatal("expected payload batch")
+	}
+
+	var body []gen.Location
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode batch payload failed: %v", err)
+	}
+	if len(body) != 1 || body[0].ProviderId != location.ProviderId {
+		t.Fatalf("unexpected payload: %+v", body)
+	}
+}
+
 func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 	t.Parallel()
 
@@ -125,17 +143,14 @@ func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 	cleanup()
 
 	location := testLocation(t)
-	payload, err := json.Marshal(hub.LocationEnvelope{Location: location})
-	if err != nil {
-		t.Fatalf("marshal event payload failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	locationEvent := hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: hub.LocationEnvelope{Location: location}}
+	bus.Emit(locationEvent)
 
 	secondClient, secondCleanup := startTestHub(t, bus, true)
 	defer secondCleanup()
 	writeWS(t, secondClient, map[string]any{"event": "subscribe", "topic": topicLocationUpdates})
 	_ = readWS(t, secondClient)
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	bus.Emit(locationEvent)
 	msg := readWS(t, secondClient)
 	if msg.Event != "message" {
 		t.Fatalf("expected message after prior disconnect, got %+v", msg)
@@ -179,6 +194,71 @@ func TestSendWrapperSafeDuringConcurrentClose(t *testing.T) {
 		conn.sendWrapper(wrapper{Event: "error", Description: stringPtr("test")})
 	}()
 	wg.Wait()
+}
+
+func TestSendWrapperCoalescesHotTopicsWhenOutboundBufferIsFull(t *testing.T) {
+	t.Parallel()
+
+	bus := hub.NewEventBus()
+	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
+	conn := &connection{
+		hub:     h,
+		send:    make(chan []byte, 1),
+		pending: map[string][]byte{},
+		done:    make(chan struct{}),
+	}
+	subscriptionID := 7
+
+	conn.send <- []byte(`{"buffered":true}`)
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicLocationUpdates, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"source":"old"}]`)})
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicLocationUpdates, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"source":"new"}]`)})
+
+	if len(conn.pending) != 1 {
+		t.Fatalf("expected one pending coalesced payload, got %d", len(conn.pending))
+	}
+	conn.flushPending()
+	if len(conn.pending) != 1 {
+		t.Fatal("expected pending payload to remain while channel is still full")
+	}
+
+	<-conn.send
+	conn.flushPending()
+	if len(conn.pending) != 0 {
+		t.Fatal("expected pending payload to flush once channel has room")
+	}
+
+	raw := <-conn.send
+	var msg wrapper
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("decode coalesced wrapper failed: %v", err)
+	}
+	if string(msg.Payload) != `[{"source":"new"}]` {
+		t.Fatalf("expected latest payload to win, got %s", string(msg.Payload))
+	}
+}
+
+func TestSendWrapperStillDropsNonCoalescibleTopicsWhenOutboundBufferIsFull(t *testing.T) {
+	t.Parallel()
+
+	bus := hub.NewEventBus()
+	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
+	conn := &connection{
+		hub:     h,
+		send:    make(chan []byte, 1),
+		pending: map[string][]byte{},
+		done:    make(chan struct{}),
+	}
+	subscriptionID := 9
+
+	conn.send <- []byte(`{"buffered":true}`)
+	conn.sendWrapper(wrapper{Event: "message", Topic: topicFenceEvents, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"id":"fence-1"}]`)})
+
+	if len(conn.pending) != 0 {
+		t.Fatal("expected discrete topic not to be coalesced")
+	}
+	if got := h.stats.Snapshot().WebSocketOutboundDrops; got != 1 {
+		t.Fatalf("expected one outbound drop, got %d", got)
+	}
 }
 
 func startTestHub(t *testing.T, bus *hub.EventBus, collisionsEnabled bool) (*websocket.Conn, func()) {

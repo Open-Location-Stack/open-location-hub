@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.opentelemetry.io/otel/attribute"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -65,6 +66,7 @@ type Service struct {
 	telemetryRuntime *observability.Runtime
 	nativeQueue      derivedLocationSubmitter
 	derivedQueue     derivedLocationSubmitter
+	collisionQueue   collisionWorkSubmitter
 	decisionStage    decisionLocationStage
 }
 
@@ -92,7 +94,10 @@ func (s *Service) Start(ctx context.Context) {
 		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
 	}
 	if s.derivedQueue == nil {
-		s.derivedQueue = startDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+		s.derivedQueue = startShardedDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, decisionWorkerCount(), "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+	}
+	if s.cfg.CollisionsEnabled && s.collisionQueue == nil {
+		s.collisionQueue = startCollisionMotionProcessor(ctx, s, s.cfg.DerivedLocationBuffer)
 	}
 	if s.metadata == nil || s.queries == nil {
 		return
@@ -216,6 +221,14 @@ func (s *Service) telemetry() *observability.Runtime {
 		return observability.Global()
 	}
 	return s.telemetryRuntime
+}
+
+// RuntimeStatsSnapshot returns the current overload and queue diagnostics.
+func (s *Service) RuntimeStatsSnapshot() RuntimeStatsSnapshot {
+	if s == nil || s.stats == nil {
+		return RuntimeStatsSnapshot{}
+	}
+	return s.stats.Snapshot()
 }
 
 func (s *Service) metadataCache() *MetadataCache {
@@ -1001,7 +1014,7 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		s.logger.Warn("fence event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 	}
 	if s.cfg.CollisionsEnabled {
-		if err := s.publishCollisionEvents(ctx, motions); err != nil {
+		if err := s.enqueueCollisionWork(ctx, motions); err != nil {
 			s.logger.Warn("collision event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
 		}
 	}
@@ -1038,6 +1051,26 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 		attribute.String("provider_id", location.ProviderId),
 		attribute.String("source", location.Source),
 	)
+	defer span.End()
+	return s.processDecisionLocationStage(stageCtx, span, location)
+}
+
+func (s *Service) processDecisionLocationBatch(ctx context.Context, batch []derivedLocationWork) error {
+	var batchErr error
+	for _, work := range batch {
+		stageCtx, span := s.telemetry().StartSpan(work.Context, "hub.process.decision_location",
+			attribute.String("provider_id", work.Location.ProviderId),
+			attribute.String("source", work.Location.Source),
+		)
+		if err := s.processDecisionLocationStage(stageCtx, span, work.Location); err != nil && batchErr == nil {
+			batchErr = err
+		}
+		span.End()
+	}
+	return batchErr
+}
+
+func (s *Service) processDecisionLocationStage(stageCtx context.Context, span oteltrace.Span, location gen.Location) error {
 	start := time.Now()
 	decisionLocation, ok, err := s.decisionStage.Process(stageCtx, location)
 	if err != nil || !ok {
@@ -1045,7 +1078,6 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 			span.RecordError(err)
 		}
 		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-		span.End()
 		return err
 	}
 	err = s.processDerivedLocation(stageCtx, decisionLocation)
@@ -1053,7 +1085,6 @@ func (s *Service) processDecisionLocation(ctx context.Context, location gen.Loca
 		span.RecordError(err)
 	}
 	s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-	span.End()
 	return err
 }
 
@@ -1077,7 +1108,7 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 				return err
 			}
 			if s.cfg.CollisionsEnabled {
-				if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
 					return err
 				}
 			}
@@ -1097,11 +1128,26 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 			if err != nil {
 				return err
 			}
-			if err := s.publishCollisionEvents(ctx, wgs84Motions); err != nil {
+			if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
 				return err
 			}
 		}
 	}
+	return nil
+}
+
+func (s *Service) enqueueCollisionWork(ctx context.Context, motions []gen.TrackableMotion) error {
+	if !s.cfg.CollisionsEnabled || len(motions) == 0 {
+		return nil
+	}
+	if s.collisionQueue == nil {
+		return s.publishCollisionEvents(ctx, motions)
+	}
+	s.collisionQueue.Submit(collisionWork{
+		Context:    ctx,
+		Motions:    append([]gen.TrackableMotion(nil), motions...),
+		EnqueuedAt: time.Now(),
+	})
 	return nil
 }
 
@@ -1121,6 +1167,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 	if err != nil {
 		return err
 	}
+	events := make([]Event, 0, 2)
 	if variants.Local != nil {
 		feature, err := locationGeoJSONFeatureCollection(*variants.Local)
 		if err != nil {
@@ -1130,7 +1177,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
 	if variants.WGS84 != nil {
 		feature, err := locationGeoJSONFeatureCollection(*variants.WGS84)
@@ -1141,8 +1188,9 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
+	s.bus.EmitBatch(events)
 	return nil
 }
 
@@ -1171,6 +1219,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 		return nil, err
 	}
 	wgsMotions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
+	events := make([]Event, 0, len(*location.Trackables)*2)
 	for _, id := range *location.Trackables {
 		baseMotion := gen.TrackableMotion{Id: id}
 		if cache := s.metadataCache(); cache != nil {
@@ -1196,7 +1245,7 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 			if err != nil {
 				return nil, err
 			}
-			s.bus.Emit(event)
+			events = append(events, event)
 		}
 		if variants.WGS84 != nil {
 			motion := baseMotion
@@ -1205,10 +1254,11 @@ func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Loca
 			if err != nil {
 				return nil, err
 			}
-			s.bus.Emit(event)
+			events = append(events, event)
 			wgsMotions = append(wgsMotions, motion)
 		}
 	}
+	s.bus.EmitBatch(events)
 	return wgsMotions, nil
 }
 
@@ -1240,13 +1290,15 @@ func (s *Service) publishTrackableMotionEvents(providerID string, scope EventSco
 	if s.bus == nil {
 		return nil
 	}
+	events := make([]Event, 0, len(motions))
 	for _, motion := range motions {
 		event, err := newEvent(EventTrackableMotion, scope, locationTime(motion.Location), providerID, motion.Id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
 		if err != nil {
 			return err
 		}
-		s.bus.Emit(event)
+		events = append(events, event)
 	}
+	s.bus.EmitBatch(events)
 	return nil
 }
 
@@ -1515,29 +1567,70 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 		return nil
 	}
 	activeMotions := s.processingState().ListActiveMotions()
-	activeMotionByID := make(map[string]gen.TrackableMotion, len(activeMotions))
+	indexedActiveMotions := make([]indexedCollisionMotion, 0, len(activeMotions))
 	for _, motion := range activeMotions {
-		activeMotionByID[motion.Id] = motion
-	}
-	for _, motion := range motions {
-		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
-		leftTrackable, err := s.trackableByID(ctx, motion.Id)
+		point, err := point2D(motion.Location.Position)
 		if err != nil {
 			continue
 		}
-		for otherID, otherMotion := range activeMotionByID {
+		indexed, ok := newIndexedCollisionMotion(motion, point)
+		if !ok {
+			continue
+		}
+		indexedActiveMotions = append(indexedActiveMotions, indexed)
+	}
+	activeMotionIndex := newCollisionSpatialIndex(indexedActiveMotions)
+	trackablesByID := make(map[string]gen.Trackable, len(activeMotions)+len(motions))
+	getTrackable := func(id string) (gen.Trackable, bool) {
+		if trackable, ok := trackablesByID[id]; ok {
+			return trackable, true
+		}
+		trackable, err := s.trackableByID(ctx, id)
+		if err != nil {
+			return gen.Trackable{}, false
+		}
+		trackablesByID[id] = trackable
+		return trackable, true
+	}
+	maxActiveRadiusMeters := s.cfg.CollisionDefaultRadiusMeters
+	for _, motion := range indexedActiveMotions {
+		trackable, ok := getTrackable(motion.motion.Id)
+		if !ok {
+			continue
+		}
+		radius := effectiveRadiusMeters(trackable, s.cfg.CollisionDefaultRadiusMeters)
+		if radius > maxActiveRadiusMeters {
+			maxActiveRadiusMeters = radius
+		}
+	}
+	for _, motion := range motions {
+		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
+		leftTrackable, ok := getTrackable(motion.Id)
+		if !ok {
+			continue
+		}
+		leftPoint, err := point2D(motion.Location.Position)
+		if err != nil {
+			continue
+		}
+		searchDistanceMeters := effectiveRadiusMeters(leftTrackable, s.cfg.CollisionDefaultRadiusMeters) + maxActiveRadiusMeters
+		for _, candidate := range activeMotionIndex.Nearby(motion.Location, leftPoint, searchDistanceMeters) {
+			otherID := candidate.motion.Id
 			if otherID == motion.Id {
 				continue
 			}
-			otherTrackable, err := s.trackableByID(ctx, otherID)
-			if err != nil {
+			pairKey := collisionPairKey(motion.Id, otherID)
+			otherMotion := candidate.motion
+			otherPoint := candidate.point
+			otherTrackable, ok := getTrackable(otherID)
+			if !ok {
 				continue
 			}
-			if !motionsMayCollide(motion, leftTrackable, otherMotion, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
-				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
+			if !motionsMayCollide(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
+				s.processingState().DeleteCollisionState(pairKey)
 				continue
 			}
-			event, active, err := s.evaluateCollision(motion, leftTrackable, otherMotion, otherTrackable)
+			event, active, err := s.evaluateCollision(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable)
 			if err != nil {
 				span.RecordError(err)
 				return err
@@ -1551,13 +1644,13 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 					}
 					s.bus.Emit(busEvent)
 				}
-				s.processingState().DeleteCollisionState(collisionPairKey(motion.Id, otherID))
+				s.processingState().DeleteCollisionState(pairKey)
 				continue
 			}
 			if event == nil {
 				continue
 			}
-			s.processingState().SetCollisionState(collisionPairKey(motion.Id, otherID), activeCollisionState{
+			s.processingState().SetCollisionState(pairKey, activeCollisionState{
 				Active:      true,
 				StartTime:   timeValue(event.StartTime),
 				LastSeen:    timeValue(event.CollisionTime),
@@ -1595,15 +1688,73 @@ type activeCollisionState struct {
 	LastEmitted time.Time `json:"last_emitted"`
 }
 
-func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
-	leftPoint, err := point2D(leftMotion.Location.Position)
-	if err != nil {
-		return nil, false, nil
+type collisionSpatialCell struct {
+	space string
+	x     int
+	y     int
+}
+
+type indexedCollisionMotion struct {
+	motion gen.TrackableMotion
+	point  [2]float64
+	x      float64
+	y      float64
+	space  string
+}
+
+type collisionSpatialIndex struct {
+	cells map[collisionSpatialCell][]indexedCollisionMotion
+}
+
+func newCollisionSpatialIndex(motions []indexedCollisionMotion) collisionSpatialIndex {
+	index := collisionSpatialIndex{cells: make(map[collisionSpatialCell][]indexedCollisionMotion, len(motions))}
+	for _, motion := range motions {
+		cell := collisionSpatialCell{
+			space: motion.space,
+			x:     collisionSpatialCellIndex(motion.x),
+			y:     collisionSpatialCellIndex(motion.y),
+		}
+		index.cells[cell] = append(index.cells[cell], motion)
 	}
-	rightPoint, err := point2D(rightMotion.Location.Position)
-	if err != nil {
-		return nil, false, nil
+	return index
+}
+
+func (i collisionSpatialIndex) Nearby(location gen.Location, point [2]float64, searchDistanceMeters float64) []indexedCollisionMotion {
+	space, x, y, paddingFactor, ok := collisionSpatialPoint(location, point)
+	if !ok {
+		return nil
 	}
+	radiusCells := int(math.Ceil((searchDistanceMeters * paddingFactor) / collisionSpatialCellSizeMeters))
+	if radiusCells < 1 {
+		radiusCells = 1
+	}
+	candidates := make([]indexedCollisionMotion, 0)
+	baseX := collisionSpatialCellIndex(x)
+	baseY := collisionSpatialCellIndex(y)
+	for dx := -radiusCells; dx <= radiusCells; dx++ {
+		for dy := -radiusCells; dy <= radiusCells; dy++ {
+			cell := collisionSpatialCell{space: space, x: baseX + dx, y: baseY + dy}
+			candidates = append(candidates, i.cells[cell]...)
+		}
+	}
+	return candidates
+}
+
+func newIndexedCollisionMotion(motion gen.TrackableMotion, point [2]float64) (indexedCollisionMotion, bool) {
+	space, x, y, _, ok := collisionSpatialPoint(motion.Location, point)
+	if !ok {
+		return indexedCollisionMotion{}, false
+	}
+	return indexedCollisionMotion{
+		motion: motion,
+		point:  point,
+		x:      x,
+		y:      y,
+		space:  space,
+	}, true
+}
+
+func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftPoint [2]float64, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightPoint [2]float64, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
 	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint, s.cfg.CollisionDefaultRadiusMeters)
 	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
 	var state activeCollisionState
@@ -1687,15 +1838,7 @@ func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable,
 	return false, nil, distance
 }
 
-func motionsMayCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, defaultRadiusMeters float64) bool {
-	leftPoint, err := point2D(leftMotion.Location.Position)
-	if err != nil {
-		return false
-	}
-	rightPoint, err := point2D(rightMotion.Location.Position)
-	if err != nil {
-		return false
-	}
+func motionsMayCollide(leftMotion gen.TrackableMotion, leftPoint [2]float64, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightPoint [2]float64, rightTrackable gen.Trackable, defaultRadiusMeters float64) bool {
 	maxDistanceMeters := effectiveRadiusMeters(leftTrackable, defaultRadiusMeters) + effectiveRadiusMeters(rightTrackable, defaultRadiusMeters)
 	dxMeters, dyMeters := collisionAxisDistancesMeters(leftMotion.Location, rightMotion.Location, leftPoint, rightPoint)
 	return dxMeters <= maxDistanceMeters && dyMeters <= maxDistanceMeters
@@ -1752,25 +1895,17 @@ func fenceEventTime(event gen.FenceEvent) time.Time {
 }
 
 func locationGeoJSONFeatureCollection(location gen.Location) (GeoJSONFeatureCollection, error) {
-	props, err := structProperties(location)
-	if err != nil {
-		return GeoJSONFeatureCollection{}, err
-	}
 	return GeoJSONFeatureCollection{
 		Type: "FeatureCollection",
 		Features: []GeoJSONFeature{{
 			Type:       "Feature",
 			Geometry:   location.Position,
-			Properties: props,
+			Properties: locationProperties(location),
 		}},
 	}, nil
 }
 
 func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJSONFeatureCollection, error) {
-	props, err := structProperties(event)
-	if err != nil {
-		return GeoJSONFeatureCollection{}, err
-	}
 	region, err := fenceRegionGeometry(fence.Region)
 	if err != nil {
 		return GeoJSONFeatureCollection{}, err
@@ -1780,23 +1915,68 @@ func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJS
 		Features: []GeoJSONFeature{{
 			Type:       "Feature",
 			Geometry:   region,
-			Properties: props,
+			Properties: fenceEventProperties(event),
 		}},
 	}, nil
 }
 
-func structProperties(value any) (map[string]any, error) {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
+func locationProperties(location gen.Location) map[string]any {
+	properties := make(map[string]any, 15)
+	setProperty(properties, "accuracy", location.Accuracy)
+	setProperty(properties, "associated", location.Associated)
+	setProperty(properties, "course", location.Course)
+	setProperty(properties, "crs", location.Crs)
+	setProperty(properties, "elevation_ref", location.ElevationRef)
+	setProperty(properties, "floor", location.Floor)
+	setProperty(properties, "heading_accuracy", location.HeadingAccuracy)
+	setProperty(properties, "magnetic_heading", location.MagneticHeading)
+	if location.Properties != nil {
+		properties["properties"] = cloneExtensionProperties(*location.Properties)
 	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
+	properties["provider_id"] = location.ProviderId
+	properties["provider_type"] = location.ProviderType
+	properties["source"] = location.Source
+	setProperty(properties, "speed", location.Speed)
+	setProperty(properties, "timestamp_generated", location.TimestampGenerated)
+	setProperty(properties, "timestamp_sent", location.TimestampSent)
+	if location.Trackables != nil {
+		properties["trackables"] = append([]string(nil), []string(*location.Trackables)...)
 	}
-	delete(out, "position")
-	delete(out, "region")
-	return out, nil
+	setProperty(properties, "true_heading", location.TrueHeading)
+	return properties
+}
+
+func fenceEventProperties(event gen.FenceEvent) map[string]any {
+	properties := make(map[string]any, 9)
+	setProperty(properties, "entry_time", event.EntryTime)
+	properties["event_type"] = event.EventType
+	setProperty(properties, "exit_time", event.ExitTime)
+	properties["fence_id"] = event.FenceId
+	setProperty(properties, "foreign_id", event.ForeignId)
+	properties["id"] = event.Id
+	if event.Properties != nil {
+		properties["properties"] = cloneExtensionProperties(*event.Properties)
+	}
+	setProperty(properties, "provider_id", event.ProviderId)
+	setProperty(properties, "trackable_id", event.TrackableId)
+	if event.Trackables != nil {
+		properties["trackables"] = append([]string(nil), []string(*event.Trackables)...)
+	}
+	return properties
+}
+
+func setProperty[T any](properties map[string]any, key string, value *T) {
+	if value != nil {
+		properties[key] = *value
+	}
+}
+
+func cloneExtensionProperties(properties gen.ExtensionProperties) map[string]any {
+	cloned := make(map[string]any, len(properties))
+	for key, value := range properties {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func fenceRegionGeometry(region gen.Fence_Region) (any, error) {
@@ -1822,6 +2002,8 @@ func collisionAreaPoint(point [2]float64) gen.CollisionEvent_CollisionArea {
 }
 
 const defaultCollisionRadiusMeters = 0.5
+const collisionSpatialCellSizeMeters = 100.0
+const collisionSpatialWGS84PaddingFactor = 2.0
 
 func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64) float64 {
 	if trackable.Radius != nil && *trackable.Radius > 0 {
@@ -1831,6 +2013,35 @@ func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64)
 		return defaultRadiusMeters
 	}
 	return defaultCollisionRadiusMeters
+}
+
+func collisionSpatialCellIndex(value float64) int {
+	return int(math.Floor(value / collisionSpatialCellSizeMeters))
+}
+
+func collisionSpatialPoint(location gen.Location, point [2]float64) (space string, x, y, paddingFactor float64, ok bool) {
+	crs := strings.TrimSpace(locationCRS(location))
+	if crs == "" {
+		crs = "local"
+	}
+	if crs == "EPSG:4326" {
+		projectedX, projectedY, valid := wgs84PointToWebMercator(point)
+		return crs, projectedX, projectedY, collisionSpatialWGS84PaddingFactor, valid
+	}
+	return crs, point[0], point[1], 1, true
+}
+
+func wgs84PointToWebMercator(point [2]float64) (float64, float64, bool) {
+	lon := point[0]
+	lat := point[1]
+	if lon < -180 || lon > 180 || lat < -90 || lat > 90 {
+		return 0, 0, false
+	}
+	lat = math.Max(math.Min(lat, 85.05112878), -85.05112878)
+	x := 6378137.0 * degreesToRadians(lon)
+	latRad := degreesToRadians(lat)
+	y := 6378137.0 * math.Log(math.Tan(math.Pi/4+latRad/2))
+	return x, y, true
 }
 
 func pointSquarePolygon(location gen.Location, radiusMeters float64) *gen.Polygon {

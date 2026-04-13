@@ -75,9 +75,12 @@ type Runtime struct {
 type telemetryInstruments struct {
 	ingestRecordsTotal        metric.Int64Counter
 	processingDuration        metric.Float64Histogram
+	processingBatchSize       metric.Int64Histogram
+	processingBatchDuration   metric.Float64Histogram
 	queueWaitDuration         metric.Float64Histogram
 	endToEndDuration          metric.Float64Histogram
 	dependencyEventsTotal     metric.Int64Counter
+	runtimeDropEventsTotal    metric.Int64Counter
 	mqttPublishDuration       metric.Float64Histogram
 	websocketDispatchDuration metric.Float64Histogram
 	websocketDispatchTotal    metric.Int64Counter
@@ -293,9 +296,12 @@ func firstNonEmpty(values ...string) string {
 func (r *Runtime) initInstruments() {
 	r.instruments.ingestRecordsTotal, _ = r.meter.Int64Counter("hub.ingest.records_total")
 	r.instruments.processingDuration, _ = r.meter.Float64Histogram("hub.processing.duration", metric.WithUnit("s"))
+	r.instruments.processingBatchSize, _ = r.meter.Int64Histogram("hub.processing.batch_size")
+	r.instruments.processingBatchDuration, _ = r.meter.Float64Histogram("hub.processing.batch_duration", metric.WithUnit("s"))
 	r.instruments.queueWaitDuration, _ = r.meter.Float64Histogram("hub.processing.queue_wait_duration", metric.WithUnit("s"))
 	r.instruments.endToEndDuration, _ = r.meter.Float64Histogram("hub.processing.end_to_end_duration", metric.WithUnit("s"))
 	r.instruments.dependencyEventsTotal, _ = r.meter.Int64Counter("hub.runtime.dependency_events_total")
+	r.instruments.runtimeDropEventsTotal, _ = r.meter.Int64Counter("hub.runtime.drop_events_total")
 	r.instruments.mqttPublishDuration, _ = r.meter.Float64Histogram("hub.mqtt.publish_duration", metric.WithUnit("s"))
 	r.instruments.websocketDispatchDuration, _ = r.meter.Float64Histogram("hub.websocket.dispatch_duration", metric.WithUnit("s"))
 	r.instruments.websocketDispatchTotal, _ = r.meter.Int64Counter("hub.websocket.dispatch_total")
@@ -485,6 +491,16 @@ func (r *Runtime) RecordProcessingDuration(ctx context.Context, stage, signal st
 		))
 }
 
+// RecordBatchProcessing records batch size and duration for low-cardinality stages.
+func (r *Runtime) RecordBatchProcessing(ctx context.Context, stage string, size int, duration time.Duration) {
+	if !r.metricsReady() {
+		return
+	}
+	attrs := metric.WithAttributes(attribute.String("stage", stage))
+	r.instruments.processingBatchSize.Record(ctx, int64(size), attrs)
+	r.instruments.processingBatchDuration.Record(ctx, duration.Seconds(), attrs)
+}
+
 // RecordQueueWait records queue wait time for a stage.
 func (r *Runtime) RecordQueueWait(ctx context.Context, stage string, duration time.Duration) {
 	if !r.metricsReady() {
@@ -519,6 +535,18 @@ func (r *Runtime) RecordDependencyEvent(ctx context.Context, dependency, event, 
 			attribute.String("dependency", dependency),
 			attribute.String("event", event),
 			attribute.String("outcome", outcome),
+		))
+}
+
+// RecordRuntimeDrop records a dropped work item or event with bounded cause labels.
+func (r *Runtime) RecordRuntimeDrop(ctx context.Context, stage, reason string) {
+	if !r.metricsReady() {
+		return
+	}
+	r.instruments.runtimeDropEventsTotal.Add(ctx, 1,
+		metric.WithAttributes(
+			attribute.String("stage", stage),
+			attribute.String("reason", reason),
 		))
 }
 

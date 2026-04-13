@@ -102,7 +102,12 @@ func (c *Client) PublishJSON(ctx context.Context, topic string, payload any, ret
 	if err != nil {
 		return err
 	}
-	return c.PublishRaw(ctx, topic, raw, retained)
+	return c.PublishRawJSON(ctx, topic, raw, retained)
+}
+
+// PublishRawJSON publishes a pre-marshaled JSON payload with QoS 1.
+func (c *Client) PublishRawJSON(ctx context.Context, topic string, payload json.RawMessage, retained bool) error {
+	return c.PublishRaw(ctx, topic, payload, retained)
 }
 
 // PublishRaw publishes the provided byte payload with QoS 1.

@@ -31,11 +31,28 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 	probeDone := make(chan error, 1)
 	server := &fakeHTTPServer{
 		onListen: func(handler http.Handler) {
-			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, req)
-			if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
+			healthReq := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			healthRec := httptest.NewRecorder()
+			handler.ServeHTTP(healthRec, healthReq)
+			if healthRec.Code != http.StatusOK || strings.TrimSpace(healthRec.Body.String()) != "ok" {
 				probeDone <- errors.New("health endpoint not wired correctly")
+				return
+			}
+
+			dropsReq := httptest.NewRequest(http.MethodGet, "/debug/runtime/drops", nil)
+			dropsRec := httptest.NewRecorder()
+			handler.ServeHTTP(dropsRec, dropsReq)
+			if dropsRec.Code != http.StatusOK {
+				probeDone <- errors.New("runtime drops endpoint not wired correctly")
+				return
+			}
+			var snapshot hub.RuntimeStatsSnapshot
+			if err := json.Unmarshal(dropsRec.Body.Bytes(), &snapshot); err != nil {
+				probeDone <- err
+				return
+			}
+			if snapshot.EventBusDrops != 0 || snapshot.NativeQueueDrops != 0 || snapshot.DecisionQueueDrops != 0 || snapshot.WebSocketOutboundDrops != 0 {
+				probeDone <- errors.New("unexpected non-zero runtime drop counters")
 				return
 			}
 			probeDone <- nil
@@ -91,6 +108,20 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 	}
 	if !server.shutdownCalled {
 		t.Fatal("expected graceful shutdown")
+	}
+}
+
+func TestFirstNonWhitespaceByte(t *testing.T) {
+	t.Parallel()
+
+	if got := firstNonWhitespaceByte([]byte(" \n\t[{")); got != '[' {
+		t.Fatalf("unexpected array prefix: %q", got)
+	}
+	if got := firstNonWhitespaceByte([]byte("\r\n {")); got != '{' {
+		t.Fatalf("unexpected object prefix: %q", got)
+	}
+	if got := firstNonWhitespaceByte([]byte(" \n\t")); got != 0 {
+		t.Fatalf("expected zero for whitespace-only payload, got %q", got)
 	}
 }
 
