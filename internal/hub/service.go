@@ -1432,9 +1432,15 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 	if s.bus == nil || location.Trackables == nil {
 		return nil
 	}
-	fences, err := s.ListFences(ctx)
-	if err != nil {
-		return err
+	var fences []gen.Fence
+	if cache := s.metadataCache(); cache != nil {
+		fences = cache.fencesView()
+	} else {
+		var err error
+		fences, err = s.ListFences(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	point, err := point2D(location.Position)
 	if err != nil {

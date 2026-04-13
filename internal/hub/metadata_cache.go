@@ -225,6 +225,11 @@ func (c *MetadataCache) ListFences() []gen.Fence {
 	return append([]gen.Fence(nil), snapshot.fences...)
 }
 
+func (c *MetadataCache) fencesView() []gen.Fence {
+	snapshot := c.current()
+	return snapshot.fences
+}
+
 func (c *MetadataCache) ListTrackables() []gen.Trackable {
 	snapshot := c.current()
 	return append([]gen.Trackable(nil), snapshot.trackables...)
