@@ -3,11 +3,12 @@ package integration
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,10 +17,7 @@ import (
 
 	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -41,12 +39,7 @@ func TestDexBackedAuthorization(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = network.Remove(ctx) })
 
-	pg, err := postgres.Run(ctx, "postgres:17",
-		postgres.WithDatabase("openrtls"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		tcnetwork.WithNetwork([]string{"postgres"}, network),
-	)
+	pg, err := startPostgres(ctx, network.Name)
 	if err != nil {
 		t.Skipf("docker/postgres unavailable: %v", err)
 	}
@@ -107,11 +100,7 @@ func TestDexBackedAuthorization(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = dex.Terminate(ctx) })
 
-	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("dsn failed: %v", err)
-	}
-	runMigrations(t, ctx, dsn)
+	runMigrations(t, ctx, pg)
 
 	appReq := testcontainers.ContainerRequest{
 		Image:        sharedHubImage(t),
@@ -211,28 +200,55 @@ func testImageTag() string {
 	return uuid.NewString()
 }
 
-func runMigrations(t *testing.T, ctx context.Context, dsn string) {
+func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Container) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
-	var lastErr error
-	for attempt := 1; time.Now().Before(deadline); attempt++ {
-		db, err := sql.Open("pgx", dsn)
-		if err != nil {
-			lastErr = err
-		} else {
-			if err := db.PingContext(ctx); err != nil {
-				lastErr = err
-			} else if err := goose.Up(db, repoPath(t, "migrations")); err == nil {
-				_ = db.Close()
-				return
-			} else {
-				lastErr = err
-			}
-			_ = db.Close()
+	for time.Now().Before(deadline) {
+		exitCode, _, err := pg.Exec(ctx, []string{"pg_isready", "-U", "postgres", "-d", "openrtls"})
+		if err == nil && exitCode == 0 {
+			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatalf("migrations failed after retrying: %v", lastErr)
+	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql"} {
+		content, err := os.ReadFile(repoPath(t, filepath.Join("migrations", name)))
+		if err != nil {
+			t.Fatalf("read migration %s failed: %v", name, err)
+		}
+		target := "/tmp/" + name
+		if err := pg.CopyToContainer(ctx, content, target, 0o644); err != nil {
+			t.Fatalf("copy migration %s failed: %v", name, err)
+		}
+		exitCode, output, err := pg.Exec(ctx, []string{"psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "openrtls", "-f", target})
+		if err != nil {
+			t.Fatalf("run migration %s failed: %v", name, err)
+		}
+		if exitCode != 0 {
+			data, _ := io.ReadAll(output)
+			t.Fatalf("migration %s failed with exit code %d: %s", name, exitCode, strings.TrimSpace(string(data)))
+		}
+	}
+}
+
+func startPostgres(ctx context.Context, networkName string) (testcontainers.Container, error) {
+	req := testcontainers.ContainerRequest{
+		Image:        "postgres:17",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_DB":       "openrtls",
+			"POSTGRES_USER":     "postgres",
+			"POSTGRES_PASSWORD": "postgres",
+		},
+		Networks: []string{networkName},
+		NetworkAliases: map[string][]string{
+			networkName: {"postgres"},
+		},
+		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+	}
+	return testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
 }
 
 func fetchDexIDToken(t *testing.T, ctx context.Context, container testcontainers.Container, username, password string) string {

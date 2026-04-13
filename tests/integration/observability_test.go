@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -68,12 +67,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()`,
 	}
 	t.Cleanup(func() { _ = sink.Terminate(ctx) })
 
-	pg, err := postgres.Run(ctx, "postgres:17",
-		postgres.WithDatabase("openrtls"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		tcnetwork.WithNetwork([]string{"postgres"}, network),
-	)
+	pg, err := startPostgres(ctx, network.Name)
 	if err != nil {
 		t.Skipf("docker/postgres unavailable: %v", err)
 	}
@@ -108,11 +102,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()`,
 	}
 	t.Cleanup(func() { _ = mq.Terminate(ctx) })
 
-	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("dsn failed: %v", err)
-	}
-	runMigrations(t, ctx, dsn)
+	runMigrations(t, ctx, pg)
 
 	appReq := testcontainers.ContainerRequest{
 		Image:        sharedHubImage(t),

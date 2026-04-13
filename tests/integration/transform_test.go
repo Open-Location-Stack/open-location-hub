@@ -16,7 +16,6 @@ import (
 	"github.com/formation-res/open-rtls-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -152,12 +151,7 @@ func startHubNoAuth(t *testing.T) (context.Context, string, string) {
 	}
 	t.Cleanup(func() { _ = network.Remove(ctx) })
 
-	pg, err := postgres.Run(ctx, "postgres:17",
-		postgres.WithDatabase("openrtls"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		tcnetwork.WithNetwork([]string{"postgres"}, network),
-	)
+	pg, err := startPostgres(ctx, network.Name)
 	if err != nil {
 		t.Skipf("docker/postgres unavailable: %v", err)
 	}
@@ -192,11 +186,7 @@ func startHubNoAuth(t *testing.T) (context.Context, string, string) {
 	}
 	t.Cleanup(func() { _ = mq.Terminate(ctx) })
 
-	dsn, err := pg.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("dsn failed: %v", err)
-	}
-	runMigrations(t, ctx, dsn)
+	runMigrations(t, ctx, pg)
 
 	appReq := testcontainers.ContainerRequest{
 		Image:        sharedHubImage(t),
