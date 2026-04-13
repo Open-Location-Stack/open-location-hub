@@ -121,6 +121,74 @@ func TestEffectiveRadiusMetersPrefersTrackableOverride(t *testing.T) {
 	}
 }
 
+func TestLocationPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
+	t.Parallel()
+
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, "source-a", [2]float32{1, 2})
+	location.ProviderId = "provider-a"
+	accuracy := float32(1.5)
+	location.Accuracy = &accuracy
+	location.Properties = &gen.ExtensionProperties{"label": "test"}
+
+	properties := locationProperties(location)
+
+	if _, ok := properties["position"]; ok {
+		t.Fatal("location properties should not include position")
+	}
+	if got := properties["provider_id"]; got != location.ProviderId {
+		t.Fatalf("expected provider_id %q, got %#v", location.ProviderId, got)
+	}
+	if got := properties["source"]; got != location.Source {
+		t.Fatalf("expected source %q, got %#v", location.Source, got)
+	}
+	if got := properties["accuracy"]; got != accuracy {
+		t.Fatalf("expected accuracy %v, got %#v", accuracy, got)
+	}
+	nested, ok := properties["properties"].(map[string]any)
+	if !ok || nested["label"] != "test" {
+		t.Fatalf("expected nested extension properties, got %#v", properties["properties"])
+	}
+}
+
+func TestFenceEventPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
+	t.Parallel()
+
+	fenceID := uuidAsOpenAPI(uuid.New())
+	eventID := uuidAsOpenAPI(uuid.New())
+	trackableID := "trackable-a"
+	providerID := "provider-a"
+	entryTime := time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC)
+	event := gen.FenceEvent{
+		Id:          eventID,
+		FenceId:     fenceID,
+		EventType:   gen.FenceEventEventType("region_entry"),
+		EntryTime:   &entryTime,
+		TrackableId: &trackableID,
+		ProviderId:  &providerID,
+		Properties:  &gen.ExtensionProperties{"label": "test"},
+	}
+
+	properties := fenceEventProperties(event)
+
+	if _, ok := properties["region"]; ok {
+		t.Fatal("fence event properties should not include region")
+	}
+	if got, ok := properties["fence_id"].(uuid.UUID); !ok || got != uuid.UUID(fenceID) {
+		t.Fatalf("expected fence_id %#v, got %#v", uuid.UUID(fenceID), properties["fence_id"])
+	}
+	if got := properties["event_type"]; got != event.EventType {
+		t.Fatalf("expected event_type %q, got %#v", event.EventType, got)
+	}
+	if got := properties["provider_id"]; got != providerID {
+		t.Fatalf("expected provider_id %q, got %#v", providerID, got)
+	}
+	nested, ok := properties["properties"].(map[string]any)
+	if !ok || nested["label"] != "test" {
+		t.Fatalf("expected nested extension properties, got %#v", properties["properties"])
+	}
+}
+
 func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	t.Parallel()
 

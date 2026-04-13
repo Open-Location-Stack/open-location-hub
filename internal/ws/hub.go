@@ -538,8 +538,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventLocation {
 				continue
 			}
-			envelope, err := hub.Decode[hub.LocationEnvelope](event)
-			if err != nil || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
+			envelope, ok := event.Payload.(hub.LocationEnvelope)
+			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
 			items = append(items, envelope.Location)
@@ -554,8 +554,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventLocation {
 				continue
 			}
-			envelope, err := hub.Decode[hub.LocationEnvelope](event)
-			if err != nil || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
+			envelope, ok := event.Payload.(hub.LocationEnvelope)
+			if !ok || !matchLocation(sub.filter.(locationFilter), envelope.Location) {
 				continue
 			}
 			items = append(items, envelope.GeoJSON)
@@ -570,8 +570,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventProximity {
 				continue
 			}
-			envelope, err := hub.Decode[hub.ProximityEnvelope](event)
-			if err != nil {
+			envelope, ok := event.Payload.(hub.ProximityEnvelope)
+			if !ok {
 				continue
 			}
 			items = append(items, envelope.Proximity)
@@ -586,8 +586,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventTrackableMotion {
 				continue
 			}
-			envelope, err := hub.Decode[hub.TrackableMotionEnvelope](event)
-			if err != nil || !matchMotion(sub.filter.(motionFilter), envelope.Motion) {
+			envelope, ok := event.Payload.(hub.TrackableMotionEnvelope)
+			if !ok || !matchMotion(sub.filter.(motionFilter), envelope.Motion) {
 				continue
 			}
 			items = append(items, envelope.Motion)
@@ -602,8 +602,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventFenceEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.FenceEventEnvelope](event)
-			if err != nil || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.FenceEventEnvelope)
+			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
 			items = append(items, envelope.Event)
@@ -618,8 +618,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventFenceEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.FenceEventEnvelope](event)
-			if err != nil || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.FenceEventEnvelope)
+			if !ok || !matchFence(sub.filter.(fenceFilter), envelope.Event) {
 				continue
 			}
 			items = append(items, envelope.GeoJSON)
@@ -634,8 +634,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventCollisionEvent {
 				continue
 			}
-			envelope, err := hub.Decode[hub.CollisionEnvelope](event)
-			if err != nil || !matchCollision(sub.filter.(collisionFilter), envelope.Event) {
+			envelope, ok := event.Payload.(hub.CollisionEnvelope)
+			if !ok || !matchCollision(sub.filter.(collisionFilter), envelope.Event) {
 				continue
 			}
 			items = append(items, envelope.Event)
@@ -650,8 +650,8 @@ func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.Raw
 			if event.Kind != hub.EventMetadataChange {
 				continue
 			}
-			change, err := hub.Decode[hub.MetadataChange](event)
-			if err != nil || !matchMetadata(sub.filter.(metadataFilter), change) {
+			change, ok := event.Payload.(hub.MetadataChange)
+			if !ok || !matchMetadata(sub.filter.(metadataFilter), change) {
 				continue
 			}
 			items = append(items, change)

@@ -1752,25 +1752,17 @@ func fenceEventTime(event gen.FenceEvent) time.Time {
 }
 
 func locationGeoJSONFeatureCollection(location gen.Location) (GeoJSONFeatureCollection, error) {
-	props, err := structProperties(location)
-	if err != nil {
-		return GeoJSONFeatureCollection{}, err
-	}
 	return GeoJSONFeatureCollection{
 		Type: "FeatureCollection",
 		Features: []GeoJSONFeature{{
 			Type:       "Feature",
 			Geometry:   location.Position,
-			Properties: props,
+			Properties: locationProperties(location),
 		}},
 	}, nil
 }
 
 func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJSONFeatureCollection, error) {
-	props, err := structProperties(event)
-	if err != nil {
-		return GeoJSONFeatureCollection{}, err
-	}
 	region, err := fenceRegionGeometry(fence.Region)
 	if err != nil {
 		return GeoJSONFeatureCollection{}, err
@@ -1780,23 +1772,68 @@ func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJS
 		Features: []GeoJSONFeature{{
 			Type:       "Feature",
 			Geometry:   region,
-			Properties: props,
+			Properties: fenceEventProperties(event),
 		}},
 	}, nil
 }
 
-func structProperties(value any) (map[string]any, error) {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
+func locationProperties(location gen.Location) map[string]any {
+	properties := make(map[string]any, 15)
+	setProperty(properties, "accuracy", location.Accuracy)
+	setProperty(properties, "associated", location.Associated)
+	setProperty(properties, "course", location.Course)
+	setProperty(properties, "crs", location.Crs)
+	setProperty(properties, "elevation_ref", location.ElevationRef)
+	setProperty(properties, "floor", location.Floor)
+	setProperty(properties, "heading_accuracy", location.HeadingAccuracy)
+	setProperty(properties, "magnetic_heading", location.MagneticHeading)
+	if location.Properties != nil {
+		properties["properties"] = cloneExtensionProperties(*location.Properties)
 	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
+	properties["provider_id"] = location.ProviderId
+	properties["provider_type"] = location.ProviderType
+	properties["source"] = location.Source
+	setProperty(properties, "speed", location.Speed)
+	setProperty(properties, "timestamp_generated", location.TimestampGenerated)
+	setProperty(properties, "timestamp_sent", location.TimestampSent)
+	if location.Trackables != nil {
+		properties["trackables"] = append([]string(nil), []string(*location.Trackables)...)
 	}
-	delete(out, "position")
-	delete(out, "region")
-	return out, nil
+	setProperty(properties, "true_heading", location.TrueHeading)
+	return properties
+}
+
+func fenceEventProperties(event gen.FenceEvent) map[string]any {
+	properties := make(map[string]any, 9)
+	setProperty(properties, "entry_time", event.EntryTime)
+	properties["event_type"] = event.EventType
+	setProperty(properties, "exit_time", event.ExitTime)
+	properties["fence_id"] = event.FenceId
+	setProperty(properties, "foreign_id", event.ForeignId)
+	properties["id"] = event.Id
+	if event.Properties != nil {
+		properties["properties"] = cloneExtensionProperties(*event.Properties)
+	}
+	setProperty(properties, "provider_id", event.ProviderId)
+	setProperty(properties, "trackable_id", event.TrackableId)
+	if event.Trackables != nil {
+		properties["trackables"] = append([]string(nil), []string(*event.Trackables)...)
+	}
+	return properties
+}
+
+func setProperty[T any](properties map[string]any, key string, value *T) {
+	if value != nil {
+		properties[key] = *value
+	}
+}
+
+func cloneExtensionProperties(properties gen.ExtensionProperties) map[string]any {
+	cloned := make(map[string]any, len(properties))
+	for key, value := range properties {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func fenceRegionGeometry(region gen.Fence_Region) (any, error) {

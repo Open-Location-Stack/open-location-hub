@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -95,24 +96,46 @@ type MetadataChange struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type EventPayload interface {
+	eventPayload()
+}
+
+func (LocationEnvelope) eventPayload()        {}
+func (ProximityEnvelope) eventPayload()       {}
+func (TrackableMotionEnvelope) eventPayload() {}
+func (FenceEventEnvelope) eventPayload()      {}
+func (CollisionEnvelope) eventPayload()       {}
+func (MetadataChange) eventPayload()          {}
+
 // Event is the normalized hub event emitted once and then consumed by
 // transport-specific publishers such as MQTT and WebSocket.
 type Event struct {
-	Kind        EventKind       `json:"kind"`
-	Scope       EventScope      `json:"scope"`
-	EventTime   time.Time       `json:"event_time"`
-	ProcessedAt time.Time       `json:"processed_at"`
-	ProviderID  string          `json:"provider_id,omitempty"`
-	TrackableID string          `json:"trackable_id,omitempty"`
-	FenceID     string          `json:"fence_id,omitempty"`
-	OriginHubID string          `json:"origin_hub_id,omitempty"`
-	Payload     json.RawMessage `json:"payload"`
+	Kind        EventKind    `json:"kind"`
+	Scope       EventScope   `json:"scope"`
+	EventTime   time.Time    `json:"event_time"`
+	ProcessedAt time.Time    `json:"processed_at"`
+	ProviderID  string       `json:"provider_id,omitempty"`
+	TrackableID string       `json:"trackable_id,omitempty"`
+	FenceID     string       `json:"fence_id,omitempty"`
+	OriginHubID string       `json:"origin_hub_id,omitempty"`
+	Payload     EventPayload `json:"-"`
 }
 
 // Decode decodes the event payload into the requested type.
 func Decode[T any](event Event) (T, error) {
+	var zero T
+	if event.Payload == nil {
+		return zero, errors.New("event payload is nil")
+	}
+	if out, ok := any(event.Payload).(T); ok {
+		return out, nil
+	}
+	raw, err := json.Marshal(event.Payload)
+	if err != nil {
+		return zero, err
+	}
 	var out T
-	err := json.Unmarshal(event.Payload, &out)
+	err = json.Unmarshal(raw, &out)
 	return out, err
 }
 
@@ -187,11 +210,7 @@ func (b *EventBus) Emit(event Event) {
 	observability.Global().RecordEventBusEmit(context.Background(), string(event.Kind), time.Since(start))
 }
 
-func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID, originHubID string, payload any) (Event, error) {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return Event{}, err
-	}
+func newEvent[P EventPayload](kind EventKind, scope EventScope, eventTime time.Time, providerID, trackableID, fenceID, originHubID string, payload P) (Event, error) {
 	if eventTime.IsZero() {
 		eventTime = time.Now().UTC()
 	}
@@ -204,7 +223,7 @@ func newEvent(kind EventKind, scope EventScope, eventTime time.Time, providerID,
 		TrackableID: trackableID,
 		FenceID:     fenceID,
 		OriginHubID: originHubID,
-		Payload:     raw,
+		Payload:     payload,
 	}
 	observability.Global().RecordEndToEnd(context.Background(), string(kind), string(scope), event.ProcessedAt.Sub(event.EventTime))
 	return event, nil

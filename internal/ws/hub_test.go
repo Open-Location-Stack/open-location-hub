@@ -59,11 +59,7 @@ func TestBusEventReachesSubscribedClient(t *testing.T) {
 	}
 
 	location := testLocation(t)
-	payload, err := json.Marshal(hub.LocationEnvelope{Location: location})
-	if err != nil {
-		t.Fatalf("marshal event payload failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: hub.LocationEnvelope{Location: location}})
 
 	msg := readWS(t, client)
 	if msg.Event != "message" || msg.Topic != topicLocationUpdates {
@@ -91,16 +87,12 @@ func TestMetadataChangeEventReachesSubscribedClient(t *testing.T) {
 		t.Fatalf("unexpected subscribe ack: %+v", ack)
 	}
 
-	payload, err := json.Marshal(hub.MetadataChange{
+	bus.Emit(hub.Event{Kind: hub.EventMetadataChange, Scope: hub.ScopeMetadata, Payload: hub.MetadataChange{
 		ID:        "zone-1",
 		Type:      "zone",
 		Operation: "update",
 		Timestamp: time.Date(2026, 3, 27, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		t.Fatalf("marshal metadata change failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventMetadataChange, Scope: hub.ScopeMetadata, Payload: payload})
+	}})
 
 	msg := readWS(t, client)
 	if msg.Event != "message" || msg.Topic != topicMetadataChanges {
@@ -125,17 +117,14 @@ func TestBroadcastAfterClientDisconnectDoesNotBreakHub(t *testing.T) {
 	cleanup()
 
 	location := testLocation(t)
-	payload, err := json.Marshal(hub.LocationEnvelope{Location: location})
-	if err != nil {
-		t.Fatalf("marshal event payload failed: %v", err)
-	}
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	locationEvent := hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: hub.LocationEnvelope{Location: location}}
+	bus.Emit(locationEvent)
 
 	secondClient, secondCleanup := startTestHub(t, bus, true)
 	defer secondCleanup()
 	writeWS(t, secondClient, map[string]any{"event": "subscribe", "topic": topicLocationUpdates})
 	_ = readWS(t, secondClient)
-	bus.Emit(hub.Event{Kind: hub.EventLocation, Scope: hub.ScopeLocal, Payload: payload})
+	bus.Emit(locationEvent)
 	msg := readWS(t, secondClient)
 	if msg.Event != "message" {
 		t.Fatalf("expected message after prior disconnect, got %+v", msg)
