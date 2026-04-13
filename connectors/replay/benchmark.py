@@ -19,7 +19,7 @@ from pathlib import Path
 
 import websocket
 
-from replay_support import build_replay_schedule, load_env_file, load_logged_locations
+from replay_support import load_env_file, load_logged_locations, preview_replay_schedule
 
 
 DEFAULT_DATASET = "connectors/replay/benchmarks/opensky-germany-2026-04-08/location_updates.ndjson"
@@ -168,6 +168,13 @@ class BenchmarkObserver:
                     return
                 self._error = exc
                 return
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8", errors="ignore")
+            if not isinstance(raw, str):
+                continue
+            raw = raw.strip()
+            if not raw or raw[0] not in "[{":
+                continue
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError as exc:
@@ -377,23 +384,15 @@ def compute_schedule_stats(
     interpolation_rate_hz: float,
     target_duration_seconds: float,
 ) -> ScheduleStats:
-    preview_schedule = build_replay_schedule(
-        logged_locations=logged_locations,
-        replay_start=datetime.now(UTC),
-        acceleration_factor=1.0,
-        interpolation_rate_hz=interpolation_rate_hz,
-    )
-    source_span_seconds = (
-        preview_schedule[-1].replay_timestamp - preview_schedule[0].replay_timestamp
-    ).total_seconds()
+    preview = preview_replay_schedule(logged_locations, interpolation_rate_hz)
+    source_span_seconds = preview.source_span_seconds
     acceleration_factor = max(source_span_seconds / target_duration_seconds, 1.0)
     expected_runtime_seconds = source_span_seconds / acceleration_factor if acceleration_factor > 0 else 0.0
-    synthetic_locations = sum(1 for event in preview_schedule if event.synthetic)
     return ScheduleStats(
         interpolation_rate_hz=interpolation_rate_hz,
         logged_locations=len(logged_locations),
-        scheduled_locations=len(preview_schedule),
-        synthetic_locations=synthetic_locations,
+        scheduled_locations=preview.scheduled_locations,
+        synthetic_locations=preview.synthetic_locations,
         source_span_seconds=source_span_seconds,
         expected_runtime_seconds=expected_runtime_seconds,
         acceleration_factor=acceleration_factor,

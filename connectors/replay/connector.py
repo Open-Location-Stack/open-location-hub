@@ -8,6 +8,7 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
+from typing import Iterator
 
 from hub_client import HubConfig, HubRESTClient, HubWebSocketPublisher
 from replay_support import build_replay_schedule, load_env_file, load_logged_locations
@@ -108,15 +109,14 @@ def main() -> int:
 
     ensure_hub_resources(
         hub_rest,
-        replay_schedule,
+        logged_locations,
         bootstrap_trackables=args.bootstrap_trackables,
         trackable_radius_meters=args.trackable_radius_meters,
     )
 
     start_monotonic = time.monotonic()
     try:
-        replay_batches = build_replay_batches(replay_schedule, args.batch_window_ms / 1000.0, args.max_batch_size)
-        for batch in replay_batches:
+        for batch in iter_replay_batches(replay_schedule, args.batch_window_ms / 1000.0, args.max_batch_size):
             wait_until_scheduled(start_monotonic, replay_start, batch[0].replay_timestamp)
             hub_ws.publish_locations([event.location for event in batch])
             LOGGER.debug(
@@ -137,7 +137,7 @@ def main() -> int:
 
 def ensure_hub_resources(
     hub_rest: HubRESTClient,
-    replay_schedule: list,
+    logged_locations: list,
     *,
     bootstrap_trackables: bool,
     trackable_radius_meters: float,
@@ -148,8 +148,8 @@ def ensure_hub_resources(
 
     known_providers: set[str] = set()
     known_trackables: set[str] = set()
-    for event in replay_schedule:
-        location = event.location
+    for item in logged_locations:
+        location = item.location
         provider_id = location.get("provider_id")
         provider_type = location.get("provider_type") or "replay"
         if isinstance(provider_id, str) and provider_id and provider_id not in known_providers:
@@ -217,10 +217,9 @@ def wait_until_scheduled(start_monotonic: float, replay_start: datetime, replay_
         time.sleep(min(remaining, 0.25))
 
 
-def build_replay_batches(replay_schedule: list, batch_window_seconds: float, max_batch_size: int) -> list[list]:
+def iter_replay_batches(replay_schedule: list, batch_window_seconds: float, max_batch_size: int) -> Iterator[list]:
     if not replay_schedule:
-        return []
-    batches: list[list] = []
+        return
     current_batch = [replay_schedule[0]]
     batch_start = replay_schedule[0].replay_timestamp
     for event in replay_schedule[1:]:
@@ -228,11 +227,10 @@ def build_replay_batches(replay_schedule: list, batch_window_seconds: float, max
         if same_window and len(current_batch) < max_batch_size:
             current_batch.append(event)
             continue
-        batches.append(current_batch)
+        yield current_batch
         current_batch = [event]
         batch_start = event.replay_timestamp
-    batches.append(current_batch)
-    return batches
+    yield current_batch
 
 
 def require_env(name: str) -> str:
