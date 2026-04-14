@@ -3,7 +3,7 @@
 Reference documentation for local setup, hub architecture, configuration,
 authentication, RPC behavior, and connector development.
 
-Start here if you want the laptop-friendly local runtime:
+Start here if you want the local runtime:
 
 - [`docs/getting-started.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/getting-started.md)
 

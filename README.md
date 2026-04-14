@@ -12,7 +12,7 @@ Key capabilities:
 - JWT auth modes: `oidc`, `static`, and `hybrid`
 - RBAC and ownership-aware authorization
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
-- Laptop-friendly local starter stack with optional SigNoz observability
+- Local starter stack with optional SigNoz observability
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
 - Connector demonstrators under [`connectors/`](connectors)
@@ -59,6 +59,23 @@ Notes:
 - `just check` runs formatting, lint, tests, and build
 - `just test-int` runs integration tests with Docker
 - `just compose-logs` tails compose services
+
+## Docker Images
+
+Open Location Hub images are available on Docker Hub as [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
+
+Pull a published release image with:
+
+```bash
+docker pull tryformation/openlocationhub:0.1.0
+```
+
+If you want the supporting local services from this repository as well:
+
+- use `just compose-up` for the basic local stack from [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml), which brings up the hub, Postgres, Mosquitto, and Dex
+- use `just local-hub-up` for the local demo stack in [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md), which adds SigNoz, ClickHouse, and the OpenTelemetry collector around the hub runtime
+
+For the full set of environment variables and runtime options, see [`docs/configuration.md`](docs/configuration.md). For local setup walkthroughs, see [`docs/getting-started.md`](docs/getting-started.md) and [`local-hub/README.md`](local-hub/README.md).
 
 ## Software Docs
 - [docs/getting-started.md](docs/getting-started.md)

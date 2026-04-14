@@ -1,27 +1,46 @@
 # Getting Started
 
-If you want to try Open RTLS Hub on your laptop, start with the shared local
-runtime in [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub).
-That setup brings up the hub, Postgres, Mosquitto, Dex, and a ready-to-use
-observability stack so you can inspect what the hub is doing while you
+If you want to try Open RTLS Hub on your laptop, this repository includes two
+ready-made local runtime paths:
+
+- a basic compose stack from [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml) with the hub, Postgres, Mosquitto, and Dex
+- a local demo stack with observability in [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) with the hub, Postgres, Mosquitto, Dex, SigNoz, ClickHouse, and the OpenTelemetry collector
+
+Use the basic stack if you want the shortest path to a working hub runtime.
+Use the local demo stack if you also want observability while you
 experiment.
 
 ## Fast Path
 
-1. Review [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md).
-2. Start the stack:
+For the basic local stack:
+
+```bash
+cp .env.example .env
+just compose-up
+```
+
+For the local demo stack with observability:
+
+```bash
+just local-hub-up
+```
+
+If you prefer the underlying scripts for the local demo stack:
 
 ```bash
 local-hub/start_demo.sh
-```
-
-3. If you need an auth token for manual calls or connector demos:
-
-```bash
 local-hub/fetch_demo_token.sh
 ```
 
-4. Pick an example connector or continue with the docs below.
+## Which Stack To Use
+
+- Basic compose stack:
+  best when you want the hub plus its core dependencies only
+- Local demo stack with observability:
+  best when you want the hub plus a prewired observability setup for traces, metrics, and logs
+
+The basic stack uses the repository root [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml).
+The local demo stack is documented in [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md).
 
 ## What This Setup Is For
 
@@ -33,7 +52,9 @@ This starter stack is not positioned as a production deployment recipe.
 
 ## Notes
 
+- the basic compose stack includes the hub, Postgres, Mosquitto, and Dex
 - Dex is included because it is convenient for local OIDC and repeatable demo users, not because it is the recommended production IdP choice.
+- the local demo stack adds SigNoz, ClickHouse, and the OpenTelemetry collector around that core runtime
 - SigNoz is included because it is easy to bootstrap and script for modern local observability workflows, but the hub does not depend on SigNoz specifically.
 - Alternative OpenTelemetry-compatible collectors and observability stacks should work as well.
 
