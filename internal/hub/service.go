@@ -48,6 +48,10 @@ type Config struct {
 	CollisionStateTTL                     time.Duration
 	CollisionCollidingDebounce            time.Duration
 	CollisionDefaultRadiusMeters          float64
+	KalmanFilterEnabled                   bool
+	KalmanLocationMaxPoints               int
+	KalmanLocationMaxAge                  time.Duration
+	KalmanEmitMaxFrequencyHz              float64
 }
 
 // Service implements the hub's CRUD and ingest behavior over storage, cache,
@@ -149,7 +153,7 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config)
 		return nil, err
 	}
 	nowFn := time.Now
-	return &Service{
+	service := &Service{
 		logger:           logger,
 		queries:          queries,
 		bus:              bus,
@@ -162,7 +166,11 @@ func New(logger *zap.Logger, queries sqlcgen.Querier, bus *EventBus, cfg Config)
 		stats:            runtimeStatsFromBus(bus),
 		telemetryRuntime: observability.Global(),
 		decisionStage:    passthroughDecisionStage{},
-	}, nil
+	}
+	if cfg.KalmanFilterEnabled {
+		service.decisionStage = newKalmanDecisionStage(service.state, cfg, nowFn)
+	}
+	return service, nil
 }
 
 func runtimeStatsFromBus(bus *EventBus) *RuntimeStats {
@@ -1072,23 +1080,30 @@ func (s *Service) processDecisionLocationBatch(ctx context.Context, batch []deri
 
 func (s *Service) processDecisionLocationStage(stageCtx context.Context, span oteltrace.Span, location gen.Location) error {
 	start := time.Now()
-	decisionLocation, ok, err := s.decisionStage.Process(stageCtx, location)
-	if err != nil || !ok {
-		if err != nil {
-			span.RecordError(err)
-		}
+	results, err := s.decisionStage.Process(stageCtx, location)
+	if err != nil {
+		span.RecordError(err)
 		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
 		return err
 	}
-	err = s.processDerivedLocation(stageCtx, decisionLocation)
-	if err != nil {
-		span.RecordError(err)
+	if len(results) == 0 {
+		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
+		return nil
+	}
+	var stageErr error
+	for _, result := range results {
+		if err := s.processDerivedLocation(stageCtx, result.Location, result.Emit); err != nil && stageErr == nil {
+			stageErr = err
+		}
+	}
+	if stageErr != nil {
+		span.RecordError(stageErr)
 	}
 	s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-	return err
+	return stageErr
 }
 
-func (s *Service) processDerivedLocation(ctx context.Context, location gen.Location) error {
+func (s *Service) processDerivedLocation(ctx context.Context, location gen.Location, emit bool) error {
 	if s.bus == nil {
 		return nil
 	}
@@ -1100,10 +1115,43 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 	case ScopeLocal:
 		wgs84Location, ok, err := view.WGS84(ctx)
 		if err == nil && ok {
-			if err := s.publishLocationScope(ctx, *wgs84Location, ScopeEPSG4326); err != nil {
+			if emit {
+				if err := s.publishLocationScope(ctx, *wgs84Location, ScopeEPSG4326); err != nil {
+					return err
+				}
+				wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, *wgs84Location, ScopeEPSG4326)
+				if err != nil {
+					return err
+				}
+				if s.cfg.CollisionsEnabled {
+					if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
+						return err
+					}
+				}
+			} else if s.cfg.CollisionsEnabled {
+				wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, *wgs84Location)
+				if err != nil {
+					return err
+				}
+				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
+					return err
+				}
+			}
+		}
+		if emit {
+			if err := s.publishLocationScope(ctx, location, ScopeLocal); err != nil {
 				return err
 			}
-			wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, *wgs84Location, ScopeEPSG4326)
+			if _, err := s.publishTrackableMotionsForLocation(ctx, location, ScopeLocal); err != nil {
+				return err
+			}
+		}
+	case ScopeEPSG4326:
+		if emit {
+			if err := s.publishLocationScope(ctx, location, ScopeEPSG4326); err != nil {
+				return err
+			}
+			wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, location, ScopeEPSG4326)
 			if err != nil {
 				return err
 			}
@@ -1112,23 +1160,21 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 					return err
 				}
 			}
-		}
-	case ScopeEPSG4326:
-		localLocation, ok, err := view.Local(ctx)
-		if err == nil && ok {
-			if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
-				return err
-			}
-			if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
-				return err
-			}
-		}
-		if s.cfg.CollisionsEnabled {
+		} else if s.cfg.CollisionsEnabled {
 			wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, location)
 			if err != nil {
 				return err
 			}
 			if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
+				return err
+			}
+		}
+		localLocation, ok, err := view.Local(ctx)
+		if err == nil && ok && emit {
+			if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
+				return err
+			}
+			if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
 				return err
 			}
 		}

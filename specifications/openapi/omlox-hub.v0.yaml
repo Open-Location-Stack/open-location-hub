@@ -1080,10 +1080,10 @@ components:
           description: Reference system for altitude-like values carried in the geometry.
         speed:
           type: number
-          description: Estimated speed in meters per second.
+          description: Estimated speed in meters per second. Derived hub outputs may also populate this from normalized track movement.
         course:
           type: number
-          description: Travel course in degrees.
+          description: Travel course in degrees. Derived hub outputs may also populate this from normalized track movement.
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 

@@ -341,16 +341,6 @@ func max(left, right int) int {
 	return right
 }
 
-type decisionLocationStage interface {
-	Process(context.Context, gen.Location) (gen.Location, bool, error)
-}
-
-type passthroughDecisionStage struct{}
-
-func (passthroughDecisionStage) Process(_ context.Context, location gen.Location) (gen.Location, bool, error) {
-	return location, true, nil
-}
-
 type derivedLocationView struct {
 	service  *Service
 	location gen.Location

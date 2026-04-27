@@ -855,6 +855,66 @@ func TestEnqueueCollisionWorkUsesCollisionQueueWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	state := NewProcessingState(time.Now)
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	crs := "local"
+	location := testLocation(t, &crs)
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:      bus,
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		cfg:      Config{LocationTTL: time.Minute},
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, false); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one fence event, got %d", len(events))
+	}
+	if events[0].Kind != EventFenceEvent {
+		t.Fatalf("expected fence event, got %s", events[0].Kind)
+	}
+}
+
+func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *testing.T) {
+	t.Parallel()
+
+	queue := &captureCollisionQueue{}
+	bus := NewEventBus()
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		collisionQueue: queue,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
+		cfg: Config{
+			CollisionsEnabled: true,
+		},
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, false); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one collision work item, got %d", len(queue.works))
+	}
+}
+
 type capturingDerivedSubmitter struct {
 	works []derivedLocationWork
 }
@@ -959,6 +1019,21 @@ func testLocationWithCoordinates(t *testing.T, crs *string, source string, coord
 	t.Helper()
 	point := gen.Point{Type: "Point"}
 	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
+		t.Fatalf("coordinates setup failed: %v", err)
+	}
+	return gen.Location{
+		Crs:          crs,
+		Position:     point,
+		ProviderId:   "provider-a",
+		ProviderType: "uwb",
+		Source:       source,
+	}
+}
+
+func testLocationWithCoordinates3D(t *testing.T, crs *string, source string, coordinates [3]float32) gen.Location {
+	t.Helper()
+	point := gen.Point{Type: "Point"}
+	if err := point.Coordinates.FromGeoJsonPosition3D([]float32{coordinates[0], coordinates[1], coordinates[2]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return gen.Location{
