@@ -68,6 +68,8 @@ services:
       AUTH_ROLES_CLAIM: email
       AUTH_PERMISSIONS_FILE: /app/config/auth/permissions.yaml
       COLLISIONS_ENABLED: "true"
+      KALMAN_FILTER_ENABLED: "true"
+      KALMAN_EMIT_MAX_FREQUENCY_HZ: "2"
       OTEL_ENABLED: "true"
       OTEL_METRICS_ENABLED: "true"
       OTEL_TRACES_ENABLED: "true"

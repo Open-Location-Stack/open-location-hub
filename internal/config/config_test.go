@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func configFromMap(values map[string]string) (Config, error) {
 	return fromLookupEnv(func(key string) (string, bool) {
@@ -56,6 +59,18 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.CollisionDefaultRadiusMeters != 0.5 {
 		t.Fatalf("unexpected collision default radius: %v", cfg.CollisionDefaultRadiusMeters)
+	}
+	if cfg.KalmanFilterEnabled {
+		t.Fatal("expected kalman filter to default to disabled")
+	}
+	if cfg.KalmanLocationMaxPoints != 8 {
+		t.Fatalf("unexpected kalman max points: %d", cfg.KalmanLocationMaxPoints)
+	}
+	if cfg.KalmanLocationMaxAge != 10*time.Second {
+		t.Fatalf("unexpected kalman max age: %s", cfg.KalmanLocationMaxAge)
+	}
+	if cfg.KalmanEmitMaxFrequencyHz != 0 {
+		t.Fatalf("unexpected kalman max frequency: %v", cfg.KalmanEmitMaxFrequencyHz)
 	}
 }
 
@@ -163,6 +178,42 @@ func TestCollisionDefaultRadiusMustBePositive(t *testing.T) {
 	_, err := configFromMap(map[string]string{
 		"AUTH_MODE":                       "none",
 		"COLLISION_DEFAULT_RADIUS_METERS": "0",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestKalmanLocationMaxPointsMustExceedOne(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":                  "none",
+		"KALMAN_LOCATION_MAX_POINTS": "1",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestKalmanLocationMaxAgeMustBePositive(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":               "none",
+		"KALMAN_LOCATION_MAX_AGE": "0s",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestKalmanEmitMaxFrequencyMustBeNonNegative(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":                    "none",
+		"KALMAN_EMIT_MAX_FREQUENCY_HZ": "-1",
 	})
 	if err == nil {
 		t.Fatal("expected validation error")

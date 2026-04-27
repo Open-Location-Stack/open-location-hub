@@ -221,7 +221,7 @@ Hub behavior:
 - the hub must check trackable movements for collisions
 - collision events must be sent immediately
 - all collision events are hub-generated
-- current repository behavior is bounded to single-hub trackable-versus-trackable collision evaluation in WGS84
+- current repository behavior is bounded to single-hub trackable-versus-trackable collision evaluation in WGS84 on the latest normalized motion state
 - collision thresholds are meter-based and use `Trackable.radius` when present, otherwise `COLLISION_DEFAULT_RADIUS_METERS`
 - WGS84 collision checks use a short-range planar approximation instead of geodesic math so evaluation stays cheap on the runtime hot path
 - collision evaluation is enabled only when `COLLISIONS_ENABLED=true`

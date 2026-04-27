@@ -1,0 +1,12 @@
+[project]
+name = "open-rtls-uwb-sim-demo"
+version = "0.1.0"
+description = "Mock multi-floor UWB simulator for Open RTLS Hub"
+requires-python = ">=3.12"
+dependencies = [
+  "requests>=2.33.0",
+  "websocket-client>=1.9.0",
+]
+
+[tool.uv]
+package = false

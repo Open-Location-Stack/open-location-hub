@@ -435,7 +435,7 @@ type Location struct {
 	// Associated Indicates whether the location has already been associated with a trackable.
 	Associated *bool `json:"associated,omitempty"`
 
-	// Course Travel course in degrees.
+	// Course Travel course in degrees. Derived hub outputs may also populate this from normalized track movement.
 	Course *float32 `json:"course,omitempty"`
 
 	// Crs Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current implementation.
@@ -468,7 +468,7 @@ type Location struct {
 	// Source Source locator or sensor identifier that produced the observation.
 	Source string `json:"source"`
 
-	// Speed Estimated speed in meters per second.
+	// Speed Estimated speed in meters per second. Derived hub outputs may also populate this from normalized track movement.
 	Speed *float32 `json:"speed,omitempty"`
 
 	// TimestampGenerated Timestamp when the provider generated the observation.

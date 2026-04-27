@@ -39,3 +39,5 @@ Optional (selected):
 - In MQTT extension, the hub publishes derived local and WGS84 variants when the necessary transformation is available.
 - Local georeferencing is derived from `Zone.ground_control_points`; named CRS conversion is delegated to the runtime projection engine.
 - If a requested derived variant cannot be produced safely, the hub suppresses that variant rather than publishing incorrect coordinates.
+- When optional Kalman normalization is enabled, the hub may derive OMLOX-compatible `course` and `speed` values from the normalized track and may publish additional hub-specific derived metrics such as vertical speed only in `properties`.
+- Kalman-specific metadata must remain in `properties`; the hub does not add non-OMLOX top-level `Location` fields for this behavior.

@@ -28,6 +28,11 @@ type expiringCollisionState struct {
 	expiresAt time.Time
 }
 
+type expiringKalmanTrack struct {
+	value     kalmanTrackState
+	expiresAt time.Time
+}
+
 type expiringFenceMembership struct {
 	expiresAt time.Time
 }
@@ -43,6 +48,7 @@ type ProcessingState struct {
 	fenceMembership         map[string]map[string]expiringFenceMembership
 	motions                 map[string]expiringMotion
 	collisions              map[string]expiringCollisionState
+	kalmanTracks            map[string]expiringKalmanTrack
 }
 
 // NewProcessingState constructs an empty in-memory transient state store.
@@ -59,6 +65,7 @@ func NewProcessingState(now func() time.Time) *ProcessingState {
 		fenceMembership:         map[string]map[string]expiringFenceMembership{},
 		motions:                 map[string]expiringMotion{},
 		collisions:              map[string]expiringCollisionState{},
+		kalmanTracks:            map[string]expiringKalmanTrack{},
 	}
 }
 
@@ -215,6 +222,29 @@ func (s *ProcessingState) DeleteCollisionState(key string) {
 	delete(s.collisions, key)
 }
 
+func (s *ProcessingState) GetKalmanTrackState(trackableID string) (kalmanTrackState, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.kalmanTracks[trackableID]
+	if !ok || !item.expiresAt.After(s.nowUTC()) {
+		delete(s.kalmanTracks, trackableID)
+		return kalmanTrackState{}, false
+	}
+	return item.value, true
+}
+
+func (s *ProcessingState) SetKalmanTrackState(trackableID string, value kalmanTrackState, ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.kalmanTracks[trackableID] = expiringKalmanTrack{value: value, expiresAt: s.nowUTC().Add(ttl)}
+}
+
+func (s *ProcessingState) DeleteKalmanTrackState(trackableID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.kalmanTracks, trackableID)
+}
+
 // StartSweeper periodically removes expired entries from in-memory transient
 // state so stale keys do not accumulate indefinitely.
 func (s *ProcessingState) StartSweeper(ctx context.Context, interval time.Duration) {
@@ -281,6 +311,11 @@ func (s *ProcessingState) SweepExpired() {
 	for key, item := range s.collisions {
 		if !item.expiresAt.After(now) {
 			delete(s.collisions, key)
+		}
+	}
+	for key, item := range s.kalmanTracks {
+		if !item.expiresAt.After(now) {
+			delete(s.kalmanTracks, key)
 		}
 	}
 }
