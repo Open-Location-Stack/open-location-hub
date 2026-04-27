@@ -14,6 +14,9 @@ FLOOR_COUNT = 3
 FLOOR_HEIGHT_METERS = 5.0
 FLOOR_X_OFFSET_METERS = 2.5
 FLOOR_Y_OFFSET_METERS = 1.5
+DEFAULT_ANCHOR_LATITUDE = 47.3769
+DEFAULT_ANCHOR_LONGITUDE = 8.5417
+METERS_PER_LATITUDE_DEGREE = 111_320.0
 PACMAN_CENTER = (30.0, 30.0)
 PACMAN_RADIUS = 28.0
 PACMAN_MOUTH_HALF_ANGLE_DEGREES = 28.0
@@ -102,15 +105,27 @@ class FloorDefinition:
     image_path: str
     image_width: int
     image_height: int
+    anchor_latitude: float
+    anchor_longitude: float
+    ground_control_points: list[dict[str, object]]
     image_corners_local: dict[str, list[float]]
+    image_corners_wgs84: dict[str, list[float]]
+    outline_ring_wgs84: list[list[float]]
+    center_wgs84: tuple[float, float, float]
 
     @property
-    def center(self) -> tuple[float, float, float]:
+    def center_local(self) -> tuple[float, float, float]:
         x, y = translate_point(PACMAN_CENTER[0], PACMAN_CENTER[1], self.x_offset, self.y_offset)
         return x, y, self.z_base
 
 
-def build_floor_definitions(building_id: str, asset_dir: Path) -> list[FloorDefinition]:
+def build_floor_definitions(
+    building_id: str,
+    asset_dir: Path,
+    *,
+    anchor_latitude: float = DEFAULT_ANCHOR_LATITUDE,
+    anchor_longitude: float = DEFAULT_ANCHOR_LONGITUDE,
+) -> list[FloorDefinition]:
     definitions: list[FloorDefinition] = []
     for floor_index in range(FLOOR_COUNT):
         floor_number = floor_index + 1
@@ -125,7 +140,29 @@ def build_floor_definitions(building_id: str, asset_dir: Path) -> list[FloorDefi
             for name, (x, y) in BASE_NODES.items()
         }
         outline_ring = translated_outline_ring(x_offset, y_offset)
-        corners = local_image_corners(outline_ring)
+        corners_local = local_image_corners(outline_ring)
+        corners_wgs84 = {
+            name: [round(value, 7) for value in local_xy_to_wgs84(point[0], point[1], anchor_latitude, anchor_longitude)]
+            for name, point in corners_local.items()
+        }
+        outline_ring_wgs84 = [
+            [round(value, 7) for value in local_xy_to_wgs84(point[0], point[1], anchor_latitude, anchor_longitude)]
+            for point in outline_ring
+        ]
+        center_local = (
+            round(PACMAN_CENTER[0] + x_offset, 3),
+            round(PACMAN_CENTER[1] + y_offset, 3),
+            round(z_base, 3),
+        )
+        center_lon, center_lat = local_xy_to_wgs84(center_local[0], center_local[1], anchor_latitude, anchor_longitude)
+        gcp_nodes = ("center", "connector", "top_dead")
+        ground_control_points = [
+            {
+                "local": point_geometry(nodes[name][0], nodes[name][1]),
+                "wgs84": point_geometry(*local_xy_to_wgs84(nodes[name][0], nodes[name][1], anchor_latitude, anchor_longitude)),
+            }
+            for name in gcp_nodes
+        ]
         definitions.append(
             FloorDefinition(
                 floor_number=floor_number,
@@ -142,7 +179,13 @@ def build_floor_definitions(building_id: str, asset_dir: Path) -> list[FloorDefi
                 image_path=str(asset_dir / f"floor-{floor_number}.svg"),
                 image_width=IMAGE_SIZE[0],
                 image_height=IMAGE_SIZE[1],
-                image_corners_local=corners,
+                anchor_latitude=anchor_latitude,
+                anchor_longitude=anchor_longitude,
+                ground_control_points=ground_control_points,
+                image_corners_local=corners_local,
+                image_corners_wgs84=corners_wgs84,
+                outline_ring_wgs84=outline_ring_wgs84,
+                center_wgs84=(round(center_lon, 7), round(center_lat, 7), round(z_base, 3)),
             )
         )
     return definitions
@@ -185,8 +228,21 @@ def local_image_corners(outline_ring: Iterable[Iterable[float]]) -> dict[str, li
     }
 
 
+def local_xy_to_wgs84(x: float, y: float, anchor_latitude: float, anchor_longitude: float) -> tuple[float, float]:
+    latitude = anchor_latitude + (y / METERS_PER_LATITUDE_DEGREE)
+    meters_per_longitude_degree = METERS_PER_LATITUDE_DEGREE * math.cos(math.radians(anchor_latitude))
+    longitude = anchor_longitude + (x / max(meters_per_longitude_degree, 1e-9))
+    return longitude, latitude
+
+
+def point_geometry(x: float, y: float, z: float | None = None) -> dict[str, object]:
+    coordinates: list[float] = [round(x, 4), round(y, 4)]
+    if z is not None:
+        coordinates.append(round(z, 4))
+    return {"type": "Point", "coordinates": coordinates}
+
+
 def floor_zone_properties(floor: FloorDefinition) -> dict[str, object]:
-    corners = floor.image_corners_local
     return {
         "connector": BUILDING_NAMESPACE,
         "building_id": floor.building_id,
@@ -194,10 +250,13 @@ def floor_zone_properties(floor: FloorDefinition) -> dict[str, object]:
         "floorplan_image_path": relative_asset_path(floor.image_path),
         "floorplan_image_size": {"width": floor.image_width, "height": floor.image_height},
         "floorplan_corner_order": ["top_left", "top_right", "bottom_right", "bottom_left"],
-        "floorplan_corners_local": corners,
+        "floorplan_corners_local": floor.image_corners_local,
+        "floorplan_corners_wgs84": floor.image_corners_wgs84,
         "floor_outline_local": floor.outline_ring,
+        "floor_outline_wgs84": floor.outline_ring_wgs84,
         "floor_origin_local": [round(floor.x_offset, 3), round(floor.y_offset, 3), round(floor.z_base, 3)],
         "interfloor_connector_local": [round(floor.nodes["connector"][0], 3), round(floor.nodes["connector"][1], 3), round(floor.nodes["connector"][2], 3)],
+        "floor_center_wgs84": [round(floor.center_wgs84[0], 7), round(floor.center_wgs84[1], 7)],
     }
 
 

@@ -35,7 +35,7 @@
 6. The sharded decision workers drain queued locations in bounded batches before processing them so bursty ingest spends less time on per-item queue churn.
 7. When Kalman publication throttling is enabled, the decision stage may suppress some derived location and trackable-motion events while still running geofence and collision work on every accepted normalized point.
 8. Collision evaluation runs as its own downstream stage fed from the decision output so pairwise collision work does not block the rest of the derived path.
-9. Collision work prefers normalized WGS84 motions when the derived transform exists; otherwise it falls back to normalized local motions for local-only streams so indoor UWB-style zones still produce collision events.
+9. Collision work evaluates normalized WGS84 motions only; streams without a safe WGS84 representation do not enter collision evaluation.
 10. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
 11. When any non-critical queue fills, the hub drops newer work on that path rather than backpressuring raw ingest.
 
@@ -46,7 +46,7 @@ Implications:
 - location ingest latency is protected from slower transport fan-out, geofence work, or collision work
 - the decision-stage queue is the insertion point for optional filtered or smoothed track processing before fence/collision decisions
 - when Kalman filtering is enabled, derived `location` and `trackable_motion` publication can be rate-limited independently from decision logic so high-frequency UWB-style updates still drive fencing and collision checks
-- collision evaluation no longer depends on a WGS84 transform being available; local-only indoor streams can still collide on the normalized local motion state
+- collision evaluation remains WGS84-only so downstream collision payloads stay in one coordinate space
 - lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
 - WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable

@@ -25,7 +25,7 @@ The repository already includes a few connector-oriented projects under
 - [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md):
   NDJSON trace replay back into the hub for diagnostic or demo use
 - [`connectors/uwb_sim/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/uwb_sim/README.md):
-  mock 3-floor local UWB simulator with generated floorplan images and building metadata bootstrap
+  mock 3-floor UWB simulator with generated georeferenced floorplan images and WGS84 location ingest
 
 The bundled runtime connectors now cover both transport styles. The GTFS
 project includes WebSocket and MQTT ingest variants, and the OpenSky project

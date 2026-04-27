@@ -21,7 +21,7 @@ Useful next stops after the stack is up:
 - [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md) for a transit-focused connector example
 - [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md) for an aircraft-position example
 - [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md) for replaying captured traffic back into the hub
-- [`connectors/uwb_sim/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/uwb_sim/README.md) for a multi-floor local UWB movement simulator with floorplan assets
+- [`connectors/uwb_sim/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/uwb_sim/README.md) for a multi-floor UWB movement simulator with georeferenced floorplan assets
 
 ## Development Scope
 

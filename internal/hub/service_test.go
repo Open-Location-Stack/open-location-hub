@@ -915,7 +915,7 @@ func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *t
 	}
 }
 
-func TestProcessDerivedLocationUsesLocalCollisionsWhenWGS84Unavailable(t *testing.T) {
+func TestProcessDerivedLocationSkipsCollisionsWhenWGS84Unavailable(t *testing.T) {
 	t.Parallel()
 
 	queue := &captureCollisionQueue{}
@@ -937,14 +937,8 @@ func TestProcessDerivedLocationUsesLocalCollisionsWhenWGS84Unavailable(t *testin
 	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
 		t.Fatalf("processDerivedLocation failed: %v", err)
 	}
-	if len(queue.works) != 1 {
-		t.Fatalf("expected one collision work item, got %d", len(queue.works))
-	}
-	if len(queue.works[0].Motions) != 1 {
-		t.Fatalf("expected one local collision motion, got %+v", queue.works[0].Motions)
-	}
-	if queue.works[0].Motions[0].Location.Crs == nil || *queue.works[0].Motions[0].Location.Crs != "local" {
-		t.Fatalf("expected queued collision motion to stay local, got %+v", queue.works[0].Motions[0].Location.Crs)
+	if len(queue.works) != 0 {
+		t.Fatalf("expected no collision work without WGS84 transform, got %d", len(queue.works))
 	}
 }
 

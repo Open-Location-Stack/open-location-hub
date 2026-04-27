@@ -12,7 +12,15 @@ from pathlib import Path
 from assets import ensure_floorplan_assets
 from hub_client import HubConfig, HubRESTClient, HubWebSocketPublisher, deterministic_uuid, point
 from simulator import BuildingGraph, TRACKABLE_RADIUS_METERS, advance_agent, agent_location_payload, initial_agents
-from uwb_support import build_floor_definitions, floor_zone_properties, load_env_file, now_utc, require_env
+from uwb_support import (
+    DEFAULT_ANCHOR_LATITUDE,
+    DEFAULT_ANCHOR_LONGITUDE,
+    build_floor_definitions,
+    floor_zone_properties,
+    load_env_file,
+    now_utc,
+    require_env,
+)
 
 
 LOGGER = logging.getLogger("uwb_sim.connector")
@@ -69,6 +77,8 @@ def main() -> int:
 
     provider_id = os.getenv("UWB_SIM_PROVIDER_ID", "uwb-sim-demo").strip()
     building_id = os.getenv("UWB_SIM_BUILDING_ID", "pacman-building").strip()
+    anchor_latitude = float(os.getenv("UWB_SIM_ANCHOR_LATITUDE", str(DEFAULT_ANCHOR_LATITUDE)))
+    anchor_longitude = float(os.getenv("UWB_SIM_ANCHOR_LONGITUDE", str(DEFAULT_ANCHOR_LONGITUDE)))
     connector_root = Path(__file__).resolve().parent
     asset_dir = connector_root / "assets"
 
@@ -77,7 +87,12 @@ def main() -> int:
         ws_url=require_env("HUB_WS_URL"),
         token=os.getenv("HUB_TOKEN") or None,
     )
-    floors = build_floor_definitions(building_id, asset_dir)
+    floors = build_floor_definitions(
+        building_id,
+        asset_dir,
+        anchor_latitude=anchor_latitude,
+        anchor_longitude=anchor_longitude,
+    )
     created_assets = ensure_floorplan_assets(floors)
     LOGGER.info("generated %d floorplan assets", len(created_assets))
 
@@ -157,8 +172,8 @@ def bootstrap_hub(hub_rest: HubRESTClient, provider_id: str, floors, object_coun
                 "floor": float(floor.floor_number),
                 "name": f"Pac-Man floor {floor.floor_number}",
                 "description": "Mock multi-floor UWB building used by the connector demo",
-                "position": point(*floor.center),
-                "incomplete_configuration": True,
+                "position": point(*floor.center_wgs84),
+                "ground_control_points": floor.ground_control_points,
                 "properties": floor_zone_properties(floor),
             },
         )
@@ -168,16 +183,17 @@ def bootstrap_hub(hub_rest: HubRESTClient, provider_id: str, floors, object_coun
                 "id": floor.fence_id,
                 "foreign_id": f"{floor.building_id}-fence-{floor.floor_number}",
                 "name": f"Pac-Man floor fence {floor.floor_number}",
-                "crs": "local",
+                "crs": "EPSG:4326",
                 "zone_id": floor.zone_id,
                 "floor": float(floor.floor_number),
-                "region": {"type": "Polygon", "coordinates": [floor.outline_ring]},
+                "region": {"type": "Polygon", "coordinates": [floor.outline_ring_wgs84]},
                 "properties": {
                     "connector": "uwb_sim",
                     "building_id": floor.building_id,
                     "floorplan_id": floor.floorplan_id,
                     "zone_id": floor.zone_id,
                     "floorplan_corners_local": floor.image_corners_local,
+                    "floorplan_corners_wgs84": floor.image_corners_wgs84,
                 },
             },
         )

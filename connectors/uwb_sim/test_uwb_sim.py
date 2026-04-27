@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from assets import ensure_floorplan_assets
-from simulator import BuildingGraph, TRACKABLE_RADIUS_METERS, AgentState, choose_next_node, current_speed, initial_agents
+from simulator import BuildingGraph, TRACKABLE_RADIUS_METERS, agent_location_payload, choose_next_node, current_speed, initial_agents
 from uwb_support import build_floor_definitions, deterministic_uuid, floor_zone_properties
 
 
@@ -44,10 +45,15 @@ class UwbSimTests(unittest.TestCase):
             floor = build_floor_definitions("building-a", Path(temp_dir) / "assets")[0]
         props = floor_zone_properties(floor)
         self.assertEqual(props["floorplan_corner_order"], ["top_left", "top_right", "bottom_right", "bottom_left"])
-        corners = props["floorplan_corners_local"]
-        self.assertIn("top_left", corners)
-        self.assertIn("bottom_right", corners)
-        self.assertGreater(corners["top_right"][0], corners["top_left"][0])
+        local_corners = props["floorplan_corners_local"]
+        wgs84_corners = props["floorplan_corners_wgs84"]
+        self.assertIn("top_left", local_corners)
+        self.assertIn("bottom_right", local_corners)
+        self.assertIn("top_left", wgs84_corners)
+        self.assertIn("bottom_right", wgs84_corners)
+        self.assertGreater(local_corners["top_right"][0], local_corners["top_left"][0])
+        self.assertGreater(wgs84_corners["top_right"][0], wgs84_corners["top_left"][0])
+        self.assertEqual(len(props["floor_outline_wgs84"]), len(props["floor_outline_local"]))
 
     def test_dead_end_reverses_direction(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -74,6 +80,31 @@ class UwbSimTests(unittest.TestCase):
         agents = initial_agents(graph, [("track-1", "track-1")], 42)
         self.assertGreater(current_speed(agents[0], 0.0), 0.0)
         self.assertGreater(current_speed(agents[0], 30.0), 0.0)
+
+    def test_floor_definitions_include_ground_control_points(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            floor = build_floor_definitions("building-a", Path(temp_dir) / "assets")[0]
+        self.assertEqual(len(floor.ground_control_points), 3)
+        self.assertIn("local", floor.ground_control_points[0])
+        self.assertIn("wgs84", floor.ground_control_points[0])
+
+    def test_agent_payload_emits_wgs84_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            floors = build_floor_definitions("building-a", Path(temp_dir) / "assets")
+        graph = BuildingGraph(floors)
+        agent = initial_agents(graph, [("track-1", "track-1")], 42)[0]
+        payload = agent_location_payload(
+            agent,
+            graph,
+            {floor.floor_number: floor for floor in floors},
+            "provider-a",
+            datetime.now(UTC),
+            0.0,
+        )
+        self.assertEqual(payload["crs"], "EPSG:4326")
+        self.assertEqual(len(payload["position"]["coordinates"]), 3)
+        self.assertIn("local_position", payload["properties"])
+        self.assertEqual(payload["source"], floors[0].zone_id)
 
 
 if __name__ == "__main__":

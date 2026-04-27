@@ -21,4 +21,4 @@ Available connector demos:
 - [`connectors/gtfs`](gtfs): GTFS-RT vehicle updates and station fence bootstrap
 - [`connectors/opensky`](opensky): OpenSky aircraft positions with airport-sector fences
 - [`connectors/replay`](replay): diagnostic NDJSON trace replay with timestamp correction, acceleration, and interpolation
-- [`connectors/uwb_sim`](uwb_sim): mock 3-floor UWB building simulator with local floorplan assets and collision-friendly trackable bootstrap
+- [`connectors/uwb_sim`](uwb_sim): mock 3-floor UWB building simulator with georeferenced floorplan assets and WGS84 location ingest

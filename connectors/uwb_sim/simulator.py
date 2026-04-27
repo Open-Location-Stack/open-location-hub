@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from uwb_support import FloorDefinition, floor_zone_properties
+from uwb_support import FloorDefinition, floor_zone_properties, local_xy_to_wgs84
 
 
 TRACKABLE_RADIUS_METERS = 0.5
@@ -209,10 +209,11 @@ def agent_location_payload(
     floor_number = resolved_floor_number(from_node.floor_number, to_node.floor_number, alpha)
     floor = floors_by_number[floor_number]
     zone_properties = floor_zone_properties(floor)
+    longitude, latitude = local_xy_to_wgs84(x, y, floor.anchor_latitude, floor.anchor_longitude)
 
     payload: dict[str, Any] = {
-        "crs": "local",
-        "position": {"type": "Point", "coordinates": [round(x, 4), round(y, 4), round(z, 4)]},
+        "crs": "EPSG:4326",
+        "position": {"type": "Point", "coordinates": [round(longitude, 7), round(latitude, 7), round(z, 4)]},
         "provider_id": provider_id,
         "provider_type": "uwb",
         "source": floor.zone_id,
@@ -228,6 +229,7 @@ def agent_location_payload(
             "zone_id": floor.zone_id,
             "floorplan_id": floor.floorplan_id,
             "floorplan_image_path": zone_properties["floorplan_image_path"],
+            "local_position": [round(x, 4), round(y, 4), round(z, 4)],
         },
     }
     return payload

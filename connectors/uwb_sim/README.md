@@ -1,16 +1,16 @@
 # Mock UWB Simulator
 
-This connector generates a repeatable local-coordinate UWB demo stream for Open
-RTLS Hub. It simulates 10 objects moving through a 3-floor Pac-Man-style
-building, publishes raw `location_updates` at 25Hz, and is intended to run
-against a hub configured to emit Kalman-normalized derived output at 2Hz.
+This connector generates a repeatable WGS84 UWB demo stream for Open RTLS Hub.
+It simulates 10 objects moving through a 3-floor Pac-Man-style building,
+publishes raw `location_updates` at 25Hz, and is intended to run against a hub
+configured to emit Kalman-normalized derived output at 2Hz.
 
 The connector also bootstraps building metadata into the hub:
 
-- one local `uwb` zone per floor
-- one local polygon fence per floor
+- one georeferenced `uwb` zone per floor
+- one WGS84 polygon fence per floor
 - one generated floorplan image per floor under `connectors/uwb_sim/assets/`
-- stable floorplan IDs and corner coordinates in `Zone.properties`
+- stable floorplan IDs, ground control points, and image corner coordinates in `Zone.properties`
 
 ## Runtime Behavior
 
@@ -41,7 +41,9 @@ alignment metadata in `Zone.properties`:
 - `floorplan_image_size`
 - `floorplan_corner_order`
 - `floorplan_corners_local`
+- `floorplan_corners_wgs84`
 - `floor_outline_local`
+- `floor_outline_wgs84`
 
 Corner order is always:
 
@@ -50,8 +52,10 @@ Corner order is always:
 3. `bottom_right`
 4. `bottom_left`
 
-The corner coordinates are published in local CRS units so a future visualizer
-can place the generated floorplan image behind live movement points.
+The zone bootstrap also includes three `ground_control_points` per floor. The
+simulator still uses a local corridor graph internally, but it publishes WGS84
+positions and exposes both local and WGS84 image-corner metadata so a future
+visualizer can place the generated floorplan image behind live movement points.
 
 ## Shared Local Hub
 
@@ -80,6 +84,9 @@ The local demo compose for this repository should enable:
 ```bash
 cp connectors/uwb_sim/.env.example connectors/uwb_sim/.env.local
 ```
+
+Set `HUB_TOKEN` in that local file when auth is enabled. The repository does not
+ship a prebuilt token.
 
 2. Sync the Python runtime:
 
@@ -123,8 +130,11 @@ uv run --project scripts python scripts/log_collision_events.py \
 
 ## Notes
 
-- The floorplans are slightly offset in local XY between floors so the hub's
-  current local collision implementation, which is effectively 2D, does not
-  emit false collisions for vertically stacked positions.
+- The floorplans are slightly offset in local XY between floors before
+  georeferencing so the current WGS84 collision implementation, which is
+  effectively 2D plus per-trackable radius, does not emit false collisions for
+  vertically stacked positions.
 - The same corridor topology is reused on all floors.
 - The generated SVG assets live in `connectors/uwb_sim/assets/`.
+- `UWB_SIM_ANCHOR_LATITUDE` and `UWB_SIM_ANCHOR_LONGITUDE` control where the
+  mock building is placed in WGS84.

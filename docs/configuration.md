@@ -66,13 +66,13 @@ Stateful ingest behavior:
 - post-native decision work such as future filtering, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
 - when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
-- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
+- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - when `KALMAN_FILTER_ENABLED=true`, the decision stage keeps short-lived per-trackable filter state plus a bounded retained sample history in memory
 - `KALMAN_LOCATION_MAX_POINTS` caps the retained history per trackable; `KALMAN_LOCATION_MAX_AGE` also drops stale samples and resets the filter when the gap between accepted samples exceeds that age window
 - Kalman normalization only affects the derived decision path for trackable-associated locations; native/raw publication remains unchanged
 - normalized derived locations may populate OMLOX-compatible `course` and `speed` from track movement and may add hub extension properties such as `kalman_normalized` and `kalman_vertical_speed`
 - `KALMAN_EMIT_MAX_FREQUENCY_HZ` throttles only derived location and trackable-motion publication; geofence and collision decisions still use every accepted normalized point even when publication is suppressed
-- when a WGS84 derived variant is available, collision work uses the normalized WGS84 motion state; when the source stream is local-only and no safe WGS84 transform exists, collision work falls back to the normalized local motion state
+- collision work uses only the normalized WGS84 motion state; local-only streams without a safe WGS84 transform do not participate in collision evaluation
 - collision thresholds are expressed in meters
 - `Trackable.radius` is the per-trackable collision-radius override in meters; when it is absent, the hub falls back to `COLLISION_DEFAULT_RADIUS_METERS`
 - WGS84 collision checks use a cheap short-range planar approximation that converts lon/lat deltas to approximate meters before threshold comparison; this favors hot-path throughput over geodesic precision

@@ -1113,20 +1113,6 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 	}
 	switch view.NativeScope() {
 	case ScopeLocal:
-		localCollisionMotionsBuilt := false
-		var localCollisionMotions []gen.TrackableMotion
-		ensureLocalCollisionMotions := func() ([]gen.TrackableMotion, error) {
-			if localCollisionMotionsBuilt {
-				return localCollisionMotions, nil
-			}
-			built, err := s.buildTrackableMotionsForLocation(ctx, location)
-			if err != nil {
-				return nil, err
-			}
-			localCollisionMotions = built
-			localCollisionMotionsBuilt = true
-			return localCollisionMotions, nil
-		}
 		wgs84Location, ok, err := view.WGS84(ctx)
 		if err == nil && ok {
 			if emit {
@@ -1150,14 +1136,6 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
 					return err
 				}
-			}
-		} else if s.cfg.CollisionsEnabled {
-			localMotions, err := ensureLocalCollisionMotions()
-			if err != nil {
-				return err
-			}
-			if err := s.enqueueCollisionWork(ctx, localMotions); err != nil {
-				return err
 			}
 		}
 		if emit {
