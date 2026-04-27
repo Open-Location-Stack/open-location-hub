@@ -127,6 +127,9 @@ func (s *kalmanDecisionStage) normalizeTrackable(location gen.Location, trackabl
 		state = kalmanTrackState{}
 	}
 	state.CRS = locationCRS(location)
+	if state.LastDecision != nil && !state.LastDecision.At.IsZero() && decisionAt.Sub(state.LastDecision.At) > s.maxAge {
+		state = kalmanTrackState{CRS: state.CRS}
+	}
 	state.Samples = trimKalmanSamples(state.Samples, decisionAt, s.maxAge, s.maxPoints)
 	if len(state.Samples) > 0 && decisionAt.Sub(state.Samples[len(state.Samples)-1].At) > s.maxAge {
 		state = kalmanTrackState{CRS: state.CRS}

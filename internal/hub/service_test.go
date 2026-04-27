@@ -915,6 +915,39 @@ func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *t
 	}
 }
 
+func TestProcessDerivedLocationUsesLocalCollisionsWhenWGS84Unavailable(t *testing.T) {
+	t.Parallel()
+
+	queue := &captureCollisionQueue{}
+	bus := NewEventBus()
+	crs := "local"
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		collisionQueue: queue,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
+		cfg: Config{
+			CollisionsEnabled: true,
+		},
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one collision work item, got %d", len(queue.works))
+	}
+	if len(queue.works[0].Motions) != 1 {
+		t.Fatalf("expected one local collision motion, got %+v", queue.works[0].Motions)
+	}
+	if queue.works[0].Motions[0].Location.Crs == nil || *queue.works[0].Motions[0].Location.Crs != "local" {
+		t.Fatalf("expected queued collision motion to stay local, got %+v", queue.works[0].Motions[0].Location.Crs)
+	}
+}
+
 type capturingDerivedSubmitter struct {
 	works []derivedLocationWork
 }

@@ -24,6 +24,8 @@ The repository already includes a few connector-oriented projects under
   OpenSky aircraft ingest plus airport fence bootstrap
 - [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md):
   NDJSON trace replay back into the hub for diagnostic or demo use
+- [`connectors/uwb_sim/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/uwb_sim/README.md):
+  mock 3-floor local UWB simulator with generated floorplan images and building metadata bootstrap
 
 The bundled runtime connectors now cover both transport styles. The GTFS
 project includes WebSocket and MQTT ingest variants, and the OpenSky project

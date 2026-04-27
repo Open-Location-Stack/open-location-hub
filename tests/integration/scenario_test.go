@@ -247,7 +247,7 @@ func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
 	for _, step := range steps {
 		postMovementStep(t, appBaseURL, token, zoneID, objects, step.x)
 		for _, object := range objects {
-			motion := waitForTrackableMotion(t, messages[mqtt.TopicTrackableMotionLocal(object.trackableID)], 10*time.Second)
+			motion := waitForTrackableMotionAtLocation(t, messages[mqtt.TopicTrackableMotionLocal(object.trackableID)], step.x, object.laneY, 10*time.Second)
 			assertMotionLocation(t, motion, object, step.x)
 		}
 		if step.eventType == "" {
@@ -436,6 +436,26 @@ func waitForTrackableMotion(t *testing.T, ch <-chan []byte, timeout time.Duratio
 	case <-time.After(timeout):
 		t.Fatal("timed out waiting for trackable motion")
 		return gen.TrackableMotion{}
+	}
+}
+
+func waitForTrackableMotionAtLocation(t *testing.T, ch <-chan []byte, wantX, wantY float64, timeout time.Duration) gen.TrackableMotion {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("timed out waiting for trackable motion at [%0.3f %0.3f]", wantX, wantY)
+		}
+		motion := waitForTrackableMotion(t, ch, minDuration(remaining, 2*time.Second))
+		coords, err := motion.Location.Position.Coordinates.AsGeoJsonPosition2D()
+		if err != nil || len(coords) != 2 {
+			continue
+		}
+		if math.Abs(float64(coords[0])-wantX) <= 0.01 && math.Abs(float64(coords[1])-wantY) <= 0.01 {
+			return motion
+		}
 	}
 }
 
