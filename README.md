@@ -64,10 +64,19 @@ Notes:
 
 Open Location Hub images are available on Docker Hub as [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
 
-Pull a published release image with:
+As of 2026-04-27, the published tags are `0.1.0` and `latest`, and `latest`
+points to the same image as `0.1.0`.
+
+Pull the current release explicitly with:
 
 ```bash
 docker pull tryformation/openlocationhub:0.1.0
+```
+
+Or follow the moving release tag with:
+
+```bash
+docker pull tryformation/openlocationhub:latest
 ```
 
 If you want the supporting local services from this repository as well:

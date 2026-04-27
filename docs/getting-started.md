@@ -32,6 +32,30 @@ local-hub/start_demo.sh
 local-hub/fetch_demo_token.sh
 ```
 
+## Published Docker Image
+
+If you do not want to build the hub first, use the published Docker Hub image:
+[`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
+
+As of 2026-04-27, the published tags are `0.1.0` and `latest`, and `latest`
+points to the same image as `0.1.0`.
+
+Pull the current release explicitly with:
+
+```bash
+docker pull tryformation/openlocationhub:0.1.0
+```
+
+Or follow the moving release tag with:
+
+```bash
+docker pull tryformation/openlocationhub:latest
+```
+
+Use the published image when you already have Postgres, Mosquitto, and your
+identity provider handled elsewhere. Use the local compose and demo stacks when
+you want the full reference setup from this repository.
+
 ## Which Stack To Use
 
 - Basic compose stack:
