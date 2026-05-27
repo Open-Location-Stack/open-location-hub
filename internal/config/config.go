@@ -31,6 +31,9 @@ type Config struct {
 	EventBusSubscriberBuffer              int
 	NativeLocationBuffer                  int
 	DerivedLocationBuffer                 int
+	PPROFEnabled                          bool
+	PPROFMutexProfileFraction             int
+	PPROFBlockProfileRate                 int
 	StateLocationTTL                      time.Duration
 	StateProximityTTL                     time.Duration
 	StateDedupTTL                         time.Duration
@@ -136,6 +139,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		EventBusSubscriberBuffer:              intEnvWithLookup(lookup, "EVENT_BUS_SUBSCRIBER_BUFFER", 1024),
 		NativeLocationBuffer:                  intEnvWithLookup(lookup, "NATIVE_LOCATION_BUFFER", 2048),
 		DerivedLocationBuffer:                 intEnvWithLookup(lookup, "DERIVED_LOCATION_BUFFER", 1024),
+		PPROFEnabled:                          boolEnvWithLookup(lookup, "PPROF_ENABLED", false),
+		PPROFMutexProfileFraction:             intEnvWithLookup(lookup, "PPROF_MUTEX_PROFILE_FRACTION", 0),
+		PPROFBlockProfileRate:                 intEnvWithLookup(lookup, "PPROF_BLOCK_PROFILE_RATE", 0),
 		StateLocationTTL:                      durationEnvWithLookup(lookup, "STATE_LOCATION_TTL", 10*time.Minute),
 		StateProximityTTL:                     durationEnvWithLookup(lookup, "STATE_PROXIMITY_TTL", 5*time.Minute),
 		StateDedupTTL:                         durationEnvWithLookup(lookup, "STATE_DEDUP_TTL", 2*time.Minute),
@@ -211,6 +217,12 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.DerivedLocationBuffer <= 0 {
 		return Config{}, fmt.Errorf("DERIVED_LOCATION_BUFFER must be > 0")
+	}
+	if cfg.PPROFMutexProfileFraction < 0 {
+		return Config{}, fmt.Errorf("PPROF_MUTEX_PROFILE_FRACTION must be >= 0")
+	}
+	if cfg.PPROFBlockProfileRate < 0 {
+		return Config{}, fmt.Errorf("PPROF_BLOCK_PROFILE_RATE must be >= 0")
 	}
 	if cfg.StateProximityTTL <= 0 {
 		return Config{}, fmt.Errorf("STATE_PROXIMITY_TTL must be > 0")

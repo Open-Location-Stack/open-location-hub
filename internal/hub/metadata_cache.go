@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/dhconnelly/rtreego"
 	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -27,12 +30,33 @@ type metadataSnapshot struct {
 	fences              []gen.Fence
 	fencesByID          map[string]gen.Fence
 	fenceSignatures     map[string]string
+	fenceIndexes        map[string]*fenceSpatialIndex
 	trackables          []gen.Trackable
 	trackablesByID      map[string]gen.Trackable
 	trackableSignatures map[string]string
 	providers           []gen.LocationProvider
 	providersByID       map[string]gen.LocationProvider
 	providerSignatures  map[string]string
+}
+
+const (
+	fenceIndexDimensions = 2
+	fenceIndexMinEntries = 8
+	fenceIndexMaxEntries = 32
+)
+
+type fenceSpatialIndex struct {
+	tree    *rtreego.Rtree
+	entries map[string]indexedFence
+}
+
+type indexedFence struct {
+	fence gen.Fence
+	rect  rtreego.Rect
+}
+
+func (f indexedFence) Bounds() rtreego.Rect {
+	return f.rect
 }
 
 // MetadataCache keeps an immutable in-memory metadata snapshot used by the
@@ -167,6 +191,7 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		fences:              make([]gen.Fence, 0, len(fences)),
 		fencesByID:          make(map[string]gen.Fence, len(fences)),
 		fenceSignatures:     make(map[string]string, len(fences)),
+		fenceIndexes:        make(map[string]*fenceSpatialIndex),
 		trackables:          make([]gen.Trackable, 0, len(trackables)),
 		trackablesByID:      make(map[string]gen.Trackable, len(trackables)),
 		trackableSignatures: make(map[string]string, len(trackables)),
@@ -201,6 +226,7 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		snapshot.providersByID[item.Id] = item
 		snapshot.providerSignatures[item.Id] = record.Signature
 	}
+	snapshot.fenceIndexes = buildFenceIndexes(snapshot.fences)
 	return snapshot
 }
 
@@ -261,6 +287,11 @@ func (c *MetadataCache) FenceByID(id string) (gen.Fence, bool) {
 	return item, ok
 }
 
+func (c *MetadataCache) FenceCandidates(location gen.Location) ([]gen.Fence, error) {
+	snapshot := c.current()
+	return snapshot.fenceCandidates(location)
+}
+
 func (c *MetadataCache) TrackableByID(id string) (gen.Trackable, bool) {
 	snapshot := c.current()
 	item, ok := snapshot.trackablesByID[id]
@@ -291,6 +322,7 @@ func (c *MetadataCache) UpsertZone(item gen.Zone, signature string) {
 		next.zonesByForeignID[*item.ForeignId] = item
 	}
 	next.zoneSignatures[item.Id.String()] = signature
+	next.fenceIndexes = buildFenceIndexes(next.fences)
 	c.snapshot = next
 }
 
@@ -309,6 +341,7 @@ func (c *MetadataCache) DeleteZone(id openapi_types.UUID) {
 		}
 	}
 	delete(next.zoneSignatures, id.String())
+	next.fenceIndexes = buildFenceIndexes(next.fences)
 	c.snapshot = next
 }
 
@@ -321,6 +354,7 @@ func (c *MetadataCache) UpsertFence(item gen.Fence, signature string) {
 	next.fenceSignatures = cloneStringMap(next.fenceSignatures)
 	next.fencesByID[item.Id.String()] = item
 	next.fenceSignatures[item.Id.String()] = signature
+	next.fenceIndexes = buildFenceIndexes(next.fences)
 	c.snapshot = next
 }
 
@@ -333,6 +367,7 @@ func (c *MetadataCache) DeleteFence(id openapi_types.UUID) {
 	next.fenceSignatures = cloneStringMap(next.fenceSignatures)
 	delete(next.fencesByID, id.String())
 	delete(next.fenceSignatures, id.String())
+	next.fenceIndexes = buildFenceIndexes(next.fences)
 	c.snapshot = next
 }
 
@@ -530,6 +565,164 @@ func cloneFenceMap(in map[string]gen.Fence) map[string]gen.Fence {
 		out[key] = value
 	}
 	return out
+}
+
+func buildFenceIndexes(fences []gen.Fence) map[string]*fenceSpatialIndex {
+	indexes := make(map[string]*fenceSpatialIndex)
+	for _, fence := range fences {
+		scopeKey, ok := fenceScopeKey(fence)
+		if !ok {
+			continue
+		}
+		rect, ok := fenceBoundingRect(fence)
+		if !ok {
+			continue
+		}
+		index := indexes[scopeKey]
+		if index == nil {
+			index = &fenceSpatialIndex{
+				tree:    rtreego.NewTree(fenceIndexDimensions, fenceIndexMinEntries, fenceIndexMaxEntries),
+				entries: make(map[string]indexedFence),
+			}
+			indexes[scopeKey] = index
+		}
+		entry := indexedFence{fence: fence, rect: rect}
+		index.entries[fence.Id.String()] = entry
+		index.tree.Insert(entry)
+	}
+	return indexes
+}
+
+func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, error) {
+	scopeKey, ok, err := s.locationFenceScopeKey(location)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	index := s.fenceIndexes[scopeKey]
+	if index == nil || index.tree == nil {
+		return nil, nil
+	}
+	point, err := point2D(location.Position)
+	if err != nil {
+		return nil, nil
+	}
+	results := index.tree.SearchIntersect(rtreego.Point{point[0], point[1]}.ToRect(0))
+	fences := make([]gen.Fence, 0, len(results))
+	for _, spatial := range results {
+		entry, ok := spatial.(indexedFence)
+		if !ok {
+			continue
+		}
+		fences = append(fences, entry.fence)
+	}
+	return fences, nil
+}
+
+func (s metadataSnapshot) locationFenceScopeKey(location gen.Location) (string, bool, error) {
+	crs := strings.TrimSpace(locationCRS(location))
+	if crs == "" {
+		zone, ok := s.zonesByID[location.Source]
+		if !ok {
+			zone, ok = s.zonesByForeignID[location.Source]
+		}
+		if ok {
+			return fmt.Sprintf("local:%s", zone.Id.String()), true, nil
+		}
+		return "crs:EPSG:4326", true, nil
+	}
+	if crs == "local" {
+		zone, ok := s.zonesByID[location.Source]
+		if !ok {
+			zone, ok = s.zonesByForeignID[location.Source]
+		}
+		if !ok {
+			return "", false, nil
+		}
+		return fmt.Sprintf("local:%s", zone.Id.String()), true, nil
+	}
+	return "crs:" + crs, true, nil
+}
+
+func fenceScopeKey(fence gen.Fence) (string, bool) {
+	crs := strings.TrimSpace(stringPtrValue(fence.Crs))
+	if crs == "" {
+		crs = "EPSG:4326"
+	}
+	if crs == "local" {
+		if fence.ZoneId == nil || strings.TrimSpace(*fence.ZoneId) == "" {
+			return "", false
+		}
+		return "local:" + strings.TrimSpace(*fence.ZoneId), true
+	}
+	return "crs:" + crs, true
+}
+
+func fenceBoundingRect(fence gen.Fence) (rtreego.Rect, bool) {
+	if p, err := fence.Region.AsPoint(); err == nil {
+		center, err := point2D(p)
+		if err != nil {
+			return rtreego.Rect{}, false
+		}
+		radius := 0.0
+		if fence.Radius != nil {
+			radius = float64(*fence.Radius)
+		}
+		rect, err := rtreego.NewRect(
+			rtreego.Point{center[0] - radius, center[1] - radius},
+			[]float64{radius * 2, radius * 2},
+		)
+		if err != nil {
+			return rtreego.Rect{}, false
+		}
+		return rect, true
+	}
+	polygon, err := fence.Region.AsPolygon()
+	if err != nil || len(polygon.Coordinates) == 0 || len(polygon.Coordinates[0]) == 0 {
+		return rtreego.Rect{}, false
+	}
+	var (
+		minX, minY  float64
+		maxX, maxY  float64
+		initialized bool
+	)
+	for _, pos := range polygon.Coordinates[0] {
+		point, err := geoPoint(pos)
+		if err != nil {
+			continue
+		}
+		if !initialized {
+			minX, maxX = point[0], point[0]
+			minY, maxY = point[1], point[1]
+			initialized = true
+			continue
+		}
+		if point[0] < minX {
+			minX = point[0]
+		}
+		if point[0] > maxX {
+			maxX = point[0]
+		}
+		if point[1] < minY {
+			minY = point[1]
+		}
+		if point[1] > maxY {
+			maxY = point[1]
+		}
+	}
+	if !initialized {
+		return rtreego.Rect{}, false
+	}
+	rect, err := rtreego.NewRectFromPoints(
+		rtreego.Point{minX, minY},
+		rtreego.Point{maxX, maxY},
+	)
+	if err != nil {
+		return rtreego.Rect{}, false
+	}
+	return rect, true
 }
 
 func cloneTrackableMap(in map[string]gen.Trackable) map[string]gen.Trackable {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -176,13 +177,7 @@ func Decode[T any](event Event) (T, error) {
 	if out, ok := any(event.Payload).(T); ok {
 		return out, nil
 	}
-	raw, err := json.Marshal(event.Payload)
-	if err != nil {
-		return zero, err
-	}
-	var out T
-	err = json.Unmarshal(raw, &out)
-	return out, err
+	return zero, fmt.Errorf("event payload type mismatch: have %T want %T", event.Payload, zero)
 }
 
 // EventBus fans out normalized hub events to multiple consumers.

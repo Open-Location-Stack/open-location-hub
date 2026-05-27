@@ -3,10 +3,12 @@ package hub
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"math"
 	"sort"
 	"strings"
@@ -991,11 +993,7 @@ func deriveLocationFromProximity(proximity gen.Proximity, zone gen.Zone, sticky 
 
 func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl time.Duration) error {
 	start := time.Now()
-	payload, err := json.Marshal(location)
-	if err != nil {
-		return err
-	}
-	if !s.processingState().Deduplicate(dedupKey(payload), s.cfg.DedupTTL) {
+	if !s.processingState().Deduplicate(dedupLocationKey(location), s.cfg.DedupTTL) {
 		s.telemetry().RecordIngestRecord(ctx, "location", "deduplicated")
 		return nil
 	}
@@ -1531,31 +1529,60 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 	if s.bus == nil || location.Trackables == nil {
 		return nil
 	}
-	var fences []gen.Fence
-	if cache := s.metadataCache(); cache != nil {
-		fences = cache.fencesView()
-	} else {
-		var err error
-		fences, err = s.ListFences(ctx)
-		if err != nil {
-			return err
-		}
-	}
 	point, err := point2D(location.Position)
 	if err != nil {
 		return nil
 	}
+	fences, err := s.fenceCandidatesForLocation(ctx, location)
+	if err != nil {
+		return err
+	}
+	locationCandidates := make(map[string]gen.Fence, len(fences))
+	locationContains := make(map[string]bool, len(fences))
+	for _, fence := range fences {
+		fenceID := fence.Id.String()
+		locationCandidates[fenceID] = fence
+		inside, err := fenceContainsPoint(fence, point)
+		if err != nil {
+			continue
+		}
+		locationContains[fenceID] = inside
+	}
 	now := time.Now().UTC()
 	for _, trackableID := range *location.Trackables {
-		for _, fence := range fences {
+		activeFenceIDs := s.processingState().ListInsideFences(trackableID)
+		activeFenceSet := make(map[string]struct{}, len(activeFenceIDs))
+		for _, fenceID := range activeFenceIDs {
+			activeFenceSet[fenceID] = struct{}{}
+		}
+		trackableCandidates := make(map[string]gen.Fence, len(locationCandidates)+len(activeFenceIDs))
+		trackableContains := make(map[string]bool, len(locationContains)+len(activeFenceIDs))
+		for fenceID, fence := range locationCandidates {
+			trackableCandidates[fenceID] = fence
+			trackableContains[fenceID] = locationContains[fenceID]
+		}
+		for _, fenceID := range activeFenceIDs {
+			if _, ok := trackableCandidates[fenceID]; ok {
+				continue
+			}
+			fence, ok := s.fenceByID(ctx, fenceID)
+			if !ok {
+				s.processingState().ClearInsideFence(trackableID, fenceID)
+				continue
+			}
+			trackableCandidates[fenceID] = fence
 			inside, err := fenceContainsPoint(fence, point)
 			if err != nil {
 				continue
 			}
-			wasInside := s.processingState().IsInsideFence(trackableID, fence.Id.String())
+			trackableContains[fenceID] = inside
+		}
+		for fenceID, fence := range trackableCandidates {
+			inside := trackableContains[fenceID]
+			_, wasInside := activeFenceSet[fenceID]
 			switch {
 			case inside && !wasInside:
-				s.processingState().SetInsideFence(trackableID, fence.Id.String(), s.cfg.LocationTTL)
+				s.processingState().SetInsideFence(trackableID, fenceID, s.cfg.LocationTTL)
 				event := gen.FenceEvent{
 					EventType:   gen.RegionEntry,
 					FenceId:     fence.Id,
@@ -1569,8 +1596,10 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 					span.RecordError(err)
 					return err
 				}
+			case inside && wasInside:
+				s.processingState().SetInsideFence(trackableID, fenceID, s.cfg.LocationTTL)
 			case !inside && wasInside:
-				s.processingState().ClearInsideFence(trackableID, fence.Id.String())
+				s.processingState().ClearInsideFence(trackableID, fenceID)
 				event := gen.FenceEvent{
 					EventType:   gen.RegionExit,
 					FenceId:     fence.Id,
@@ -1589,6 +1618,29 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 	}
 	s.telemetry().RecordProcessingDuration(stageCtx, "fence_evaluation", "location", time.Since(start))
 	return nil
+}
+
+func (s *Service) fenceCandidatesForLocation(ctx context.Context, location gen.Location) ([]gen.Fence, error) {
+	if cache := s.metadataCache(); cache != nil {
+		return cache.FenceCandidates(location)
+	}
+	return s.ListFences(ctx)
+}
+
+func (s *Service) fenceByID(ctx context.Context, fenceID string) (gen.Fence, bool) {
+	if cache := s.metadataCache(); cache != nil {
+		fence, ok := cache.FenceByID(fenceID)
+		return fence, ok
+	}
+	parsed, err := uuid.Parse(fenceID)
+	if err != nil {
+		return gen.Fence{}, false
+	}
+	fence, err := s.GetFence(ctx, openapi_types.UUID(parsed))
+	if err != nil {
+		return gen.Fence{}, false
+	}
+	return fence, true
 }
 
 func (s *Service) publishFenceEvent(_ context.Context, fence gen.Fence, event gen.FenceEvent) error {
@@ -2437,9 +2489,241 @@ func proximityResolutionStateKey(providerType, providerID string) string {
 	return fmt.Sprintf("hub:proximity:%s:%s", providerType, providerID)
 }
 
+func dedupLocationKey(location gen.Location) string {
+	hasher := sha256.New()
+	hashString(hasher, location.ProviderId)
+	hashString(hasher, location.ProviderType)
+	hashString(hasher, location.Source)
+	hashOptionalString(hasher, location.Crs)
+	hashOptionalBool(hasher, location.Associated)
+	hashOptionalFloat32(hasher, location.Accuracy)
+	hashOptionalFloat32(hasher, location.Course)
+	hashOptionalString(hasher, enumPtrString(location.ElevationRef))
+	hashOptionalFloat32(hasher, location.Floor)
+	hashOptionalFloat32(hasher, location.HeadingAccuracy)
+	hashOptionalFloat32(hasher, location.MagneticHeading)
+	hashPoint(hasher, location.Position)
+	hashExtensionProperties(hasher, location.Properties)
+	hashOptionalFloat32(hasher, location.Speed)
+	hashOptionalTime(hasher, location.TimestampGenerated)
+	hashOptionalTime(hasher, location.TimestampSent)
+	hashOptionalStringSlice(hasher, location.Trackables)
+	hashOptionalFloat32(hasher, location.TrueHeading)
+	return dedupKey(hasher.Sum(nil))
+}
+
 func dedupKey(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return "hub:dedup:" + hex.EncodeToString(sum[:])
+}
+
+func enumPtrString[T ~string](value *T) *string {
+	if value == nil {
+		return nil
+	}
+	out := string(*value)
+	return &out
+}
+
+func hashString(h hash.Hash, value string) {
+	hashBool(h, true)
+	hashBytes(h, []byte(value))
+}
+
+func hashOptionalString(h hash.Hash, value *string) {
+	hashBool(h, value != nil)
+	if value != nil {
+		hashBytes(h, []byte(*value))
+	}
+}
+
+func hashOptionalBool(h hash.Hash, value *bool) {
+	hashBool(h, value != nil)
+	if value != nil {
+		hashBool(h, *value)
+	}
+}
+
+func hashOptionalFloat32(h hash.Hash, value *float32) {
+	hashBool(h, value != nil)
+	if value != nil {
+		hashUint32(h, math.Float32bits(*value))
+	}
+}
+
+func hashOptionalTime(h hash.Hash, value *time.Time) {
+	hashBool(h, value != nil)
+	if value != nil {
+		hashInt64(h, value.UTC().UnixNano())
+	}
+}
+
+func hashOptionalStringSlice(h hash.Hash, values *[]string) {
+	hashBool(h, values != nil)
+	if values == nil {
+		return
+	}
+	hashLength(h, len(*values))
+	for _, value := range *values {
+		hashBytes(h, []byte(value))
+	}
+}
+
+func hashPoint(h hash.Hash, point gen.Point) {
+	hashBytes(h, []byte(point.Type))
+	raw, err := point.Coordinates.MarshalJSON()
+	if err == nil {
+		hashBytes(h, raw)
+		return
+	}
+	coords2d, err := point.Coordinates.AsGeoJsonPosition2D()
+	if err == nil {
+		hashFloat32Slice(h, coords2d)
+		return
+	}
+	coords3d, err := point.Coordinates.AsGeoJsonPosition3D()
+	if err == nil {
+		hashFloat32Slice(h, coords3d)
+		return
+	}
+	hashBytes(h, nil)
+}
+
+func hashFloat32Slice(h hash.Hash, values []float32) {
+	hashLength(h, len(values))
+	for _, value := range values {
+		hashUint32(h, math.Float32bits(value))
+	}
+}
+
+func hashExtensionProperties(h hash.Hash, properties *gen.ExtensionProperties) {
+	hashBool(h, properties != nil)
+	if properties == nil {
+		return
+	}
+	hashMapStringAny(h, map[string]any(*properties))
+}
+
+func hashMapStringAny(h hash.Hash, value map[string]any) {
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	hashLength(h, len(keys))
+	for _, key := range keys {
+		hashBytes(h, []byte(key))
+		hashAny(h, value[key])
+	}
+}
+
+func hashAny(h hash.Hash, value any) {
+	switch typed := value.(type) {
+	case nil:
+		hashBytes(h, []byte("nil"))
+	case bool:
+		hashBytes(h, []byte("bool"))
+		hashBool(h, typed)
+	case string:
+		hashBytes(h, []byte("string"))
+		hashBytes(h, []byte(typed))
+	case float32:
+		hashBytes(h, []byte("float32"))
+		hashUint32(h, math.Float32bits(typed))
+	case float64:
+		hashBytes(h, []byte("float64"))
+		hashUint64(h, math.Float64bits(typed))
+	case int:
+		hashBytes(h, []byte("int"))
+		hashInt64(h, int64(typed))
+	case int8:
+		hashBytes(h, []byte("int8"))
+		hashInt64(h, int64(typed))
+	case int16:
+		hashBytes(h, []byte("int16"))
+		hashInt64(h, int64(typed))
+	case int32:
+		hashBytes(h, []byte("int32"))
+		hashInt64(h, int64(typed))
+	case int64:
+		hashBytes(h, []byte("int64"))
+		hashInt64(h, typed)
+	case uint:
+		hashBytes(h, []byte("uint"))
+		hashUint64(h, uint64(typed))
+	case uint8:
+		hashBytes(h, []byte("uint8"))
+		hashUint64(h, uint64(typed))
+	case uint16:
+		hashBytes(h, []byte("uint16"))
+		hashUint64(h, uint64(typed))
+	case uint32:
+		hashBytes(h, []byte("uint32"))
+		hashUint64(h, uint64(typed))
+	case uint64:
+		hashBytes(h, []byte("uint64"))
+		hashUint64(h, typed)
+	case []any:
+		hashBytes(h, []byte("[]any"))
+		hashLength(h, len(typed))
+		for _, item := range typed {
+			hashAny(h, item)
+		}
+	case map[string]any:
+		hashBytes(h, []byte("map[string]any"))
+		hashMapStringAny(h, typed)
+	case []string:
+		hashBytes(h, []byte("[]string"))
+		hashLength(h, len(typed))
+		for _, item := range typed {
+			hashBytes(h, []byte(item))
+		}
+	default:
+		hashBytes(h, []byte("fallback"))
+		raw, err := json.Marshal(typed)
+		if err != nil {
+			hashBytes(h, []byte(fmt.Sprintf("%T", typed)))
+			return
+		}
+		hashBytes(h, raw)
+	}
+}
+
+func hashBool(h hash.Hash, value bool) {
+	var b byte
+	if value {
+		b = 1
+	}
+	_, _ = h.Write([]byte{b})
+}
+
+func hashBytes(h hash.Hash, value []byte) {
+	hashLength(h, len(value))
+	if len(value) > 0 {
+		_, _ = h.Write(value)
+	}
+}
+
+func hashLength(h hash.Hash, n int) {
+	var buf [binary.MaxVarintLen64]byte
+	written := binary.PutUvarint(buf[:], uint64(n))
+	_, _ = h.Write(buf[:written])
+}
+
+func hashUint32(h hash.Hash, value uint32) {
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], value)
+	_, _ = h.Write(buf[:])
+}
+
+func hashUint64(h hash.Hash, value uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], value)
+	_, _ = h.Write(buf[:])
+}
+
+func hashInt64(h hash.Hash, value int64) {
+	hashUint64(h, uint64(value))
 }
 
 func stringSliceValue(values *[]string) []string {

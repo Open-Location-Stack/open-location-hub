@@ -23,6 +23,9 @@ Runtime lifecycle behavior:
 - `EVENT_BUS_SUBSCRIBER_BUFFER` (default `1024`)
 - `NATIVE_LOCATION_BUFFER` (default `2048`)
 - `DERIVED_LOCATION_BUFFER` (default `1024`)
+- `PPROF_ENABLED` (`true`/`false`, default `false`)
+- `PPROF_MUTEX_PROFILE_FRACTION` (default `0`; `0` disables mutex contention sampling)
+- `PPROF_BLOCK_PROFILE_RATE` (default `0`; `0` disables block profiling)
 
 Hub metadata bootstrap behavior:
 - the hub persists one durable metadata row in Postgres containing the stable `hub_id` and operator-facing label
@@ -66,6 +69,8 @@ Stateful ingest behavior:
 - post-native decision work such as future filtering, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
 - when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
+- when `PPROF_ENABLED=true`, the auth-protected `/debug/pprof/*` handlers are registered on the main HTTP server for local profiling
+- `PPROF_MUTEX_PROFILE_FRACTION` and `PPROF_BLOCK_PROFILE_RATE` directly control the Go runtime mutex and blocking profilers so replay or soak runs can capture contention evidence without patching the binary
 - when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
 - when `KALMAN_FILTER_ENABLED=true`, the decision stage keeps short-lived per-trackable filter state plus a bounded retained sample history in memory
 - `KALMAN_LOCATION_MAX_POINTS` caps the retained history per trackable; `KALMAN_LOCATION_MAX_AGE` also drops stale samples and resets the filter when the gap between accepted samples exceeds that age window

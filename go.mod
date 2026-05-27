@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/dhconnelly/rtreego v1.2.0
 	github.com/docker/go-connections v0.6.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-chi/chi/v5 v5.2.5

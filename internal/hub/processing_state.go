@@ -137,6 +137,28 @@ func (s *ProcessingState) IsInsideFence(trackableID, fenceID string) bool {
 	return true
 }
 
+func (s *ProcessingState) ListInsideFences(trackableID string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.fenceMembership[trackableID]
+	if !ok {
+		return nil
+	}
+	now := s.nowUTC()
+	ids := make([]string, 0, len(current))
+	for fenceID, membership := range current {
+		if !membership.expiresAt.After(now) {
+			delete(current, fenceID)
+			continue
+		}
+		ids = append(ids, fenceID)
+	}
+	if len(current) == 0 {
+		delete(s.fenceMembership, trackableID)
+	}
+	return ids
+}
+
 func (s *ProcessingState) SetInsideFence(trackableID, fenceID string, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -63,6 +63,7 @@ Implications:
 - Runtime drop counters and gauges for queue occupancy, event-bus subscribers, and WebSocket connections are exposed from `internal/hub` through observable instruments so the e2e stack can dashboard overload and degraded states without adding lock-heavy bookkeeping to the ingest path.
 - Per-drop OTLP attribution is also exported via `hub.runtime.drop_events_total{stage,reason}` so dashboards can break overload down by bounded cause labels without relying on the local debug endpoint.
 - For local troubleshooting, the hub also exposes an auth-protected `/debug/runtime/drops` endpoint that returns the current drop counters plus a bounded set of recent sampled drops with stage and object context.
+- When `PPROF_ENABLED=true`, the same auth-protected HTTP surface also exposes `/debug/pprof/*`; optional runtime mutex and block profiler rates can be enabled from env so replay benchmarks can produce direct contention evidence instead of only throughput symptoms.
 - Collision thresholds are meter-based even on the WGS84 collision path; the runtime uses a short-range planar approximation instead of geodesic math so collision checks stay cheap in the decision stage.
 
 ## RPC Control Plane
