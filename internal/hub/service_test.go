@@ -967,6 +967,76 @@ func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *t
 	}
 }
 
+func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.5412, 47.3745})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 2)
+	if len(events) != 2 {
+		t.Fatalf("expected only local derived events, got %d", len(events))
+	}
+	for _, event := range events {
+		if event.Scope != ScopeLocal {
+			t.Fatalf("expected only local derived events, got scope %s", event.Scope)
+		}
+	}
+}
+
+func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	localCRS := "local"
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 7})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 2)
+	if len(events) != 2 {
+		t.Fatalf("expected only wgs84 derived events, got %d", len(events))
+	}
+	for _, event := range events {
+		if event.Scope != ScopeEPSG4326 {
+			t.Fatalf("expected only wgs84 derived events, got scope %s", event.Scope)
+		}
+	}
+}
+
 func TestProcessDerivedLocationSkipsCollisionsWhenWGS84Unavailable(t *testing.T) {
 	t.Parallel()
 

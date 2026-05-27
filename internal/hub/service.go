@@ -1136,29 +1136,8 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 				}
 			}
 		}
-		if emit {
-			if err := s.publishLocationScope(ctx, location, ScopeLocal); err != nil {
-				return err
-			}
-			if _, err := s.publishTrackableMotionsForLocation(ctx, location, ScopeLocal); err != nil {
-				return err
-			}
-		}
 	case ScopeEPSG4326:
-		if emit {
-			if err := s.publishLocationScope(ctx, location, ScopeEPSG4326); err != nil {
-				return err
-			}
-			wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, location, ScopeEPSG4326)
-			if err != nil {
-				return err
-			}
-			if s.cfg.CollisionsEnabled {
-				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
-					return err
-				}
-			}
-		} else if s.cfg.CollisionsEnabled {
+		if s.cfg.CollisionsEnabled {
 			wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, location)
 			if err != nil {
 				return err
@@ -1167,13 +1146,15 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 				return err
 			}
 		}
-		localLocation, ok, err := view.Local(ctx)
-		if err == nil && ok && emit {
-			if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
-				return err
-			}
-			if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
-				return err
+		if emit {
+			localLocation, ok, err := view.Local(ctx)
+			if err == nil && ok {
+				if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
+					return err
+				}
+				if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
+					return err
+				}
 			}
 		}
 	}
