@@ -51,6 +51,12 @@ func TestDefaults(t *testing.T) {
 	if cfg.DerivedLocationBuffer <= 0 {
 		t.Fatal("expected positive derived location buffer")
 	}
+	if cfg.PPROFEnabled {
+		t.Fatal("expected pprof to default to disabled")
+	}
+	if cfg.PPROFMutexProfileFraction != 0 || cfg.PPROFBlockProfileRate != 0 {
+		t.Fatal("expected profiling rates to default to zero")
+	}
 	if cfg.WebSocketReadTimeout <= cfg.WebSocketPingInterval {
 		t.Fatal("expected websocket read timeout to exceed ping interval")
 	}
@@ -166,6 +172,26 @@ func TestEventBusSubscriberBufferMustBePositive(t *testing.T) {
 	_, err := configFromMap(map[string]string{
 		"AUTH_MODE":                   "none",
 		"EVENT_BUS_SUBSCRIBER_BUFFER": "0",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestPprofRatesMustBeNonNegative(t *testing.T) {
+	t.Parallel()
+
+	_, err := configFromMap(map[string]string{
+		"AUTH_MODE":                    "none",
+		"PPROF_MUTEX_PROFILE_FRACTION": "-1",
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	_, err = configFromMap(map[string]string{
+		"AUTH_MODE":                "none",
+		"PPROF_BLOCK_PROFILE_RATE": "-1",
 	})
 	if err == nil {
 		t.Fatal("expected validation error")

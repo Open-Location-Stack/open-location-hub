@@ -546,7 +546,7 @@ func TestRecordLocationDeduplicatesAndStoresLatestStateWithTTL(t *testing.T) {
 		t.Fatalf("second recordLocation failed: %v", err)
 	}
 
-	if !state.Deduplicate(dedupKey(mustJSON(t, location)), service.cfg.DedupTTL) {
+	if !state.Deduplicate(dedupLocationKey(location), service.cfg.DedupTTL) {
 		// expected the explicit probe to observe the existing dedup window
 	} else {
 		t.Fatal("expected dedup state to be retained in memory")
@@ -804,14 +804,18 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 	t.Parallel()
 
 	state := NewProcessingState(time.Now)
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
 	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
 	service := &Service{
 		state:    state,
-		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
 		bus:      NewEventBus(),
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
-	location := testLocation(t, nil)
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -821,6 +825,49 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 
 	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
 		t.Fatal("expected fence membership state to be held in memory")
+	}
+}
+
+func TestPublishFenceEventsEmitsExitForActiveFenceOutsideCurrentCandidates(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	state := NewProcessingState(time.Now)
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	service := &Service{
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		bus:      bus,
+		cfg:      Config{LocationTTL: 90 * time.Second},
+	}
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{100, 100})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+	state.SetInsideFence("trackable-a", fence.Id.String(), time.Minute)
+
+	if err := service.publishFenceEvents(context.Background(), location); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one fence exit event, got %d", len(events))
+	}
+	envelope, err := Decode[FenceEventEnvelope](events[0])
+	if err != nil {
+		t.Fatalf("decode fence event failed: %v", err)
+	}
+	if envelope.Event.EventType != gen.RegionExit {
+		t.Fatalf("expected region exit event, got %s", envelope.Event.EventType)
+	}
+	if state.IsInsideFence("trackable-a", fence.Id.String()) {
+		t.Fatal("expected active fence membership to be cleared after exit")
 	}
 }
 
@@ -862,17 +909,22 @@ func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *te
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
 	state := NewProcessingState(time.Now)
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
 	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
-	crs := "local"
-	location := testLocation(t, &crs)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
 	service := &Service{
-		bus:      bus,
-		state:    state,
-		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
-		cfg:      Config{LocationTTL: time.Minute},
+		bus:            bus,
+		state:          state,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		cfg:            Config{LocationTTL: time.Minute},
 	}
 
 	if err := service.processDerivedLocation(context.Background(), location, false); err != nil {
@@ -912,6 +964,76 @@ func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *t
 	}
 	if len(queue.works) != 1 {
 		t.Fatalf("expected one collision work item, got %d", len(queue.works))
+	}
+}
+
+func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.5412, 47.3745})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 2)
+	if len(events) != 2 {
+		t.Fatalf("expected only local derived events, got %d", len(events))
+	}
+	for _, event := range events {
+		if event.Scope != ScopeLocal {
+			t.Fatalf("expected only local derived events, got scope %s", event.Scope)
+		}
+	}
+}
+
+func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	localCRS := "local"
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 7})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 2)
+	if len(events) != 2 {
+		t.Fatalf("expected only wgs84 derived events, got %d", len(events))
+	}
+	for _, event := range events {
+		if event.Scope != ScopeEPSG4326 {
+			t.Fatalf("expected only wgs84 derived events, got scope %s", event.Scope)
+		}
 	}
 }
 
@@ -1125,15 +1247,6 @@ func uuidAsOpenAPI(id uuid.UUID) [16]byte {
 
 func float32Ptr(value float32) *float32 {
 	return &value
-}
-
-func mustJSON(t *testing.T, value any) []byte {
-	t.Helper()
-	payload, err := json.Marshal(value)
-	if err != nil {
-		t.Fatalf("json marshal failed: %v", err)
-	}
-	return payload
 }
 
 func decodeEventLocation(t *testing.T, event Event) gen.Location {

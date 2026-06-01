@@ -55,6 +55,14 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 				probeDone <- errors.New("unexpected non-zero runtime drop counters")
 				return
 			}
+
+			pprofReq := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+			pprofRec := httptest.NewRecorder()
+			handler.ServeHTTP(pprofRec, pprofReq)
+			if pprofRec.Code != http.StatusNotFound {
+				probeDone <- errors.New("pprof endpoint should be disabled by default")
+				return
+			}
 			probeDone <- nil
 		},
 	}
@@ -122,6 +130,77 @@ func TestFirstNonWhitespaceByte(t *testing.T) {
 	}
 	if got := firstNonWhitespaceByte([]byte(" \n\t")); got != 0 {
 		t.Fatalf("expected zero for whitespace-only payload, got %q", got)
+	}
+}
+
+func TestRunRegistersPprofRoutesWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	rt := stubRuntimeForTest(t)
+	rt.loadConfig = func() (config.Config, error) {
+		cfg, err := stubRuntimeForTest(t).loadConfig()
+		if err != nil {
+			return config.Config{}, err
+		}
+		cfg.PPROFEnabled = true
+		cfg.PPROFMutexProfileFraction = 1
+		cfg.PPROFBlockProfileRate = 1
+		return cfg, nil
+	}
+
+	fakeMQTTClient := &fakeRuntimeMQTT{}
+	probeDone := make(chan error, 1)
+	server := &fakeHTTPServer{
+		onListen: func(handler http.Handler) {
+			pprofReq := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+			pprofRec := httptest.NewRecorder()
+			handler.ServeHTTP(pprofRec, pprofReq)
+			if pprofRec.Code != http.StatusOK {
+				probeDone <- errors.New("pprof index endpoint not wired correctly")
+				return
+			}
+			probeDone <- nil
+		},
+	}
+	rt.newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+		return fakeMQTTClient, nil
+	}
+	rt.newHTTPServer = func(_ string, handler http.Handler) httpServer {
+		server.handler = handler
+		return server
+	}
+	rt.newEventBus = func() *hub.EventBus { return nil }
+	rt.newService = func(*zap.Logger, sqlcgen.Querier, *hub.EventBus, hub.Config) (*hub.Service, error) {
+		return &hub.Service{}, nil
+	}
+	rt.newRPCBridge = func(*zap.Logger, rpc.Publisher, rpc.Config) (rpcRuntimeBridge, error) {
+		return fakeRuntimeRPCBridge{}, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithRuntime(ctx, rt)
+	}()
+
+	select {
+	case err := <-probeDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for pprof probe")
+	}
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for run to exit")
 	}
 }
 

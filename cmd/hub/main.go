@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -128,6 +130,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	configureProfiling(cfg)
 
 	telemetry, err := observability.NewRuntime(ctx, cfg.Telemetry, cfg.HubID)
 	if err != nil {
@@ -310,6 +313,9 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 			http.Error(w, "encode runtime drop diagnostics", http.StatusInternalServerError)
 		}
 	})
+	if cfg.PPROFEnabled {
+		registerPprofRoutes(r)
+	}
 
 	h := handlers.New(handlers.Dependencies{
 		Logger:                logger,
@@ -361,6 +367,23 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	<-serverDone
 
 	return nil
+}
+
+func configureProfiling(cfg config.Config) {
+	runtime.SetMutexProfileFraction(cfg.PPROFMutexProfileFraction)
+	runtime.SetBlockProfileRate(cfg.PPROFBlockProfileRate)
+}
+
+func registerPprofRoutes(r chi.Router) {
+	r.Get("/debug/pprof/", pprof.Index)
+	r.Get("/debug/pprof/cmdline", pprof.Cmdline)
+	r.Get("/debug/pprof/profile", pprof.Profile)
+	r.Post("/debug/pprof/symbol", pprof.Symbol)
+	r.Get("/debug/pprof/symbol", pprof.Symbol)
+	r.Get("/debug/pprof/trace", pprof.Trace)
+	for _, profile := range []string{"allocs", "block", "goroutine", "heap", "mutex", "threadcreate"} {
+		r.Get("/debug/pprof/"+profile, pprof.Handler(profile).ServeHTTP)
+	}
 }
 
 func runEventPublisher(ctx context.Context, logger *zap.Logger, events <-chan hub.Event, publish func(context.Context, hub.Event) error) <-chan struct{} {

@@ -47,6 +47,39 @@ func TestNewMetadataCacheBuildsIndexes(t *testing.T) {
 	}
 }
 
+func TestMetadataCacheFenceCandidatesMatchLocalZoneScope(t *testing.T) {
+	t.Parallel()
+
+	zoneA := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
+	zoneB := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-b", [2]float32{0, 0}, nil, nil)
+	fenceA := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fenceB := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	localCRS := "local"
+	fenceA.Crs = &localCRS
+	fenceA.ZoneId = stringPtrValueRef(zoneA.Id.String())
+	fenceB.Crs = &localCRS
+	fenceB.ZoneId = stringPtrValueRef(zoneB.Id.String())
+
+	cache, err := NewMetadataCache(context.Background(), fakeQueries{
+		listZonesFn:      metadataZoneList(t, zoneA, zoneB),
+		listFencesFn:     metadataFenceList(t, fenceA, fenceB),
+		listTrackablesFn: metadataTrackableList(t),
+		listProvidersFn:  metadataProviderList(t),
+	})
+	if err != nil {
+		t.Fatalf("NewMetadataCache failed: %v", err)
+	}
+
+	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 2})
+	candidates, err := cache.FenceCandidates(location)
+	if err != nil {
+		t.Fatalf("FenceCandidates failed: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].Id != fenceA.Id {
+		t.Fatalf("unexpected local fence candidates: %+v", candidates)
+	}
+}
+
 func TestMetadataCacheReconcileDiffsCreateUpdateDelete(t *testing.T) {
 	t.Parallel()
 

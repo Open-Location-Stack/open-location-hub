@@ -9,11 +9,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.6.0
-      SQLC_VERSION: v1.30.0
-      GOOSE_VERSION: v3.27.0
-      STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.1.4
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -33,7 +28,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
 
       - name: Cache SigNoz checkout
         uses: actions/cache@v5
@@ -58,11 +53,6 @@ jobs:
   race:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.6.0
-      SQLC_VERSION: v1.30.0
-      GOOSE_VERSION: v3.27.0
-      STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.1.4
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -82,7 +72,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
 
       - name: Cache SigNoz checkout
         uses: actions/cache@v5
