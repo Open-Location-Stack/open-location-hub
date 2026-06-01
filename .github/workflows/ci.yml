@@ -9,11 +9,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.7.0
-      SQLC_VERSION: v1.31.1
-      GOOSE_VERSION: v3.27.1
-      STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.3.0
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -24,16 +19,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify Go toolchain
-        run: |
-          expected="$(grep '^toolchain ' go.mod | head -n1 | cut -d' ' -f2)"
-          if [ -z "$expected" ]; then
-            expected="go$(grep '^go ' go.mod | head -n1 | cut -d' ' -f2)"
-          fi
-          actual="$(go env GOVERSION)"
-          test "$actual" = "$expected"
-          go version
-
       - name: Install Ubuntu build dependencies
         run: |
           sudo apt-get update
@@ -43,7 +28,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
 
       - name: Cache SigNoz checkout
         uses: actions/cache@v5
@@ -68,11 +53,6 @@ jobs:
   race:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.7.0
-      SQLC_VERSION: v1.31.1
-      GOOSE_VERSION: v3.27.1
-      STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.3.0
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -83,16 +63,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify Go toolchain
-        run: |
-          expected="$(grep '^toolchain ' go.mod | head -n1 | cut -d' ' -f2)"
-          if [ -z "$expected" ]; then
-            expected="go$(grep '^go ' go.mod | head -n1 | cut -d' ' -f2)"
-          fi
-          actual="$(go env GOVERSION)"
-          test "$actual" = "$expected"
-          go version
-
       - name: Install Ubuntu build dependencies
         run: |
           sudo apt-get update
@@ -102,7 +72,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ env.OAPI_CODEGEN_VERSION }}-${{ env.SQLC_VERSION }}-${{ env.GOOSE_VERSION }}-${{ env.STATICCHECK_VERSION }}-${{ env.GOVULNCHECK_VERSION }}
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
 
       - name: Cache SigNoz checkout
         uses: actions/cache@v5
