@@ -9,11 +9,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.6.0
-      SQLC_VERSION: v1.30.0
-      GOOSE_VERSION: v3.27.0
+      OAPI_CODEGEN_VERSION: v2.7.0
+      SQLC_VERSION: v1.31.1
+      GOOSE_VERSION: v3.27.1
       STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.1.4
+      GOVULNCHECK_VERSION: v1.3.0
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -23,6 +23,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Verify Go toolchain
+        run: |
+          expected="$(awk '/^toolchain / { print $2; found=1; exit } /^go / && !found { print "go"$2; exit }' go.mod)"
+          actual="$(go env GOVERSION)"
+          test "$actual" = "$expected"
+          go version
 
       - name: Install Ubuntu build dependencies
         run: |
@@ -58,11 +65,11 @@ jobs:
   race:
     runs-on: ubuntu-latest
     env:
-      OAPI_CODEGEN_VERSION: v2.6.0
-      SQLC_VERSION: v1.30.0
-      GOOSE_VERSION: v3.27.0
+      OAPI_CODEGEN_VERSION: v2.7.0
+      SQLC_VERSION: v1.31.1
+      GOOSE_VERSION: v3.27.1
       STATICCHECK_VERSION: v0.7.0
-      GOVULNCHECK_VERSION: v1.1.4
+      GOVULNCHECK_VERSION: v1.3.0
       SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
@@ -72,6 +79,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Verify Go toolchain
+        run: |
+          expected="$(awk '/^toolchain / { print $2; found=1; exit } /^go / && !found { print "go"$2; exit }' go.mod)"
+          actual="$(go env GOVERSION)"
+          test "$actual" = "$expected"
+          go version
 
       - name: Install Ubuntu build dependencies
         run: |

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -267,7 +266,7 @@ func mappedHTTPURL(t *testing.T, ctx context.Context, container testcontainers.C
 	if err != nil {
 		t.Fatalf("container host lookup failed: %v", err)
 	}
-	mappedPort, err := container.MappedPort(ctx, nat.Port(port))
+	mappedPort, err := container.MappedPort(ctx, port)
 	if err != nil {
 		t.Fatalf("container port lookup failed: %v", err)
 	}

@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/redis"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
@@ -405,7 +404,7 @@ func mappedHTTPURLNoTest(ctx context.Context, container testcontainers.Container
 	if err != nil {
 		return "", fmt.Errorf("container host lookup failed: %w", err)
 	}
-	mappedPort, err := container.MappedPort(ctx, nat.Port(port))
+	mappedPort, err := container.MappedPort(ctx, port)
 	if err != nil {
 		return "", fmt.Errorf("container port lookup failed: %w", err)
 	}
@@ -417,7 +416,7 @@ func mappedBrokerURLNoTest(ctx context.Context, container testcontainers.Contain
 	if err != nil {
 		return "", fmt.Errorf("mqtt host lookup failed: %w", err)
 	}
-	mappedPort, err := container.MappedPort(ctx, nat.Port(port))
+	mappedPort, err := container.MappedPort(ctx, port)
 	if err != nil {
 		return "", fmt.Errorf("mqtt port lookup failed: %w", err)
 	}
