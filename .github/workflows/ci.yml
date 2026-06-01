@@ -26,7 +26,10 @@ jobs:
 
       - name: Verify Go toolchain
         run: |
-          expected="$(awk '/^toolchain / { print $2; found=1; exit } /^go / && !found { print "go"$2; exit }' go.mod)"
+          expected="$(grep '^toolchain ' go.mod | head -n1 | cut -d' ' -f2)"
+          if [ -z "$expected" ]; then
+            expected="go$(grep '^go ' go.mod | head -n1 | cut -d' ' -f2)"
+          fi
           actual="$(go env GOVERSION)"
           test "$actual" = "$expected"
           go version
@@ -82,7 +85,10 @@ jobs:
 
       - name: Verify Go toolchain
         run: |
-          expected="$(awk '/^toolchain / { print $2; found=1; exit } /^go / && !found { print "go"$2; exit }' go.mod)"
+          expected="$(grep '^toolchain ' go.mod | head -n1 | cut -d' ' -f2)"
+          if [ -z "$expected" ]; then
+            expected="go$(grep '^go ' go.mod | head -n1 | cut -d' ' -f2)"
+          fi
           actual="$(go env GOVERSION)"
           test "$actual" = "$expected"
           go version
