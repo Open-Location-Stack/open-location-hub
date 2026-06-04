@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openrtls}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-openrtls}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    restart: unless-stopped
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+      - "${MQTT_WS_PORT:-9001}:9001"
+    volumes:
+      - ../../tools/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto -h >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: golang:1.26-alpine
+    restart: "no"
+    working_dir: /workspace
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - 'apk add --no-cache build-base && /usr/local/go/bin/go install github.com/pressly/goose/v3/cmd/goose@v3.27.1 && /go/bin/goose -dir migrations postgres "$$POSTGRES_URL" up'
+    environment:
+      POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
+    volumes:
+      - ../../:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  otel-collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:4317"
+      - "${OTEL_HTTP_PORT:-4318}:4318"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  hub:
+    image: tryformation/openlocationhub:0.1.1
+    restart: unless-stopped
+    environment:
+      HTTP_LISTEN_ADDR: ":8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
+      MQTT_BROKER_URL: tcp://mosquitto:1883
+      AUTH_ENABLED: "true"
+      AUTH_MODE: oidc
+      AUTH_ISSUER: https://api.tryformation.com
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-open-rtls-hub}
+      AUTH_ALLOWED_ALGS: ${AUTH_ALLOWED_ALGS:-RS256}
+      AUTH_ROLES_CLAIM: ${AUTH_ROLES_CLAIM:-groups}
+      AUTH_OWNED_RESOURCES_CLAIM: ${AUTH_OWNED_RESOURCES_CLAIM:-owned_resources}
+      AUTH_PERMISSIONS_FILE: /app/config/auth/permissions.yaml
+      AUTH_OIDC_REFRESH_TTL: ${AUTH_OIDC_REFRESH_TTL:-10m}
+      AUTH_HTTP_TIMEOUT: ${AUTH_HTTP_TIMEOUT:-5s}
+      OTEL_ENABLED: "true"
+      OTEL_METRICS_ENABLED: "true"
+      OTEL_TRACES_ENABLED: "true"
+      OTEL_LOGS_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-rtls-hub}
+      OTEL_SERVICE_VERSION: "0.1.1"
+      OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-hetzner}
+      COLLISIONS_ENABLED: ${COLLISIONS_ENABLED:-true}
+      KALMAN_FILTER_ENABLED: ${KALMAN_FILTER_ENABLED:-true}
+      KALMAN_EMIT_MAX_FREQUENCY_HZ: ${KALMAN_EMIT_MAX_FREQUENCY_HZ:-2}
+    ports:
+      - "${HUB_PORT:-8080}:8080"
+    volumes:
+      - ./permissions.yaml:/app/config/auth/permissions.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  mosquitto-data:
+  mosquitto-log:

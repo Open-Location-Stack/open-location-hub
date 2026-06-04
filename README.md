@@ -86,6 +86,10 @@ If you want the supporting local services from this repository as well:
 
 For the full set of environment variables and runtime options, see [`docs/configuration.md`](docs/configuration.md). For local setup walkthroughs, see [`docs/getting-started.md`](docs/getting-started.md) and [`local-hub/README.md`](local-hub/README.md).
 
+For a server-oriented Docker Compose deployment bundle with local Postgres,
+Mosquitto, OIDC auth, and an OpenTelemetry collector forwarding to host
+Elasticsearch, see [`deploy/hetzner/README.md`](deploy/hetzner/README.md).
+
 ## Software Docs
 - [docs/getting-started.md](docs/getting-started.md)
 - [docs/index.md](docs/index.md)
