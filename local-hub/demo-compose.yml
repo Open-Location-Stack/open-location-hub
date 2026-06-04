@@ -42,7 +42,7 @@ services:
       retries: 10
 
   migrate:
-    image: golang:1.26-alpine
+    image: golang:1.26.4-alpine
     working_dir: /workspace
     entrypoint: ["/bin/sh", "-lc"]
     command:
