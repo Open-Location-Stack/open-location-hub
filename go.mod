@@ -2,7 +2,7 @@ module github.com/formation-res/open-rtls-hub
 
 go 1.26
 
-toolchain go1.26.3
+toolchain go1.26.4
 
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.0

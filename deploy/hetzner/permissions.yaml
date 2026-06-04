@@ -1,0 +1,53 @@
+rtls-admins:
+  description: Full administrative access for production operators.
+  /debug/runtime/*:
+    - READ_ANY
+  /v2/*:
+    - CREATE_ANY
+    - READ_ANY
+    - UPDATE_ANY
+    - DELETE_ANY
+  rpc:
+    discover: true
+    invoke:
+      "*": true
+  websocket:
+    subscribe:
+      "*": true
+    publish:
+      location_updates: true
+      proximity_updates: true
+
+rtls-readers:
+  description: Read-only access for dashboards and operational consumers.
+  /v2/zones:
+    - READ_ANY
+  /v2/zones/:zoneId:
+    - READ_ANY
+  /v2/fences:
+    - READ_ANY
+  /v2/fences/:fenceId:
+    - READ_ANY
+  /v2/trackables:
+    - READ_ANY
+  /v2/trackables/:trackableId:
+    - READ_ANY
+  /v2/providers:
+    - READ_ANY
+  /v2/providers/:providerId:
+    - READ_ANY
+  /v2/rpc/available:
+    - READ_ANY
+  rpc:
+    discover: true
+    invoke:
+      com.omlox.ping: true
+      com.omlox.identify: true
+  websocket:
+    subscribe:
+      location_*: true
+      fence_events*: true
+      collision_events: true
+      metadata_changes: true
+      trackable_motions: true
+    publish: {}

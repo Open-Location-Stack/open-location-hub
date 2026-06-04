@@ -19,6 +19,7 @@ Core hub docs:
 - [`docs/configuration.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/configuration.md)
 - [`docs/auth.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/auth.md)
 - [`docs/rpc.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/rpc.md)
+- [`deploy/hetzner/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/deploy/hetzner/README.md)
 
 Connector docs:
 

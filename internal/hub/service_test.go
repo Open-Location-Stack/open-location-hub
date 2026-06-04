@@ -871,6 +871,46 @@ func TestPublishFenceEventsEmitsExitForActiveFenceOutsideCurrentCandidates(t *te
 	}
 }
 
+func TestPublishFenceEventsIgnoresMismatchedFenceFloorAndClearsActiveMembership(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	state := NewProcessingState(time.Now)
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	fenceFloor := float32(2)
+	fence.Floor = &fenceFloor
+	service := &Service{
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		bus:      bus,
+		cfg:      Config{LocationTTL: 90 * time.Second},
+	}
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	locationFloor := float32(1)
+	location.Floor = &locationFloor
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+	state.SetInsideFence("trackable-a", fence.Id.String(), time.Minute)
+
+	if err := service.publishFenceEvents(context.Background(), location); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+
+	events := collectEvents(ch, 0)
+	if len(events) != 0 {
+		t.Fatalf("expected no fence events for floor mismatch, got %d", len(events))
+	}
+	if state.IsInsideFence("trackable-a", fence.Id.String()) {
+		t.Fatal("expected floor mismatch to clear active fence membership without emitting an event")
+	}
+}
+
 type captureCollisionQueue struct {
 	works []collisionWork
 }

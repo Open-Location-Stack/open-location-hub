@@ -611,6 +611,9 @@ func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, e
 		if !ok {
 			continue
 		}
+		if !fenceMatchesFloor(entry.fence, location) {
+			continue
+		}
 		fences = append(fences, entry.fence)
 	}
 	return fences, nil
@@ -653,6 +656,16 @@ func fenceScopeKey(fence gen.Fence) (string, bool) {
 		return "local:" + strings.TrimSpace(*fence.ZoneId), true
 	}
 	return "crs:" + crs, true
+}
+
+func fenceMatchesFloor(fence gen.Fence, location gen.Location) bool {
+	if location.Floor == nil {
+		return true
+	}
+	if fence.Floor == nil {
+		return true
+	}
+	return *fence.Floor == *location.Floor
 }
 
 func fenceBoundingRect(fence gen.Fence) (rtreego.Rect, bool) {
