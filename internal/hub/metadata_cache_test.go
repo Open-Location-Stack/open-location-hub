@@ -80,6 +80,51 @@ func TestMetadataCacheFenceCandidatesMatchLocalZoneScope(t *testing.T) {
 	}
 }
 
+func TestMetadataCacheFenceCandidatesMatchLocationFloor(t *testing.T) {
+	t.Parallel()
+
+	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
+	fenceAllFloors := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fenceFloor1 := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fenceFloor2 := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	localCRS := "local"
+	floor1 := float32(1)
+	floor2 := float32(2)
+	for _, fence := range []*gen.Fence{&fenceAllFloors, &fenceFloor1, &fenceFloor2} {
+		fence.Crs = &localCRS
+		fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	}
+	fenceFloor1.Floor = &floor1
+	fenceFloor2.Floor = &floor2
+
+	cache, err := NewMetadataCache(context.Background(), fakeQueries{
+		listZonesFn:      metadataZoneList(t, zone),
+		listFencesFn:     metadataFenceList(t, fenceAllFloors, fenceFloor1, fenceFloor2),
+		listTrackablesFn: metadataTrackableList(t),
+		listProvidersFn:  metadataProviderList(t),
+	})
+	if err != nil {
+		t.Fatalf("NewMetadataCache failed: %v", err)
+	}
+
+	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 2})
+	location.Floor = &floor1
+	candidates, err := cache.FenceCandidates(location)
+	if err != nil {
+		t.Fatalf("FenceCandidates failed: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 floor-matched fence candidates, got %d", len(candidates))
+	}
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		seen[candidate.Id.String()] = true
+	}
+	if !seen[fenceAllFloors.Id.String()] || !seen[fenceFloor1.Id.String()] || seen[fenceFloor2.Id.String()] {
+		t.Fatalf("unexpected floor-filtered fence candidates: %+v", candidates)
+	}
+}
+
 func TestMetadataCacheReconcileDiffsCreateUpdateDelete(t *testing.T) {
 	t.Parallel()
 

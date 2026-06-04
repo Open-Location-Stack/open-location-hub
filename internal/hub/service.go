@@ -1551,6 +1551,10 @@ func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location)
 				s.processingState().ClearInsideFence(trackableID, fenceID)
 				continue
 			}
+			if !fenceMatchesFloor(fence, location) {
+				s.processingState().ClearInsideFence(trackableID, fenceID)
+				continue
+			}
 			trackableCandidates[fenceID] = fence
 			inside, err := fenceContainsPoint(fence, point)
 			if err != nil {
