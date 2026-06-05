@@ -8,7 +8,7 @@ import (
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,7 @@ func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
 	}
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(brokerURL).
-		SetClientID(fmt.Sprintf("open-rtls-hub-%d", time.Now().UnixNano())).
+		SetClientID(fmt.Sprintf("open-location-hub-%d", time.Now().UnixNano())).
 		SetAutoReconnect(true).
 		SetCleanSession(false).
 		SetResumeSubs(true).

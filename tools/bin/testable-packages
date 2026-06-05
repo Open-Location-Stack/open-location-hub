@@ -2,9 +2,9 @@
 set -euo pipefail
 
 mode="${1:-test}"
-non_proj_pattern='^(github.com/formation-res/open-rtls-hub/(cmd/hub|internal/httpapi/handlers|internal/hub|internal/transform|tests/integration))$'
-test_only_pattern='^(github.com/formation-res/open-rtls-hub/tests/integration)$'
-generated_pattern='^(github.com/formation-res/open-rtls-hub/(internal/httpapi/gen|internal/storage/postgres/sqlcgen))$'
+non_proj_pattern='^(github.com/formation-res/open-location-hub/(cmd/hub|internal/httpapi/handlers|internal/hub|internal/transform|tests/integration))$'
+test_only_pattern='^(github.com/formation-res/open-location-hub/tests/integration)$'
+generated_pattern='^(github.com/formation-res/open-location-hub/(internal/httpapi/gen|internal/storage/postgres/sqlcgen))$'
 
 emit_packages() {
   local pattern="${1:-}"

@@ -12,7 +12,7 @@ var (
 	hubImageErr  error
 )
 
-const hubTestImageRef = "open-rtls-hub-integration-test:local"
+const hubTestImageRef = "open-location-hub-integration-test:local"
 
 func sharedHubImage(t *testing.T) string {
 	t.Helper()

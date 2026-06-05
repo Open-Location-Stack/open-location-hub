@@ -178,7 +178,7 @@ This repository includes a Dex fixture at [tools/dex/config.yaml](../tools/dex/c
 
 - `AUTH_MODE=oidc`
 - `AUTH_ISSUER=http://dex:5556/dex`
-- `AUTH_AUDIENCE=open-rtls-cli`
+- `AUTH_AUDIENCE=open-location-cli`
 - `AUTH_ROLES_CLAIM=email`
 
 Included test users:
@@ -191,7 +191,7 @@ Fetch a token:
 
 ```bash
 curl -sS -X POST http://localhost:5556/dex/token \
-  -u open-rtls-cli:cli-secret \
+  -u open-location-cli:cli-secret \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data 'grant_type=password&scope=openid%20email%20profile&username=admin@example.com&password=testpass123'
 ```

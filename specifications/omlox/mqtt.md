@@ -243,7 +243,7 @@ For `com.omlox.core.xcmd`:
   - `/omlox/jsonrpc/rpc/com.omlox.core.xcmd/broadcast`
 
 Repository note:
-- `open-rtls-hub` exposes `com.omlox.core.xcmd` at the RPC layer and publishes `XCMD_BC` payloads returned by an adapter
+- `open-location-hub` exposes `com.omlox.core.xcmd` at the RPC layer and publishes `XCMD_BC` payloads returned by an adapter
 - actual device-command execution still depends on a deployment-specific adapter
 
 ### Announcing available methods

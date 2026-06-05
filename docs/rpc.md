@@ -4,7 +4,7 @@
 
 RPC is the hub's command and diagnostics interface.
 
-Use it when you need to ask the hub or a downstream RTLS device/controller to
+Use it when you need to ask the hub or a downstream location device/controller to
 do something right now. Examples:
 - check whether the control path is alive
 - identify a reachable handler
@@ -17,7 +17,7 @@ Do not use RPC for normal CRUD resource management. Use:
 
 ## The simple mental model
 
-Applications call `open-rtls-hub`. They do not call MQTT devices directly.
+Applications call `open-location-hub`. They do not call MQTT devices directly.
 
 Flow:
 1. The client calls `GET /v2/rpc/available` to see what methods are reachable.
@@ -77,7 +77,7 @@ curl -sS -X PUT http://localhost:8080/v2/rpc \
     "id": "identify-1",
     "method": "com.omlox.identify",
     "params": {
-      "_handler_id": "open-rtls-hub"
+      "_handler_id": "open-location-hub"
     }
   }'
 ```
@@ -93,7 +93,7 @@ curl -sS -X PUT http://localhost:8080/v2/rpc \
     "id": "xcmd-1",
     "method": "com.omlox.core.xcmd",
     "params": {
-      "_handler_id": "open-rtls-hub",
+      "_handler_id": "open-location-hub",
       "command": "XCMD_REQ",
       "payload": {
         "example": true
@@ -136,7 +136,7 @@ the call, then routes it through the configured adapter.
 Use `_handler_id` when one specific handler must receive the command.
 
 Examples:
-- target the hub itself with `open-rtls-hub`
+- target the hub itself with `open-location-hub`
 - target a specific external handler discovered from `GET /v2/rpc/available`
 
 ### `_timeout`

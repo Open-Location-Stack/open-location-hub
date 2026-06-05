@@ -21,7 +21,7 @@ func NewLogger(level string) (*zap.Logger, func(), error) {
 	}
 	if runtime := Global(); runtime.LogsEnabled() {
 		l = l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-			return zapcore.NewTee(core, runtime.BridgeCore("github.com/formation-res/open-rtls-hub"))
+			return zapcore.NewTee(core, runtime.BridgeCore("github.com/formation-res/open-location-hub"))
 		}))
 	}
 	return l, func() { _ = l.Sync() }, nil

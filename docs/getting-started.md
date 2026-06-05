@@ -1,10 +1,10 @@
 # Getting Started
 
-If you want to try Open RTLS Hub on your laptop, this repository includes two
+If you want to try Open Location Hub on your laptop, this repository includes two
 ready-made local runtime paths:
 
-- a basic compose stack from [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml) with the hub, Postgres, Mosquitto, and Dex
-- a local demo stack with observability in [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) with the hub, Postgres, Mosquitto, Dex, SigNoz, ClickHouse, and the OpenTelemetry collector
+- a basic compose stack from [`docker-compose.yml`](docker-compose.yml) with the hub, Postgres, Mosquitto, and Dex
+- a local demo stack with observability in [`local-hub/`](local-hub) with the hub, Postgres, Mosquitto, Dex, SigNoz, ClickHouse, and the OpenTelemetry collector
 
 Use the basic stack if you want the shortest path to a working hub runtime.
 Use the local demo stack if you also want observability while you
@@ -63,8 +63,8 @@ you want the full reference setup from this repository.
 - Local demo stack with observability:
   best when you want the hub plus a prewired observability setup for traces, metrics, and logs
 
-The basic stack uses the repository root [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml).
-The local demo stack is documented in [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md).
+The basic stack uses the repository root [`docker-compose.yml`](docker-compose.yml).
+The local demo stack is documented in [`local-hub/README.md`](local-hub/README.md).
 
 ## What This Setup Is For
 
@@ -84,8 +84,8 @@ This starter stack is not positioned as a production deployment recipe.
 
 ## Good Next Steps
 
-- [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md) for GTFS transit vehicle ingest over WebSocket or MQTT
-- [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md) for OpenSky aircraft ingest over WebSocket
-- [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md) for replaying captured `location_updates` traffic
-- [`docs/index.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/index.md) for the full software documentation set
-- [`docs/connectors.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/connectors.md) for connector structure and transport guidance
+- [`connectors/gtfs/README.md`](connectors/gtfs/README.md) for GTFS transit vehicle ingest over WebSocket or MQTT
+- [`connectors/opensky/README.md`](connectors/opensky/README.md) for OpenSky aircraft ingest over WebSocket
+- [`connectors/replay/README.md`](connectors/replay/README.md) for replaying captured `location_updates` traffic
+- [`docs/index.md`](docs/index.md) for the full software documentation set
+- [`docs/connectors.md`](docs/connectors.md) for connector structure and transport guidance

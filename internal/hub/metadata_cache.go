@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/dhconnelly/rtreego"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 

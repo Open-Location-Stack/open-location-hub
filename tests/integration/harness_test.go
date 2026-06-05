@@ -235,7 +235,7 @@ func fetchDexIDToken(t *testing.T, ctx context.Context, container testcontainers
 	if err != nil {
 		t.Fatalf("token request failed: %v", err)
 	}
-	req.SetBasicAuth("open-rtls-cli", "cli-secret")
+	req.SetBasicAuth("open-location-cli", "cli-secret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)

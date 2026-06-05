@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Forward GTFS-RT vehicle positions to a local Open RTLS Hub over WebSocket."""
+"""Forward GTFS-RT vehicle positions to a local Open Location Hub over WebSocket."""
 
 from __future__ import annotations
 

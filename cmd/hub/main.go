@@ -13,18 +13,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/auth"
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/handlers"
-	"github.com/formation-res/open-rtls-hub/internal/hub"
-	"github.com/formation-res/open-rtls-hub/internal/hubmeta"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
-	"github.com/formation-res/open-rtls-hub/internal/rpc"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
-	"github.com/formation-res/open-rtls-hub/internal/ws"
+	"github.com/formation-res/open-location-hub/internal/auth"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/httpapi/handlers"
+	"github.com/formation-res/open-location-hub/internal/hub"
+	"github.com/formation-res/open-location-hub/internal/hubmeta"
+	"github.com/formation-res/open-location-hub/internal/mqtt"
+	"github.com/formation-res/open-location-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/rpc"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/ws"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -116,7 +116,7 @@ func main() {
 	defer stop()
 
 	if err := run(ctx); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "open-rtls-hub: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "open-location-hub: %v\n", err)
 		os.Exit(1)
 	}
 }

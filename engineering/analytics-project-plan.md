@@ -1,6 +1,6 @@
 # Analytics Project Draft Plan
 
-This document outlines a separate downstream project that consumes Open RTLS Hub event streams and exposes historical and exploratory analytics in Grafana without turning the hub itself into an analytics-heavy product.
+This document outlines a separate downstream project that consumes Open Location Hub event streams and exposes historical and exploratory analytics in Grafana without turning the hub itself into an analytics-heavy product.
 
 ## Recommendation
 

@@ -1,4 +1,4 @@
-rtls-admins:
+location-admins:
   description: Full administrative access for production operators.
   /debug/runtime/*:
     - READ_ANY
@@ -18,7 +18,7 @@ rtls-admins:
       location_updates: true
       proximity_updates: true
 
-rtls-readers:
+location-readers:
   description: Read-only access for dashboards and operational consumers.
   /v2/zones:
     - READ_ANY

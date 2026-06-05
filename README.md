@@ -1,6 +1,6 @@
 # Open Location Hub
 
-Open RTLS Hub is an OpenAPI-first Go implementation of an OMLOX-ready location hub. It provides OMLOX `/v2` REST resources, OMLOX companion MQTT and WebSocket surfaces, and hub-mediated RPC control-plane support for location-driven integrations.
+Open Location Hub is an OpenAPI-first Go implementation of an OMLOX-ready location hub. It provides OMLOX `/v2` REST resources, OMLOX companion MQTT and WebSocket surfaces, and hub-mediated RPC control-plane support for location-driven integrations.
 
 The hub is vendor-neutral and environment-driven. It runs with Postgres, MQTT, and JWT-based access control, and it follows a contract-first workflow with the normative REST contract in [specifications/openapi/omlox-hub.v0.yaml](specifications/openapi/omlox-hub.v0.yaml).
 
@@ -81,8 +81,8 @@ docker pull tryformation/openlocationhub:latest
 
 If you want the supporting local services from this repository as well:
 
-- use `just compose-up` for the basic local stack from [`docker-compose.yml`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docker-compose.yml), which brings up the hub, Postgres, Mosquitto, and Dex
-- use `just local-hub-up` for the local demo stack in [`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md), which adds SigNoz, ClickHouse, and the OpenTelemetry collector around the hub runtime
+- use `just compose-up` for the basic local stack from [`docker-compose.yml`](docker-compose.yml), which brings up the hub, Postgres, Mosquitto, and Dex
+- use `just local-hub-up` for the local demo stack in [`local-hub/README.md`](local-hub/README.md), which adds SigNoz, ClickHouse, and the OpenTelemetry collector around the hub runtime
 
 For the full set of environment variables and runtime options, see [`docs/configuration.md`](docs/configuration.md). For local setup walkthroughs, see [`docs/getting-started.md`](docs/getting-started.md) and [`local-hub/README.md`](local-hub/README.md).
 

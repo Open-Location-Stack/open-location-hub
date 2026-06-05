@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay logged location NDJSON files into a local Open RTLS Hub."""
+"""Replay logged location NDJSON files into a local Open Location Hub."""
 
 from __future__ import annotations
 

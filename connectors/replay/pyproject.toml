@@ -1,7 +1,7 @@
 [project]
 name = "open-rtls-replay-demo"
 version = "0.1.0"
-description = "NDJSON replay connector for Open RTLS Hub"
+description = "NDJSON replay connector for Open Location Hub"
 requires-python = ">=3.12"
 dependencies = [
   "requests>=2.33.0",

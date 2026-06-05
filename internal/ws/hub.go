@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/auth"
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/hub"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/auth"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/hub"
+	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )

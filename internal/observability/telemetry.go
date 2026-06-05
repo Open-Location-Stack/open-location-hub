@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/config"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,7 +29,7 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
-const instrumentationName = "github.com/formation-res/open-rtls-hub/internal/observability"
+const instrumentationName = "github.com/formation-res/open-location-hub/internal/observability"
 
 type runtimeKey struct{}
 

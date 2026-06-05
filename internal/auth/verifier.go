@@ -15,8 +15,8 @@ import (
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/golang-jwt/jwt/v5"
 )
 

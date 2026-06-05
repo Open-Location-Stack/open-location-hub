@@ -1,7 +1,7 @@
 # OpenSky Connector Demonstrator
 
 This demonstrator polls the public OpenSky state-vector API and forwards live
-aircraft positions to a local Open RTLS Hub over the OMLOX WebSocket
+aircraft positions to a local Open Location Hub over the OMLOX WebSocket
 `location_updates` topic.
 
 The checked-in defaults target Frankfurt Airport and its surrounding airspace:

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/observability"
 )
 
 // EventKind identifies a normalized hub event emitted onto the internal bus.

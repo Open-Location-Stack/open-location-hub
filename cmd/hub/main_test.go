@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/auth"
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/hub"
-	"github.com/formation-res/open-rtls-hub/internal/hubmeta"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
-	"github.com/formation-res/open-rtls-hub/internal/rpc"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/auth"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/hub"
+	"github.com/formation-res/open-location-hub/internal/hubmeta"
+	"github.com/formation-res/open-location-hub/internal/mqtt"
+	"github.com/formation-res/open-location-hub/internal/rpc"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
 	"go.uber.org/zap"
 )
 

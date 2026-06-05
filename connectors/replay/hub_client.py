@@ -1,4 +1,4 @@
-"""Helpers for talking to a local Open RTLS Hub from connector scripts."""
+"""Helpers for talking to a local Open Location Hub from connector scripts."""
 
 from __future__ import annotations
 

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
-	"github.com/formation-res/open-rtls-hub/internal/transform"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Forward GTFS-RT vehicle positions to a local Open RTLS Hub over MQTT."""
+"""Forward GTFS-RT vehicle positions to a local Open Location Hub over MQTT."""
 
 from __future__ import annotations
 

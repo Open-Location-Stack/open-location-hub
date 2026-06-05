@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Open RTLS Hub API
+  title: Open Location Hub API
   version: 0.1.1
   description: |
     REST API documentation for Open Location Hub.
@@ -1368,7 +1368,7 @@ components:
                 - _return_first_error
             _handler_id:
               type: string
-              description: Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-rtls-hub` for local built-in methods.
+              description: Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-location-hub` for local built-in methods.
             _caller_id:
               type: string
               description: Caller identifier used to correlate MQTT responses. Omit together with `id` to send a notification.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mock multi-floor UWB simulator for the Open RTLS Hub demo stack."""
+"""Mock multi-floor UWB simulator for the Open Location Hub demo stack."""
 
 from __future__ import annotations
 

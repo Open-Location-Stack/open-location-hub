@@ -1,6 +1,6 @@
 ---
 name: openapi-go-harness
-description: Use this skill when implementing or updating the Open RTLS Hub Go scaffolding, including OpenAPI-first generation, just tasks, docker compose setup, and test harness wiring.
+description: Use this skill when implementing or updating the Open Location Hub Go scaffolding, including OpenAPI-first generation, just tasks, docker compose setup, and test harness wiring.
 ---
 
 # OpenAPI Go Harness

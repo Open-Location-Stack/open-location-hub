@@ -223,7 +223,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()`},
 			"MQTT_BROKER_URL":                     "tcp://mosquitto:1883",
 			"AUTH_MODE":                           "oidc",
 			"AUTH_ISSUER":                         "http://dex:5556/dex",
-			"AUTH_AUDIENCE":                       "open-rtls-cli",
+			"AUTH_AUDIENCE":                       "open-location-cli",
 			"AUTH_ALLOWED_ALGS":                   "RS256",
 			"AUTH_PERMISSIONS_FILE":               "/app/config/auth/permissions.yaml",
 			"AUTH_ROLES_CLAIM":                    "email",
@@ -244,7 +244,7 @@ HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()`},
 			"OTEL_METRIC_EXPORT_INTERVAL": "2000",
 			"OTEL_METRIC_EXPORT_TIMEOUT":  "2000",
 			"OTEL_EXPORTER_OTLP_TIMEOUT":  "2000",
-			"OTEL_SERVICE_NAME":           "open-rtls-hub-integration",
+			"OTEL_SERVICE_NAME":           "open-location-hub-integration",
 			"OTEL_DEPLOYMENT_ENVIRONMENT": "integration-test",
 		},
 		WaitingFor: wait.ForHTTP("/healthz").
@@ -439,7 +439,7 @@ func fetchDexIDTokenNoTest(ctx context.Context, container testcontainers.Contain
 	if err != nil {
 		return "", fmt.Errorf("token request failed: %w", err)
 	}
-	req.SetBasicAuth("open-rtls-cli", "cli-secret")
+	req.SetBasicAuth("open-location-cli", "cli-secret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -475,7 +475,7 @@ func sharedHubImageFromRepoRoot() (string, error) {
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			builtErr := buildError(output, err)
-			if strings.Contains(builtErr.Error(), `image "docker.io/library/open-rtls-hub-integration-test:local": already exists`) {
+			if strings.Contains(builtErr.Error(), `image "docker.io/library/open-location-hub-integration-test:local": already exists`) {
 				hubImageErr = nil
 				return
 			}

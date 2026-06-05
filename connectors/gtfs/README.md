@@ -1,7 +1,7 @@
 # GTFS Connector Demonstrator
 
 This demonstrator forwards GTFS-RT vehicle positions to a locally running Open
-RTLS Hub and bootstraps station zones and polygon fences for arrival and
+Location Hub and bootstraps station zones and polygon fences for arrival and
 departure tracking. The repository includes both a WebSocket ingest variant and
 an MQTT ingest variant.
 
