@@ -1,5 +1,5 @@
 [project]
-name = "open-rtls-uwb-sim-demo"
+name = "open-location-uwb-sim-demo"
 version = "0.1.0"
 description = "Mock multi-floor UWB simulator for Open Location Hub"
 requires-python = ">=3.12"

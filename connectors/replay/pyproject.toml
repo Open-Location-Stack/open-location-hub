@@ -1,5 +1,5 @@
 [project]
-name = "open-rtls-replay-demo"
+name = "open-location-replay-demo"
 version = "0.1.0"
 description = "NDJSON replay connector for Open Location Hub"
 requires-python = ">=3.12"

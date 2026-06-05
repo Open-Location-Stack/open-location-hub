@@ -94,7 +94,7 @@ wheels = [
 ]
 
 [[package]]
-name = "open-rtls-opensky-demo"
+name = "open-location-opensky-demo"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
