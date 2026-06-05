@@ -20,7 +20,7 @@ func TestProjPkgConfigShimBuildsInDockerWithoutSystemPkgConfig(t *testing.T) {
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    repoPath(t, "."),
 			Dockerfile: "tests/integration/dockerfiles/Dockerfile.proj-shim",
-			Repo:       testImageRepo(t, "open-rtls-hub-proj-shim"),
+			Repo:       testImageRepo(t, "open-location-hub-proj-shim"),
 			Tag:        testImageTag(),
 		},
 	}

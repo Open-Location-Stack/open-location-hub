@@ -1,4 +1,4 @@
-module github.com/formation-res/open-rtls-hub
+module github.com/formation-res/open-location-hub
 
 go 1.26
 

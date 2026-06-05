@@ -217,7 +217,7 @@ def dashboard(title: str, widgets: list[dict]) -> dict:
 def desired_dashboards() -> list[dict]:
     return [
         dashboard(
-            "Open RTLS Hub Throughput",
+            "Open Location Hub Throughput",
             [
                 widget(
                     "Ingest Rate by Outcome",
@@ -310,7 +310,7 @@ def desired_dashboards() -> list[dict]:
             ],
         ),
         dashboard(
-            "Open RTLS Hub Latency",
+            "Open Location Hub Latency",
             [
                 widget(
                     "End-to-End Latency p99 by Event Kind",
@@ -393,7 +393,7 @@ def desired_dashboards() -> list[dict]:
             ],
         ),
         dashboard(
-            "Open RTLS Hub Outcomes",
+            "Open Location Hub Outcomes",
             [
                 widget(
                     "Ingest Accepted vs Deduplicated",

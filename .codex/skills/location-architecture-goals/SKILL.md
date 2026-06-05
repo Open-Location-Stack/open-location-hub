@@ -1,9 +1,9 @@
 ---
-name: rtls-architecture-goals
+name: location-architecture-goals
 description: Use when designing or reviewing architecture, ingestion, processing, storage, eventing, or integration changes in this repository that affect scalability, future hub federation, or end-to-end latency for location-driven decisions.
 ---
 
-# RTLS Architecture Goals
+# Location Architecture Goals
 
 Use this skill for system design and backend architecture work in this repository, especially when the task affects:
 

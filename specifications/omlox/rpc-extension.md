@@ -7,7 +7,7 @@ Spec references:
 
 RPC is the hub's control-plane surface.
 
-Use it when a client needs to ask the hub or a downstream RTLS component to do
+Use it when a client needs to ask the hub or a downstream location component to do
 something immediately, for example:
 - check liveness
 - identify a reachable handler

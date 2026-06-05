@@ -1,7 +1,7 @@
 [project]
-name = "open-rtls-gtfs-demo"
+name = "open-location-gtfs-demo"
 version = "0.1.0"
-description = "GTFS demonstrator connector for Open RTLS Hub"
+description = "GTFS demonstrator connector for Open Location Hub"
 requires-python = ">=3.12"
 dependencies = [
   "gtfs-realtime-bindings>=2.0.0",

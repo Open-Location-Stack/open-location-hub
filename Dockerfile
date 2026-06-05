@@ -4,13 +4,13 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download || true
 COPY . .
-RUN go build -o /out/open-rtls-hub ./cmd/hub
+RUN go build -o /out/open-location-hub ./cmd/hub
 
 FROM alpine:3.22
 RUN apk add --no-cache proj
 RUN adduser -D -u 10001 appuser
 USER appuser
 WORKDIR /app
-COPY --from=build /out/open-rtls-hub /app/open-rtls-hub
+COPY --from=build /out/open-location-hub /app/open-location-hub
 EXPOSE 8080
-ENTRYPOINT ["/app/open-rtls-hub"]
+ENTRYPOINT ["/app/open-location-hub"]

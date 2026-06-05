@@ -141,9 +141,9 @@ Observability:
   SigNoz UI: http://localhost:$SIGNOZ_PORT
   SigNoz login: $SIGNOZ_ADMIN_EMAIL / $SIGNOZ_ADMIN_PASSWORD
   Provisioned dashboards:
-    Open RTLS Hub Throughput
-    Open RTLS Hub Latency
-    Open RTLS Hub Outcomes
+    Open Location Hub Throughput
+    Open Location Hub Latency
+    Open Location Hub Outcomes
   OTLP gRPC: localhost:4317
   OTLP HTTP: localhost:4318
 

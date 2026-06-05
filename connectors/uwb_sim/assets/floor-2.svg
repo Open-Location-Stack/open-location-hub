@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
   <title id="title">Mock UWB simulator floor 2</title>
-  <desc id="desc">Pac-Man floorplan used by the Open RTLS Hub mock UWB simulator for floor 2.</desc>
+  <desc id="desc">Pac-Man floorplan used by the Open Location Hub mock UWB simulator for floor 2.</desc>
   <rect x="0" y="0" width="1024" height="1024" fill="#ffffff" />
   <polygon points="956.55,301.57 921.62,248.53 879.29,200.63 830.34,158.79 775.72,123.81 716.51,96.4 653.86,77.08 588.99,66.21 523.16,64.03 457.64,70.57 393.73,85.69 332.65,109.13 275.6,140.39 223.68,178.9 177.93,223.88 139.21,274.47 108.28,329.68 85.75,388.45 72.04,449.61 67.45,512.0 72.04,574.39 85.75,635.55 108.28,694.32 139.21,749.53 177.93,800.12 223.68,845.1 275.6,883.61 332.65,914.87 393.73,938.31 457.64,953.43 523.16,959.97 588.99,957.79 653.86,946.92 716.51,927.6 775.72,900.19 830.34,865.21 879.29,823.37 921.62,775.47 956.55,722.43 766.28,512.0 956.55,301.57" fill="#f7f2e7" stroke="#233b59" stroke-width="8" />
   <line x1="809.45" y1="383.93" x2="708.27" y2="159.81" stroke="#0b5fff" stroke-width="30" stroke-linecap="round" opacity="0.92" />

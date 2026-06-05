@@ -1,6 +1,6 @@
 # Mock UWB Simulator
 
-This connector generates a repeatable WGS84 UWB demo stream for Open RTLS Hub.
+This connector generates a repeatable WGS84 UWB demo stream for Open Location Hub.
 It simulates 10 objects moving through a 3-floor Pac-Man-style building,
 publishes raw `location_updates` at 25Hz, and is intended to run against a hub
 configured to emit Kalman-normalized derived output at 2Hz.

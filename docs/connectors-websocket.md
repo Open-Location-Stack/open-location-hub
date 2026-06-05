@@ -8,11 +8,11 @@ topic names.
 The bundled connector demonstrators in this repository currently use this
 approach:
 
-- [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md)
-- [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md)
+- [`connectors/gtfs/README.md`](connectors/gtfs/README.md)
+- [`connectors/opensky/README.md`](connectors/opensky/README.md)
 
 Protocol details live in
-[`specifications/omlox/websocket.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/specifications/omlox/websocket.md).
+[`specifications/omlox/websocket.md`](specifications/omlox/websocket.md).
 
 ## When To Choose WebSocket
 
@@ -137,17 +137,17 @@ local-hub/fetch_demo_token.sh
    `HUB_WS_URL`, and optionally `HUB_TOKEN`.
 
 See
-[`local-hub/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub/README.md)
+[`local-hub/README.md`](local-hub/README.md)
 for the reusable local stack.
 
 ## Example Projects
 
 Use these as concrete WebSocket examples:
 
-- [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md):
+- [`connectors/gtfs/README.md`](connectors/gtfs/README.md):
   REST bootstrap for provider, trackables, stations, and fences, then live
   `location_updates` publish over WebSocket
-- [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md):
+- [`connectors/opensky/README.md`](connectors/opensky/README.md):
   REST bootstrap for provider, trackables, and airport fences, then live
   `location_updates` publish over WebSocket
 

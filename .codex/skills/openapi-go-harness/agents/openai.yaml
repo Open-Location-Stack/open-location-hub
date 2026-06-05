@@ -1,4 +1,4 @@
 interface:
   display_name: "OpenAPI Go Harness"
   short_description: "Evolve the Go service scaffold from the normative OpenAPI contract"
-  default_prompt: "Update the Open RTLS Hub Go harness from the OpenAPI spec, regenerate code, align handlers, and finish with the required just validation workflow."
+  default_prompt: "Update the Open Location Hub Go harness from the OpenAPI spec, regenerate code, align handlers, and finish with the required just validation workflow."

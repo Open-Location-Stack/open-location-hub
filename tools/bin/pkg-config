@@ -28,7 +28,7 @@ warn_macos_once() {
   if [[ -z "$cache_root" ]]; then
     cache_root="${TMPDIR:-/tmp}"
   fi
-  marker_dir="$cache_root/open-rtls-hub"
+  marker_dir="$cache_root/open-location-hub"
   marker="$marker_dir/pkg-config-macos-warning-v1"
   mkdir -p "$marker_dir" 2>/dev/null || return 0
   if [[ ! -f "$marker" ]]; then

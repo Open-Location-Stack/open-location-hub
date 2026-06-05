@@ -383,7 +383,7 @@ type JsonRpcRequest_Params struct {
 	// UnderscoreCallerId Caller identifier used to correlate MQTT responses. Omit together with `id` to send a notification.
 	UnderscoreCallerId *string `json:"_caller_id,omitempty"`
 
-	// UnderscoreHandlerId Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-rtls-hub` for local built-in methods.
+	// UnderscoreHandlerId Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-location-hub` for local built-in methods.
 	UnderscoreHandlerId *string `json:"_handler_id,omitempty"`
 
 	// UnderscoreTimeout Maximum time in milliseconds to wait for responses when the request expects a result.

@@ -1,6 +1,6 @@
 # Local Hub Starter Stack
 
-This directory is the easiest way to get Open RTLS Hub running on a laptop with
+This directory is the easiest way to get Open Location Hub running on a laptop with
 a practical local observability setup. It is intended as the normal starting
 point for new users who want to bring up the hub locally, inspect telemetry,
 and then try one of the example connectors.
@@ -16,12 +16,12 @@ The stack starts:
 
 Useful next stops after the stack is up:
 
-- [`docs/getting-started.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/getting-started.md) for the shortest path through local setup
-- [`docs/index.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/docs/index.md) for the broader software docs
-- [`connectors/gtfs/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/gtfs/README.md) for a transit-focused connector example
-- [`connectors/opensky/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/opensky/README.md) for an aircraft-position example
-- [`connectors/replay/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/replay/README.md) for replaying captured traffic back into the hub
-- [`connectors/uwb_sim/README.md`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/connectors/uwb_sim/README.md) for a multi-floor UWB movement simulator with georeferenced floorplan assets
+- [`docs/getting-started.md`](docs/getting-started.md) for the shortest path through local setup
+- [`docs/index.md`](docs/index.md) for the broader software docs
+- [`connectors/gtfs/README.md`](connectors/gtfs/README.md) for a transit-focused connector example
+- [`connectors/opensky/README.md`](connectors/opensky/README.md) for an aircraft-position example
+- [`connectors/replay/README.md`](connectors/replay/README.md) for replaying captured traffic back into the hub
+- [`connectors/uwb_sim/README.md`](connectors/uwb_sim/README.md) for a multi-floor UWB movement simulator with georeferenced floorplan assets
 
 ## Development Scope
 
@@ -49,7 +49,7 @@ just local-hub-up
 The first run also clones the pinned SigNoz deploy repository revision declared
 in `demo.env` and starts that stack separately before starting the hub demo
 compose project. After SigNoz starts, the launcher bootstraps the local admin
-account and provisions the default Open RTLS Hub dashboards.
+account and provisions the default Open Location Hub dashboards.
 
 Stop it:
 
@@ -120,9 +120,9 @@ SigNoz authentication is local to SigNoz and is not connected to Dex. The demo s
 
 The launcher creates or updates these dashboards on every start:
 
-- `Open RTLS Hub Throughput`
-- `Open RTLS Hub Latency`
-- `Open RTLS Hub Outcomes`
+- `Open Location Hub Throughput`
+- `Open Location Hub Latency`
+- `Open Location Hub Outcomes`
 
 This makes a fresh stack immediately useful for hub, replay, and OpenSky demo
 traffic without requiring manual dashboard setup in the UI.

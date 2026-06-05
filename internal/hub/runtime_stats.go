@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/observability"
 )
 
 const maxRecentDropSamples = 32

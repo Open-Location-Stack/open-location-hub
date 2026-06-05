@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -46,7 +46,7 @@ func TestResolveFallsBackToProductNameWhenHostnameUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
-	if meta.Label != "open-rtls-hub" {
+	if meta.Label != "open-location-hub" {
 		t.Fatalf("expected fallback label, got %q", meta.Label)
 	}
 }

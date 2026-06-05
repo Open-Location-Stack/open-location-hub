@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -21,7 +21,7 @@ func TestStaticAuthenticatorAcceptsToken(t *testing.T) {
 		Mode:                "static",
 		Enabled:             true,
 		Issuer:              "issuer",
-		Audience:            []string{"open-rtls-hub"},
+		Audience:            []string{"open-location-hub"},
 		AllowedAlgs:         []string{"RS256"},
 		StaticPublicKeys:    []string{pubPEM},
 		RolesClaim:          "groups",
@@ -35,7 +35,7 @@ func TestStaticAuthenticatorAcceptsToken(t *testing.T) {
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"sub":    "test",
 		"iss":    "issuer",
-		"aud":    []string{"open-rtls-hub"},
+		"aud":    []string{"open-location-hub"},
 		"exp":    time.Now().Add(time.Hour).Unix(),
 		"groups": []string{"omlox-api-admin"},
 	})

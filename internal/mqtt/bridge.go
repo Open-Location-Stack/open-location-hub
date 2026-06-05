@@ -3,7 +3,7 @@ package mqtt
 import (
 	"context"
 
-	"github.com/formation-res/open-rtls-hub/internal/hub"
+	"github.com/formation-res/open-location-hub/internal/hub"
 )
 
 // EventPublisher republishes normalized hub events to MQTT topics.

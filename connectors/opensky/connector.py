@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Forward OpenSky aircraft state vectors to a local Open RTLS Hub over WebSocket."""
+"""Forward OpenSky aircraft state vectors to a local Open Location Hub over WebSocket."""
 
 from __future__ import annotations
 

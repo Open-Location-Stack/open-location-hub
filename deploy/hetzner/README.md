@@ -1,7 +1,7 @@
 # Hetzner Deployment Bundle
 
 This directory contains a production-oriented Docker Compose setup for running
-Open RTLS Hub on a Hetzner host with:
+Open Location Hub on a Hetzner host with:
 
 - `tryformation/openlocationhub:0.1.1`
 - local PostgreSQL

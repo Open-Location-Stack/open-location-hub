@@ -70,7 +70,7 @@ def render_floorplan_svg(floor: FloorDefinition) -> str:
         [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{floor.image_width}" height="{floor.image_height}" viewBox="0 0 {floor.image_width} {floor.image_height}" role="img" aria-labelledby="title desc">',
             f'  <title id="title">Mock UWB simulator floor {floor.floor_number}</title>',
-            f'  <desc id="desc">Pac-Man floorplan used by the Open RTLS Hub mock UWB simulator for floor {floor.floor_number}.</desc>',
+            f'  <desc id="desc">Pac-Man floorplan used by the Open Location Hub mock UWB simulator for floor {floor.floor_number}.</desc>',
             f'  <rect x="0" y="0" width="{floor.image_width}" height="{floor.image_height}" fill="#ffffff" />',
             f'  <polygon points="{polygon_points}" fill="{FLOOR_FILL}" stroke="{FLOOR_STROKE}" stroke-width="8" />',
             *[f"  {line}" for line in edge_lines],

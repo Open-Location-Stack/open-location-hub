@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 )
 
 type authError struct {
@@ -26,7 +26,7 @@ func unauthorized(message string) error {
 		status:    http.StatusUnauthorized,
 		typ:       "authentication_failed",
 		message:   message,
-		challenge: `Bearer realm="open-rtls-hub"`,
+		challenge: `Bearer realm="open-location-hub"`,
 	}
 }
 

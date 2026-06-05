@@ -1,7 +1,7 @@
 # OMLOX V2 Locations Payload
 
 ## Intent
-Canonical payload for RTLS position updates consumed by the hub.
+Canonical payload for location updates consumed by the hub.
 
 Spec references:
 - Section 6.7.8 (`Location`)

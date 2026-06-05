@@ -30,7 +30,7 @@ Runtime lifecycle behavior:
 Hub metadata bootstrap behavior:
 - the hub persists one durable metadata row in Postgres containing the stable `hub_id` and operator-facing label
 - on first startup, `HUB_ID` seeds that row when provided; otherwise the hub generates a UUIDv7
-- on first startup, `HUB_LABEL` seeds that row when provided; otherwise the hub defaults to the machine hostname and falls back to `open-rtls-hub` if hostname lookup is unavailable
+- on first startup, `HUB_LABEL` seeds that row when provided; otherwise the hub defaults to the machine hostname and falls back to `open-location-hub` if hostname lookup is unavailable
 - on later startups, the stored row is the source of truth when `HUB_ID` and `HUB_LABEL` are omitted
 - if supplied env values disagree with the stored row, startup fails with a clear mismatch error unless `RESET_HUB_ID=true`
 - when `RESET_HUB_ID=true`, only explicitly supplied values overwrite the stored row; omitted fields are preserved
@@ -47,7 +47,7 @@ HTTP request decoding behavior:
 - `METADATA_RECONCILE_INTERVAL` (duration, default `30s`)
 - `RPC_TIMEOUT` (duration, default `5s`)
 - `RPC_ANNOUNCEMENT_INTERVAL` (duration, default `1m`)
-- `RPC_HANDLER_ID` (default `open-rtls-hub`)
+- `RPC_HANDLER_ID` (default `open-location-hub`)
 - `COLLISIONS_ENABLED` (`true`/`false`, default `false`)
 - `COLLISION_STATE_TTL` (duration, default `2m`)
 - `COLLISION_COLLIDING_DEBOUNCE` (duration, default `5s`)
@@ -137,7 +137,7 @@ See [docs/auth.md](auth.md) for the full auth model, Dex setup, and permission f
 - `OTEL_METRIC_EXPORT_INTERVAL` (duration, default `30s`)
 - `OTEL_METRIC_EXPORT_TIMEOUT` (duration, default `10s`)
 - `OTEL_TRACE_SAMPLE_RATIO` (number between `0` and `1`, default `1`)
-- `OTEL_SERVICE_NAME` (default `open-rtls-hub`)
+- `OTEL_SERVICE_NAME` (default `open-location-hub`)
 - `OTEL_SERVICE_VERSION` (optional override for release tagging)
 - `OTEL_DEPLOYMENT_ENVIRONMENT` (optional deployment environment label such as `local-demo` or `production`)
 - `OTEL_DEBUG_IDENTIFIERS` (`true`/`false`, default `false`)
@@ -149,7 +149,7 @@ Telemetry behavior:
 - metrics are intentionally low-cardinality and are labeled only with bounded dimensions such as transport, signal type, stage, feature, and outcome
 - entity identifiers such as `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision pair identifiers are emitted on spans and structured logs for drill-down, not on normal metric series
 - runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, queue and outbound drop counters, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
-- the local demo stack under [`local-hub/`](/Users/jillesvangurp/git/open-rtls/open-rtls-hub/local-hub) enables all three OTLP signals by default and routes them to SigNoz
+- the local demo stack under [`local-hub/`](local-hub) enables all three OTLP signals by default and routes them to SigNoz
 
 ## RPC Security Defaults
 

@@ -7,15 +7,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formation-res/open-rtls-hub/internal/config"
-	"github.com/formation-res/open-rtls-hub/internal/ids"
-	"github.com/formation-res/open-rtls-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/formation-res/open-location-hub/internal/ids"
+	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const defaultLabel = "open-rtls-hub"
+const defaultLabel = "open-location-hub"
 
 var hostnameLookup = os.Hostname
 

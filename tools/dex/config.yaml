@@ -14,9 +14,9 @@ oauth2:
 enablePasswordDB: true
 
 staticClients:
-  - id: open-rtls-cli
+  - id: open-location-cli
     secret: cli-secret
-    name: Open RTLS CLI
+    name: Open Location CLI
     redirectURIs:
       - http://127.0.0.1/callback
 

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 )
 
 type expiringLocation struct {

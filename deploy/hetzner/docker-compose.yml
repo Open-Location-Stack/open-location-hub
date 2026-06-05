@@ -71,7 +71,7 @@ services:
       AUTH_ENABLED: "true"
       AUTH_MODE: oidc
       AUTH_ISSUER: https://api.tryformation.com
-      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-open-rtls-hub}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-open-location-hub}
       AUTH_ALLOWED_ALGS: ${AUTH_ALLOWED_ALGS:-RS256}
       AUTH_ROLES_CLAIM: ${AUTH_ROLES_CLAIM:-groups}
       AUTH_OWNED_RESOURCES_CLAIM: ${AUTH_OWNED_RESOURCES_CLAIM:-owned_resources}
@@ -87,7 +87,7 @@ services:
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
       OTEL_EXPORTER_OTLP_INSECURE: "true"
-      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-rtls-hub}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-location-hub}
       OTEL_SERVICE_VERSION: "0.1.1"
       OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-hetzner}
       COLLISIONS_ENABLED: ${COLLISIONS_ENABLED:-true}

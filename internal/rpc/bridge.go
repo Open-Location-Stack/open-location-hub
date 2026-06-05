@@ -10,18 +10,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formation-res/open-rtls-hub/internal/auth"
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-rtls-hub/internal/ids"
-	"github.com/formation-res/open-rtls-hub/internal/mqtt"
-	"github.com/formation-res/open-rtls-hub/internal/observability"
+	"github.com/formation-res/open-location-hub/internal/auth"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/ids"
+	"github.com/formation-res/open-location-hub/internal/mqtt"
+	"github.com/formation-res/open-location-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
 const (
 	jsonRPCVersion        = "2.0"
 	defaultPendingCap     = 32
-	defaultHandlerID      = "open-rtls-hub"
+	defaultHandlerID      = "open-location-hub"
 	defaultAnnounceEvery  = time.Minute
 	errCodeInvalidRequest = -32600
 	errCodeInvalidParams  = -32602

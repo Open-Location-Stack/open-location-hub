@@ -1,13 +1,15 @@
 # AGENTS.md
 
 ## Purpose
-This repository implements an OpenAPI-first OMLOX-compatible RTLS hub in Go.
+This repository implements an OpenAPI-first OMLOX-compatible Open Location Hub in Go.
 
 ## Engineering Rules
 - OpenAPI contract in `specifications/openapi/omlox-hub.v0.yaml` is normative for REST.
 - API shape changes must start in OpenAPI; code follows generated interfaces.
 - Use `just` for all common workflows.
 - Keep config environment-driven and Docker-friendly.
+- Treat Open Location Hub and Open Location Stack naming as normative branding across the repository.
+- Avoid introducing `RTLS` or `open-rtls` as the default public-facing naming for documentation, APIs, examples, or operator-visible identifiers unless an external standard, compatibility requirement, or isolated legacy integration requires it.
 - Treat OMLOX PDFs and the normative OpenAPI/companion spec docs as the source of truth before borrowing behavior from reference implementations.
 - Keep implementation-facing docs aligned with the code in the same change when behavior, workflows, or runtime knobs change.
 
@@ -25,6 +27,7 @@ Non-functional contributor-maintenance exception:
 - Use GitHub issues as the source of truth for implementation tracking, remaining gaps, and follow-up work.
 - If implementation diverges from existing docs, fix the docs before closing the task.
 - If behavior is intentionally left partial, document the limitation and the likely next step.
+- Prefer "location" terminology over `RTLS` in public-facing text unless the text is explicitly referring to OMLOX, a third-party standard, or an intentionally retained compatibility surface.
 
 ## Git Workflow Guardrails
 - Do not run state-changing Git commands in parallel. In particular, keep `git add`, `git commit`, `git merge`, `git rebase`, `git stash`, and `git push` serialized.

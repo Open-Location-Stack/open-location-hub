@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/formation-res/open-rtls-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	proj "github.com/twpayne/go-proj/v11"
 	"gonum.org/v1/gonum/mat"
 )

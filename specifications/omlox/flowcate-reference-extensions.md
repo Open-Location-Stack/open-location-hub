@@ -25,7 +25,7 @@ Why this may be useful:
 A reference implementation adds an Anchor API and `anchor` entities associated with zones.
 
 Why this may be useful:
-- better modeling of physical RTLS infrastructure
+- better modeling of physical location infrastructure
 - improved georeferencing and benchmark-based transformations
 - richer admin and diagnostics workflows
 
