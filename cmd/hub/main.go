@@ -301,7 +301,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 
 	r := chi.NewRouter()
 	r.Use(observability.RequestLogger(logger))
-	r.Use(auth.Middleware(authenticator, cfg.Auth, registry))
+	r.Use(auth.Middleware(authenticator, cfg.Auth, registry, r))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

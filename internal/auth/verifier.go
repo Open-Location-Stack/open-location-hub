@@ -17,6 +17,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/formation-res/open-location-hub/internal/config"
 	"github.com/formation-res/open-location-hub/internal/observability"
+	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -307,13 +308,20 @@ func parseRSAPublicKey(pemText string) (*rsa.PublicKey, error) {
 
 // Middleware authenticates bearer tokens and enforces the configured route
 // authorization registry on incoming HTTP requests.
-func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry) func(http.Handler) http.Handler {
+func Middleware(authenticator Authenticator, cfg config.AuthConfig, registry *Registry, routes chi.Routes) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			if !cfg.Enabled || cfg.Mode == "none" || r.URL.Path == "/healthz" || r.URL.Path == "/v2/ws/socket" {
 				next.ServeHTTP(w, r)
 				return
+			}
+			if routes != nil {
+				rctx := chi.NewRouteContext()
+				if !routes.Match(rctx, r.Method, r.URL.Path) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 
 			hdr := strings.TrimSpace(r.Header.Get("Authorization"))
