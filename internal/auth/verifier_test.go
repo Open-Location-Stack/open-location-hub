@@ -6,10 +6,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -69,6 +72,44 @@ func TestPrincipalFromClaimsExtractsOwnedResources(t *testing.T) {
 
 	if _, ok := principal.OwnedResources["provider_ids"]["provider-1"]; !ok {
 		t.Fatal("expected provider ownership claim")
+	}
+}
+
+func TestMiddlewareSkipsAuthForUnknownPaths(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.AuthConfig{Enabled: true, Mode: "static"}
+	router := chi.NewRouter()
+	router.Use(Middleware(noneAuthenticator{}, cfg, nil, router))
+	router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "missing", http.StatusNotFound)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown route, got %d", rec.Code)
+	}
+}
+
+func TestMiddlewareStillAuthenticatesKnownPaths(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.AuthConfig{Enabled: true, Mode: "static"}
+	router := chi.NewRouter()
+	router.Use(Middleware(noneAuthenticator{}, cfg, nil, router))
+	router.Get("/v2/providers", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v2/providers", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for known protected route without bearer token, got %d", rec.Code)
 	}
 }
 
