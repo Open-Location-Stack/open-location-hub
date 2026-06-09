@@ -23,20 +23,21 @@ const (
 )
 
 type metadataSnapshot struct {
-	zones               []gen.Zone
-	zonesByID           map[string]gen.Zone
-	zonesByForeignID    map[string]gen.Zone
-	zoneSignatures      map[string]string
-	fences              []gen.Fence
-	fencesByID          map[string]gen.Fence
-	fenceSignatures     map[string]string
-	fenceIndexes        map[string]*fenceSpatialIndex
-	trackables          []gen.Trackable
-	trackablesByID      map[string]gen.Trackable
-	trackableSignatures map[string]string
-	providers           []gen.LocationProvider
-	providersByID       map[string]gen.LocationProvider
-	providerSignatures  map[string]string
+	zones                  []gen.Zone
+	zonesByID              map[string]gen.Zone
+	zonesByForeignID       map[string]gen.Zone
+	zoneSignatures         map[string]string
+	fences                 []gen.Fence
+	fencesByID             map[string]gen.Fence
+	fenceSignatures        map[string]string
+	fenceIndexes           map[string]*fenceSpatialIndex
+	trackables             []gen.Trackable
+	trackablesByID         map[string]gen.Trackable
+	trackablesByProviderID map[string][]gen.Trackable
+	trackableSignatures    map[string]string
+	providers              []gen.LocationProvider
+	providersByID          map[string]gen.LocationProvider
+	providerSignatures     map[string]string
 }
 
 const (
@@ -184,20 +185,21 @@ type providerRecord struct {
 
 func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []trackableRecord, providers []providerRecord) metadataSnapshot {
 	snapshot := metadataSnapshot{
-		zones:               make([]gen.Zone, 0, len(zones)),
-		zonesByID:           make(map[string]gen.Zone, len(zones)),
-		zonesByForeignID:    make(map[string]gen.Zone, len(zones)),
-		zoneSignatures:      make(map[string]string, len(zones)),
-		fences:              make([]gen.Fence, 0, len(fences)),
-		fencesByID:          make(map[string]gen.Fence, len(fences)),
-		fenceSignatures:     make(map[string]string, len(fences)),
-		fenceIndexes:        make(map[string]*fenceSpatialIndex),
-		trackables:          make([]gen.Trackable, 0, len(trackables)),
-		trackablesByID:      make(map[string]gen.Trackable, len(trackables)),
-		trackableSignatures: make(map[string]string, len(trackables)),
-		providers:           make([]gen.LocationProvider, 0, len(providers)),
-		providersByID:       make(map[string]gen.LocationProvider, len(providers)),
-		providerSignatures:  make(map[string]string, len(providers)),
+		zones:                  make([]gen.Zone, 0, len(zones)),
+		zonesByID:              make(map[string]gen.Zone, len(zones)),
+		zonesByForeignID:       make(map[string]gen.Zone, len(zones)),
+		zoneSignatures:         make(map[string]string, len(zones)),
+		fences:                 make([]gen.Fence, 0, len(fences)),
+		fencesByID:             make(map[string]gen.Fence, len(fences)),
+		fenceSignatures:        make(map[string]string, len(fences)),
+		fenceIndexes:           make(map[string]*fenceSpatialIndex),
+		trackables:             make([]gen.Trackable, 0, len(trackables)),
+		trackablesByID:         make(map[string]gen.Trackable, len(trackables)),
+		trackablesByProviderID: make(map[string][]gen.Trackable),
+		trackableSignatures:    make(map[string]string, len(trackables)),
+		providers:              make([]gen.LocationProvider, 0, len(providers)),
+		providersByID:          make(map[string]gen.LocationProvider, len(providers)),
+		providerSignatures:     make(map[string]string, len(providers)),
 	}
 	for _, record := range zones {
 		item := record.Zone
@@ -218,6 +220,9 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		item := record.Trackable
 		snapshot.trackables = append(snapshot.trackables, item)
 		snapshot.trackablesByID[item.Id.String()] = item
+		for _, providerID := range stringSliceValue(item.LocationProviders) {
+			snapshot.trackablesByProviderID[providerID] = append(snapshot.trackablesByProviderID[providerID], item)
+		}
 		snapshot.trackableSignatures[item.Id.String()] = record.Signature
 	}
 	for _, record := range providers {
@@ -291,6 +296,12 @@ func (c *MetadataCache) TrackableByID(id string) (gen.Trackable, bool) {
 	snapshot := c.current()
 	item, ok := snapshot.trackablesByID[id]
 	return item, ok
+}
+
+func (c *MetadataCache) TrackablesByProviderID(id string) []gen.Trackable {
+	snapshot := c.current()
+	items := snapshot.trackablesByProviderID[id]
+	return append([]gen.Trackable(nil), items...)
 }
 
 func (c *MetadataCache) ProviderByID(id string) (gen.LocationProvider, bool) {
@@ -372,8 +383,18 @@ func (c *MetadataCache) UpsertTrackable(item gen.Trackable, signature string) {
 	next := c.snapshot
 	next.trackables = upsertByTrackableID(next.trackables, item)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
+	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
 	next.trackableSignatures = cloneStringMap(next.trackableSignatures)
 	next.trackablesByID[item.Id.String()] = item
+	for providerID, items := range next.trackablesByProviderID {
+		next.trackablesByProviderID[providerID] = removeTrackableFromSlice(items, item.Id)
+		if len(next.trackablesByProviderID[providerID]) == 0 {
+			delete(next.trackablesByProviderID, providerID)
+		}
+	}
+	for _, providerID := range stringSliceValue(item.LocationProviders) {
+		next.trackablesByProviderID[providerID] = append(next.trackablesByProviderID[providerID], item)
+	}
 	next.trackableSignatures[item.Id.String()] = signature
 	c.snapshot = next
 }
@@ -384,8 +405,15 @@ func (c *MetadataCache) DeleteTrackable(id openapi_types.UUID) {
 	next := c.snapshot
 	next.trackables = removeTrackableByID(next.trackables, id)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
+	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
 	next.trackableSignatures = cloneStringMap(next.trackableSignatures)
 	delete(next.trackablesByID, id.String())
+	for providerID, items := range next.trackablesByProviderID {
+		next.trackablesByProviderID[providerID] = removeTrackableFromSlice(items, id)
+		if len(next.trackablesByProviderID[providerID]) == 0 {
+			delete(next.trackablesByProviderID, providerID)
+		}
+	}
 	delete(next.trackableSignatures, id.String())
 	c.snapshot = next
 }
@@ -739,6 +767,24 @@ func cloneTrackableMap(in map[string]gen.Trackable) map[string]gen.Trackable {
 		out[key] = value
 	}
 	return out
+}
+
+func cloneTrackableSliceMap(in map[string][]gen.Trackable) map[string][]gen.Trackable {
+	out := make(map[string][]gen.Trackable, len(in))
+	for key, value := range in {
+		out[key] = append([]gen.Trackable(nil), value...)
+	}
+	return out
+}
+
+func removeTrackableFromSlice(items []gen.Trackable, id openapi_types.UUID) []gen.Trackable {
+	next := make([]gen.Trackable, 0, len(items))
+	for _, item := range items {
+		if item.Id != id {
+			next = append(next, item)
+		}
+	}
+	return next
 }
 
 func cloneProviderMap(in map[string]gen.LocationProvider) map[string]gen.LocationProvider {

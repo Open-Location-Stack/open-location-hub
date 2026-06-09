@@ -759,21 +759,25 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 // updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
 	for _, location := range locations {
+		resolvedLocation, err := s.resolveLocationTrackables(ctx, location)
+		if err != nil {
+			return err
+		}
 		itemCtx := observability.WithIngestTransport(ctx, observability.IngestTransportFromContext(ctx))
 		itemCtx, span := s.telemetry().StartSpan(itemCtx, "hub.ingest.location",
-			attribute.String("provider_id", location.ProviderId),
-			attribute.String("provider_type", location.ProviderType),
-			attribute.String("source", location.Source),
-			attribute.StringSlice("trackable_ids", stringSliceValue(location.Trackables)),
+			attribute.String("provider_id", resolvedLocation.ProviderId),
+			attribute.String("provider_type", resolvedLocation.ProviderType),
+			attribute.String("source", resolvedLocation.Source),
+			attribute.StringSlice("trackable_ids", stringSliceValue(resolvedLocation.Trackables)),
 		)
 		start := time.Now()
-		if err := validateLocation(location); err != nil {
+		if err := validateLocation(resolvedLocation); err != nil {
 			span.RecordError(err)
 			s.telemetry().RecordIngestRecord(itemCtx, "location", "invalid")
 			span.End()
 			return err
 		}
-		if err := s.recordLocation(itemCtx, location, s.cfg.LocationTTL); err != nil {
+		if err := s.recordLocation(itemCtx, resolvedLocation, s.cfg.LocationTTL); err != nil {
 			span.RecordError(err)
 			s.telemetry().RecordIngestRecord(itemCtx, "location", "failed")
 			span.End()
@@ -783,6 +787,53 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 		span.End()
 	}
 	return nil
+}
+
+func (s *Service) resolveLocationTrackables(ctx context.Context, location gen.Location) (gen.Location, error) {
+	if location.Trackables != nil && len(*location.Trackables) > 0 {
+		return location, nil
+	}
+	providerID := strings.TrimSpace(location.ProviderId)
+	if providerID == "" {
+		return location, nil
+	}
+
+	var matches []gen.Trackable
+	if cache := s.metadataCache(); cache != nil {
+		matches = cache.TrackablesByProviderID(providerID)
+	} else {
+		trackables, err := s.ListTrackables(ctx)
+		if err != nil {
+			return gen.Location{}, err
+		}
+		matches = trackablesForProvider(trackables, providerID)
+	}
+	if len(matches) != 1 {
+		return location, nil
+	}
+
+	out, err := cloneLocation(location)
+	if err != nil {
+		return gen.Location{}, err
+	}
+	trackableIDs := gen.StringIdList{matches[0].Id.String()}
+	out.Trackables = &trackableIDs
+	associated := true
+	out.Associated = &associated
+	return out, nil
+}
+
+func trackablesForProvider(trackables []gen.Trackable, providerID string) []gen.Trackable {
+	matches := make([]gen.Trackable, 0, 1)
+	for _, trackable := range trackables {
+		for _, candidate := range stringSliceValue(trackable.LocationProviders) {
+			if candidate == providerID {
+				matches = append(matches, trackable)
+				break
+			}
+		}
+	}
+	return matches
 }
 
 // ProcessProximities validates, resolves, and republishes provider proximity

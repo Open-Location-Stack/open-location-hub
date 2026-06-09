@@ -197,6 +197,48 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 	waitForWebSocketProviders(t, wsConn, providers, 15*time.Second)
 }
 
+func TestScenarioProviderAssignedTrackableAutoAssociatesLocation(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Skipf("docker/testcontainers unavailable: %v", r)
+		}
+	}()
+
+	_, appBaseURL, brokerURL := startHubNoAuth(t)
+	token := adminToken(t)
+	zoneID := createScenarioZone(t, appBaseURL, token)
+	providerID := scopedID(t, "auto-assoc-provider")
+	trackableID := createTrackableWithProviders(t, appBaseURL, token, scopedID(t, "auto-assoc-trackable"), []string{providerID})
+
+	subscriber, messages := mqttSubscriber(t, brokerURL, mqtt.TopicLocationLocal(providerID), mqtt.TopicTrackableMotionLocal(trackableID))
+	defer subscriber.Disconnect(250)
+
+	resp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+		"crs":           "local",
+		"position":      pointPayload(5, 7),
+		"provider_id":   providerID,
+		"provider_type": "uwb",
+		"source":        zoneID,
+	}})
+	assertStatusAndClose(t, resp, http.StatusAccepted)
+
+	location := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerID)], 10*time.Second)
+	if location.Trackables == nil || len(*location.Trackables) != 1 || (*location.Trackables)[0] != trackableID {
+		t.Fatalf("expected auto-associated trackable %s, got %+v", trackableID, location.Trackables)
+	}
+	if location.Associated == nil || !*location.Associated {
+		t.Fatalf("expected associated=true, got %+v", location.Associated)
+	}
+
+	motion := waitForTrackableMotionAtLocation(t, messages[mqtt.TopicTrackableMotionLocal(trackableID)], 5, 7, 10*time.Second)
+	if motion.Id != trackableID {
+		t.Fatalf("unexpected trackable motion id: got %s want %s", motion.Id, trackableID)
+	}
+	if motion.Location.Trackables == nil || len(*motion.Location.Trackables) != 1 || (*motion.Location.Trackables)[0] != trackableID {
+		t.Fatalf("expected motion location to carry auto-associated trackable %s, got %+v", trackableID, motion.Location.Trackables)
+	}
+}
+
 func TestScenarioTenObjectsTraverseFenceLayoutAndUpdateMotions(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -286,6 +328,25 @@ func createTrackable(t *testing.T, appBaseURL, token, name string) string {
 	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/trackables", token, map[string]any{
 		"type": "omlox",
 		"name": name,
+	})
+	assertStatus(t, createResp, http.StatusCreated)
+	var trackable struct {
+		ID string `json:"id"`
+	}
+	decodeResponse(t, createResp, &trackable)
+	if trackable.ID == "" {
+		t.Fatal("expected created trackable id")
+	}
+	return trackable.ID
+}
+
+func createTrackableWithProviders(t *testing.T, appBaseURL, token, name string, providerIDs []string) string {
+	t.Helper()
+
+	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/trackables", token, map[string]any{
+		"type":               "omlox",
+		"name":               name,
+		"location_providers": providerIDs,
 	})
 	assertStatus(t, createResp, http.StatusCreated)
 	var trackable struct {

@@ -112,6 +112,15 @@ REST for idempotent metadata setup:
 - upsert `Trackable` resources when the upstream source has stable asset IDs
 - optionally create `Zone` and `Fence` resources before ingest starts
 
+For trackable association, the current hub behavior supports two practical
+patterns:
+
+- when the connector already knows the asset identity for an observation, send
+  `trackables` on each `location_updates` payload
+- when one upstream provider stream is dedicated to one asset, store that
+  provider ID in `Trackable.location_providers`; the hub now auto-associates
+  incoming locations when exactly one trackable matches the `provider_id`
+
 That split is usually the easiest connector design:
 
 - REST for durable metadata and bootstrap

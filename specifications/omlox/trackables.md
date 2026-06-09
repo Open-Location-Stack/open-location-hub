@@ -36,3 +36,9 @@ Trackable API is defined as a management API; companion OpenAPI is expected to d
 - A trackable location is based on updates from assigned location providers.
 - `omlox` type supports self-assignment style, `virtual` type supports API assignment.
 - Trackable/fence interaction and collision behavior is normative in chapters 9, 10, and 11.
+
+Current repository behavior:
+- If an incoming `Location` already names `trackables`, the hub uses that explicit association.
+- If `trackables` is omitted and exactly one stored `Trackable.location_providers` entry matches the incoming `provider_id`, the hub auto-associates the location to that trackable and marks it as associated.
+- If no match or more than one match exists for the provider, the hub currently leaves the location unassociated rather than guessing.
+- `locating_rules` are modeled in the contract but are not yet applied at runtime to resolve ambiguous multi-trackable provider matches.
