@@ -911,6 +911,161 @@ func TestPublishFenceEventsIgnoresMismatchedFenceFloorAndClearsActiveMembership(
 	}
 }
 
+func TestPublishFenceEventsHonorsExitToleranceTimeout(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	state := NewProcessingState(func() time.Time { return now })
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	fence.ExitTolerance = float32Ptr(1)
+	fence.ToleranceTimeout = positiveOrMinusOneDuration(t, 30000)
+	service := &Service{
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		bus:      bus,
+		cfg:      Config{LocationTTL: 90 * time.Second},
+	}
+
+	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	trackables := []string{"trackable-a"}
+	inside.Trackables = &trackables
+	if err := service.publishFenceEvents(context.Background(), inside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	collectEvents(ch, 1)
+
+	now = now.Add(10 * time.Second)
+	toleratedOutside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{6.5, 2})
+	toleratedOutside.Trackables = &trackables
+	if err := service.publishFenceEvents(context.Background(), toleratedOutside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	expectNoEvent(t, ch, 200*time.Millisecond)
+	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
+		t.Fatal("expected trackable to remain inside while tolerance timeout is active")
+	}
+
+	now = now.Add(31 * time.Second)
+	if err := service.publishFenceEvents(context.Background(), toleratedOutside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one fence exit event after tolerance timeout, got %d", len(events))
+	}
+	envelope, err := Decode[FenceEventEnvelope](events[0])
+	if err != nil {
+		t.Fatalf("decode fence event failed: %v", err)
+	}
+	if envelope.Event.EventType != gen.RegionExit {
+		t.Fatalf("expected region exit event, got %s", envelope.Event.EventType)
+	}
+}
+
+func TestPublishFenceEventsHonorsExitDelay(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+
+	now := time.Date(2026, 6, 9, 13, 0, 0, 0, time.UTC)
+	state := NewProcessingState(func() time.Time { return now })
+	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
+	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	fence.ExitDelay = positiveOrMinusOneDuration(t, 5000)
+	service := &Service{
+		state:    state,
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		bus:      bus,
+		cfg:      Config{LocationTTL: 90 * time.Second},
+	}
+
+	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	trackables := []string{"trackable-a"}
+	inside.Trackables = &trackables
+	if err := service.publishFenceEvents(context.Background(), inside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	collectEvents(ch, 1)
+
+	outside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{10, 2})
+	outside.Trackables = &trackables
+
+	now = now.Add(1 * time.Second)
+	if err := service.publishFenceEvents(context.Background(), outside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	expectNoEvent(t, ch, 200*time.Millisecond)
+
+	now = now.Add(3 * time.Second)
+	if err := service.publishFenceEvents(context.Background(), outside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	expectNoEvent(t, ch, 200*time.Millisecond)
+
+	now = now.Add(2 * time.Second)
+	if err := service.publishFenceEvents(context.Background(), outside); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one delayed fence exit event, got %d", len(events))
+	}
+	envelope, err := Decode[FenceEventEnvelope](events[0])
+	if err != nil {
+		t.Fatalf("decode fence event failed: %v", err)
+	}
+	if envelope.Event.EventType != gen.RegionExit {
+		t.Fatalf("expected region exit event, got %s", envelope.Event.EventType)
+	}
+}
+
+func TestResolveFenceExitPolicyUsesOverridePrecedenceAndIgnoresDisabledValues(t *testing.T) {
+	t.Parallel()
+
+	fence := gen.Fence{
+		ExitTolerance:    float32Ptr(0.5),
+		ToleranceTimeout: positiveOrMinusOneDuration(t, 30000),
+		ExitDelay:        positiveOrMinusOneDuration(t, 1000),
+	}
+	provider := gen.LocationProvider{
+		Id:               "provider-a",
+		Type:             "uwb",
+		ExitTolerance:    float32Ptr(1),
+		ToleranceTimeout: disabledPositiveOrMinusOne(t),
+		ExitDelay:        positiveOrMinusOneDuration(t, 2000),
+	}
+	trackable := gen.Trackable{
+		Id:            uuidAsOpenAPI(uuid.New()),
+		Type:          gen.TrackableTypeOmlox,
+		ExitTolerance: float32Ptr(1.5),
+		ExitDelay:     disabledPositiveOrMinusOne(t),
+	}
+
+	policy := resolveFenceExitPolicy(fence, trackable, true, provider, true)
+	if policy.ExitTolerance != 1.5 {
+		t.Fatalf("expected trackable exit tolerance override, got %v", policy.ExitTolerance)
+	}
+	if policy.ToleranceTimeoutActive || policy.ToleranceTimeout != 0 {
+		t.Fatalf("expected disabled provider tolerance timeout to clear to conservative default, got active=%t duration=%s", policy.ToleranceTimeoutActive, policy.ToleranceTimeout)
+	}
+	if policy.ExitDelay != 0 {
+		t.Fatalf("expected disabled trackable exit delay to clear to conservative default, got %s", policy.ExitDelay)
+	}
+}
+
 type captureCollisionQueue struct {
 	works []collisionWork
 }
@@ -1319,6 +1474,33 @@ func collectEvents(ch <-chan Event, count int) []Event {
 		}
 	}
 	return out
+}
+
+func expectNoEvent(t *testing.T, ch <-chan Event, timeout time.Duration) {
+	t.Helper()
+	select {
+	case event := <-ch:
+		t.Fatalf("expected no event, got %s", event.Kind)
+	case <-time.After(timeout):
+	}
+}
+
+func positiveOrMinusOneDuration(t *testing.T, milliseconds float32) *gen.PositiveOrMinusOne {
+	t.Helper()
+	var value gen.PositiveOrMinusOne
+	if err := value.FromPositiveNumber(gen.PositiveNumber(milliseconds)); err != nil {
+		t.Fatalf("positive duration setup failed: %v", err)
+	}
+	return &value
+}
+
+func disabledPositiveOrMinusOne(t *testing.T) *gen.PositiveOrMinusOne {
+	t.Helper()
+	var value gen.PositiveOrMinusOne
+	if err := value.FromPositiveOrMinusOne0(gen.Minus1); err != nil {
+		t.Fatalf("disabled duration setup failed: %v", err)
+	}
+	return &value
 }
 
 func eventByScope(t *testing.T, events []Event, scope EventScope) Event {

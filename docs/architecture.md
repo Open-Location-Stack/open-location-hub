@@ -22,8 +22,8 @@
   - latest provider-source locations
   - latest trackable locations and active motion state used for collision work
   - optional per-trackable Kalman filter state and retained samples
-  - proximity hysteresis state
-  - fence membership state
+- proximity hysteresis state
+  - fence membership state, including transient exit-tolerance and exit-delay bookkeeping
   - collision pair state
 
 ## Event Fan-Out
@@ -51,6 +51,7 @@ Implications:
 - WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
+- fence exits are still driven by accepted location updates, but the decision path now applies per-fence/provider/trackable tolerance bands and exit debounce before emitting `region_exit`
 
 ## Observability Boundaries
 - `internal/observability` owns OpenTelemetry resource setup, OTLP exporters, lifecycle management, and the small internal instrumentation API used by the rest of the runtime.

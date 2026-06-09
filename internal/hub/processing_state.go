@@ -34,7 +34,9 @@ type expiringKalmanTrack struct {
 }
 
 type expiringFenceMembership struct {
-	expiresAt time.Time
+	expiresAt          time.Time
+	toleranceStartedAt time.Time
+	exitPendingSince   time.Time
 }
 
 // ProcessingState keeps transient decision state in memory.
@@ -168,6 +170,38 @@ func (s *ProcessingState) SetInsideFence(trackableID, fenceID string, ttl time.D
 		s.fenceMembership[trackableID] = current
 	}
 	current[fenceID] = expiringFenceMembership{expiresAt: s.nowUTC().Add(ttl)}
+}
+
+func (s *ProcessingState) FenceMembershipState(trackableID, fenceID string) (expiringFenceMembership, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.fenceMembership[trackableID]
+	if !ok {
+		return expiringFenceMembership{}, false
+	}
+	membership, ok := current[fenceID]
+	if !ok || !membership.expiresAt.After(s.nowUTC()) {
+		delete(current, fenceID)
+		if len(current) == 0 {
+			delete(s.fenceMembership, trackableID)
+		}
+		return expiringFenceMembership{}, false
+	}
+	return membership, true
+}
+
+func (s *ProcessingState) UpdateFenceMembershipState(trackableID, fenceID string, ttl time.Duration, update func(*expiringFenceMembership)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.fenceMembership[trackableID]
+	if current == nil {
+		current = map[string]expiringFenceMembership{}
+		s.fenceMembership[trackableID] = current
+	}
+	membership := current[fenceID]
+	membership.expiresAt = s.nowUTC().Add(ttl)
+	update(&membership)
+	current[fenceID] = membership
 }
 
 func (s *ProcessingState) ClearInsideFence(trackableID, fenceID string) {

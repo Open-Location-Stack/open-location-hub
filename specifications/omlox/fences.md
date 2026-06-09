@@ -41,3 +41,16 @@ Event object includes:
 - copied custom `properties`
 
 Published via WebSocket topic `fence_events`.
+
+## Current Repository Behavior
+
+- Fence entry is emitted as soon as an accepted location is inside the fence geometry.
+- Fence exit is evaluated on each accepted location update for the trackable.
+- `exit_tolerance` creates an outer grace band beyond the fence boundary before an exit is considered final.
+- `tolerance_timeout` limits how long the hub keeps a trackable inside while it remains only within that tolerance band.
+- `exit_delay` adds an additional debounce after the hub has decided the trackable is truly outside.
+- Positive values are interpreted as milliseconds for `tolerance_timeout` and `exit_delay`.
+- Positive values are applied in override order from fence to current location provider to trackable.
+- Disabling negative values on `tolerance_timeout` and `exit_delay` clear that behavior back to the conservative default instead of inheriting a broader delay or hold.
+- Omitted or `null` values do not add grace behavior on their own; if no positive value survives the override chain, the effective default remains immediate exit.
+- Exit timing is event-driven rather than timer-driven: the hub finalizes delayed exits when a subsequent location update confirms the elapsed timeout or delay.
