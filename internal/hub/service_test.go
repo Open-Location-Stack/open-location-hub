@@ -1194,6 +1194,232 @@ func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *te
 	}
 }
 
+func TestProcessDerivedLocationEvaluatesLocalFencesForWGS84Input(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	state := NewProcessingState(time.Now)
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	localCRS := "local"
+	fence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
+	fence.Crs = &localCRS
+	fence.ZoneId = stringPtrValueRef(zone.Id.String())
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.54115, 47.37445})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		state:          state,
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		cfg:            Config{LocationTTL: time.Minute},
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 3)
+	count := 0
+	for _, event := range events {
+		if event.Kind == EventFenceEvent {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one fence event, got %d", count)
+	}
+}
+
+func TestProcessLocationsEmitsFenceEventForProductionAreaScenario(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(16)
+	defer unsubscribe()
+
+	fenceID, err := uuid.Parse("019eab42-3d91-7b8a-8b64-1ca8e2c6055d")
+	if err != nil {
+		t.Fatalf("parse fence id failed: %v", err)
+	}
+	trackableID, err := uuid.Parse("019eac84-f826-758a-b1f5-7bcb3cfa840a")
+	if err != nil {
+		t.Fatalf("parse trackable id failed: %v", err)
+	}
+	providerIDs := gen.StringIdList{"simulated-tag-1"}
+	trackable := gen.Trackable{
+		Id:                uuidAsOpenAPI(trackableID),
+		Type:              gen.TrackableTypeVirtual,
+		Name:              stringPtrValueRef("plugfest-godzilla"),
+		LocationProviders: &providerIDs,
+	}
+	provider := gen.LocationProvider{
+		Id:   "simulated-tag-1",
+		Type: "virtual",
+		Name: stringPtrValueRef("simulated-tag-1"),
+	}
+	fence := productionAreaFenceFixture(t, fenceID)
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	location.ProviderId = "simulated-tag-1"
+	location.ProviderType = "virtual"
+
+	service := &Service{
+		bus:            bus,
+		state:          NewProcessingState(time.Now),
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, []trackableRecord{{Trackable: trackable}}, []providerRecord{{Provider: provider, Signature: "provider"}})},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		cfg:            Config{LocationTTL: time.Minute, NativeLocationBuffer: 16, DerivedLocationBuffer: 16},
+		stats:          runtimeStatsFromBus(bus),
+		logger:         zapTestLogger(t),
+		decisionStage:  passthroughDecisionStage{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.Start(ctx)
+
+	if err := service.ProcessLocations(context.Background(), []gen.Location{location}); err != nil {
+		t.Fatalf("ProcessLocations failed: %v", err)
+	}
+
+	events := collectEvents(ch, 4)
+	var fenceCount int
+	var matchingFence bool
+	var matchingTrackable bool
+	for _, event := range events {
+		if event.Kind != EventFenceEvent {
+			continue
+		}
+		fenceCount++
+		envelope, err := Decode[FenceEventEnvelope](event)
+		if err != nil {
+			t.Fatalf("decode fence event failed: %v", err)
+		}
+		if envelope.Event.FenceId == uuidAsOpenAPI(fenceID) {
+			matchingFence = true
+		}
+		if envelope.Event.TrackableId != nil && *envelope.Event.TrackableId == trackableID.String() {
+			matchingTrackable = true
+		}
+	}
+	if fenceCount == 0 {
+		kinds := make([]EventKind, 0, len(events))
+		for _, event := range events {
+			kinds = append(kinds, event.Kind)
+		}
+		t.Fatalf("expected at least one fence event, got %d events total with kinds %v", len(events), kinds)
+	}
+	if !matchingFence {
+		t.Fatal("expected Production Area fence event")
+	}
+	if !matchingTrackable {
+		t.Fatal("expected fence event for plugfest-godzilla")
+	}
+}
+
+func TestPublishFenceEventsForProductionAreaScenario(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+
+	fenceID, err := uuid.Parse("019eab42-3d91-7b8a-8b64-1ca8e2c6055d")
+	if err != nil {
+		t.Fatalf("parse fence id failed: %v", err)
+	}
+	trackableID, err := uuid.Parse("019eac84-f826-758a-b1f5-7bcb3cfa840a")
+	if err != nil {
+		t.Fatalf("parse trackable id failed: %v", err)
+	}
+	fence := productionAreaFenceFixture(t, fenceID)
+	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	location.ProviderId = "simulated-tag-1"
+	location.ProviderType = "virtual"
+	trackables := []string{trackableID.String()}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		state:          NewProcessingState(time.Now),
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		cfg:            Config{LocationTTL: time.Minute},
+	}
+
+	candidates, err := service.fenceCandidatesForLocation(context.Background(), location)
+	if err != nil {
+		t.Fatalf("fenceCandidatesForLocation failed: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one fence candidate, got %d", len(candidates))
+	}
+	point, err := point2D(location.Position)
+	if err != nil {
+		t.Fatalf("point2D failed: %v", err)
+	}
+	containment, err := fenceContainmentForPoint(fence, point)
+	if err != nil {
+		t.Fatalf("fenceContainmentForPoint failed: %v", err)
+	}
+	if !containment.Inside {
+		t.Fatalf("expected test point to be inside Production Area, got %+v", containment)
+	}
+
+	if err := service.publishFenceEvents(context.Background(), location); err != nil {
+		t.Fatalf("publishFenceEvents failed: %v", err)
+	}
+
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one fence event, got %d", len(events))
+	}
+	if events[0].Kind != EventFenceEvent {
+		t.Fatalf("expected fence event, got %s", events[0].Kind)
+	}
+}
+
+func TestFenceContainmentForPointSupportsPointAndPolygon(t *testing.T) {
+	t.Parallel()
+
+	pointFence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
+	polygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+		{4, 4}, {6, 4}, {6, 6}, {4, 6}, {4, 4},
+	})
+
+	tests := []struct {
+		name   string
+		fence  gen.Fence
+		point  [2]float64
+		inside bool
+	}{
+		{name: "point inside", fence: pointFence, point: [2]float64{5, 5}, inside: true},
+		{name: "point outside", fence: pointFence, point: [2]float64{10, 10}, inside: false},
+		{name: "polygon inside", fence: polygonFence, point: [2]float64{5, 5}, inside: true},
+		{name: "polygon outside", fence: polygonFence, point: [2]float64{10, 10}, inside: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			containment, err := fenceContainmentForPoint(tc.fence, tc.point)
+			if err != nil {
+				t.Fatalf("fenceContainmentForPoint failed: %v", err)
+			}
+			if containment.Inside != tc.inside {
+				t.Fatalf("expected inside=%t, got %+v", tc.inside, containment)
+			}
+		})
+	}
+}
+
 func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *testing.T) {
 	t.Parallel()
 
@@ -1495,6 +1721,53 @@ func testPointFence(t *testing.T, id uuid.UUID, coordinates [2]float32, radius f
 	}
 }
 
+func productionAreaFenceFixture(t *testing.T, id uuid.UUID) gen.Fence {
+	t.Helper()
+	polygon := gen.Polygon{
+		Type: "Polygon",
+		Coordinates: [][]gen.GeoJsonPosition{
+			{
+				geoPosition2D(t, 8.903088018151413, 52.01780915621805),
+				geoPosition2D(t, 8.903091333497857, 52.01771924720516),
+				geoPosition2D(t, 8.90327833437035, 52.017721858815946),
+				geoPosition2D(t, 8.903275019023907, 52.01781176782884),
+				geoPosition2D(t, 8.903088018151413, 52.01780915621805),
+			},
+		},
+	}
+	var region gen.Fence_Region
+	if err := region.FromPolygon(polygon); err != nil {
+		t.Fatalf("region setup failed: %v", err)
+	}
+	foreignID := "019eab38-b020-7444-894b-4a6333e71b44"
+	return gen.Fence{
+		Id:        uuidAsOpenAPI(id),
+		ForeignId: &foreignID,
+		Name:      stringPtrValueRef("Production Area"),
+		Region:    region,
+	}
+}
+
+func testPolygonFence(t *testing.T, id uuid.UUID, coordinates [][2]float32) gen.Fence {
+	t.Helper()
+	ring := make([]gen.GeoJsonPosition, 0, len(coordinates))
+	for _, coordinate := range coordinates {
+		ring = append(ring, geoPosition2D(t, float64(coordinate[0]), float64(coordinate[1])))
+	}
+	polygon := gen.Polygon{
+		Type:        "Polygon",
+		Coordinates: [][]gen.GeoJsonPosition{ring},
+	}
+	var region gen.Fence_Region
+	if err := region.FromPolygon(polygon); err != nil {
+		t.Fatalf("region setup failed: %v", err)
+	}
+	return gen.Fence{
+		Id:     uuidAsOpenAPI(id),
+		Region: region,
+	}
+}
+
 func uuidAsOpenAPI(id uuid.UUID) [16]byte {
 	return [16]byte(id)
 }
@@ -1610,6 +1883,15 @@ func pointAt(t *testing.T, x, y float64) gen.Point {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return point
+}
+
+func geoPosition2D(t *testing.T, x, y float64) gen.GeoJsonPosition {
+	t.Helper()
+	var position gen.GeoJsonPosition
+	if err := position.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
+		t.Fatalf("position setup failed: %v", err)
+	}
+	return position
 }
 
 func zapTestLogger(t *testing.T) *zap.Logger {

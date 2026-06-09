@@ -698,22 +698,23 @@ func fenceMatchesFloor(fence gen.Fence, location gen.Location) bool {
 
 func fenceBoundingRect(fence gen.Fence) (rtreego.Rect, bool) {
 	if p, err := fence.Region.AsPoint(); err == nil {
-		center, err := point2D(p)
-		if err != nil {
-			return rtreego.Rect{}, false
+		if p.Type == "Point" {
+			center, err := point2D(p)
+			if err == nil {
+				radius := 0.0
+				if fence.Radius != nil {
+					radius = float64(*fence.Radius)
+				}
+				rect, err := rtreego.NewRect(
+					rtreego.Point{center[0] - radius, center[1] - radius},
+					[]float64{radius * 2, radius * 2},
+				)
+				if err != nil {
+					return rtreego.Rect{}, false
+				}
+				return rect, true
+			}
 		}
-		radius := 0.0
-		if fence.Radius != nil {
-			radius = float64(*fence.Radius)
-		}
-		rect, err := rtreego.NewRect(
-			rtreego.Point{center[0] - radius, center[1] - radius},
-			[]float64{radius * 2, radius * 2},
-		)
-		if err != nil {
-			return rtreego.Rect{}, false
-		}
-		return rect, true
 	}
 	polygon, err := fence.Region.AsPolygon()
 	if err != nil || len(polygon.Coordinates) == 0 || len(polygon.Coordinates[0]) == 0 {

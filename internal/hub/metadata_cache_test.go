@@ -130,6 +130,146 @@ func TestMetadataCacheFenceCandidatesMatchLocationFloor(t *testing.T) {
 	}
 }
 
+func TestMetadataCacheFenceCandidatesMatchWGS84PolygonFence(t *testing.T) {
+	t.Parallel()
+
+	fenceID, err := uuid.Parse("019eab42-3d91-7b8a-8b64-1ca8e2c6055d")
+	if err != nil {
+		t.Fatalf("parse fence id failed: %v", err)
+	}
+	fence := productionAreaFenceFixture(t, fenceID)
+
+	cache, err := NewMetadataCache(context.Background(), fakeQueries{
+		listZonesFn:      metadataZoneList(t),
+		listFencesFn:     metadataFenceList(t, fence),
+		listTrackablesFn: metadataTrackableList(t),
+		listProvidersFn:  metadataProviderList(t),
+	})
+	if err != nil {
+		t.Fatalf("NewMetadataCache failed: %v", err)
+	}
+
+	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	scopeKey, ok, err := cache.current().locationFenceScopeKey(location)
+	if err != nil {
+		t.Fatalf("locationFenceScopeKey failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected location fence scope key")
+	}
+	fenceKey, ok := fenceScopeKey(fence)
+	if !ok {
+		t.Fatal("expected fence scope key")
+	}
+	if scopeKey != fenceKey {
+		t.Fatalf("scope mismatch: location=%s fence=%s", scopeKey, fenceKey)
+	}
+	rect, ok := fenceBoundingRect(fence)
+	if !ok {
+		t.Fatal("expected fence bounding rect")
+	}
+	point, err := point2D(location.Position)
+	if err != nil {
+		t.Fatalf("point2D failed: %v", err)
+	}
+	minX := rect.PointCoord(0)
+	minY := rect.PointCoord(1)
+	maxX := minX + rect.LengthsCoord(0)
+	maxY := minY + rect.LengthsCoord(1)
+	if point[0] < minX || point[0] > maxX || point[1] < minY || point[1] > maxY {
+		t.Fatalf("point %v outside rect [%f,%f]-[%f,%f]", point, minX, minY, maxX, maxY)
+	}
+	candidates, err := cache.FenceCandidates(location)
+	if err != nil {
+		t.Fatalf("FenceCandidates failed: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].Id != fence.Id {
+		t.Fatalf("unexpected WGS84 polygon fence candidates: %+v", candidates)
+	}
+}
+
+func TestMetadataCacheFenceCandidatesSupportPointAndPolygonAcrossScopes(t *testing.T) {
+	t.Parallel()
+
+	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
+	localCRS := "local"
+	wgsCRS := "EPSG:4326"
+
+	localPointFence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
+	localPointFence.Crs = &localCRS
+	localPointFence.ZoneId = stringPtrValueRef(zone.Id.String())
+
+	localPolygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+		{4, 4}, {6, 4}, {6, 6}, {4, 6}, {4, 4},
+	})
+	localPolygonFence.Crs = &localCRS
+	localPolygonFence.ZoneId = stringPtrValueRef(zone.Id.String())
+
+	wgsPointFence := testPointFence(t, uuid.New(), [2]float32{8.5411, 47.3744}, 0.0002)
+	wgsPointFence.Crs = &wgsCRS
+
+	wgsPolygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+		{8.5410, 47.3743}, {8.5412, 47.3743}, {8.5412, 47.3745}, {8.5410, 47.3745}, {8.5410, 47.3743},
+	})
+	wgsPolygonFence.Crs = &wgsCRS
+
+	cache, err := NewMetadataCache(context.Background(), fakeQueries{
+		listZonesFn:      metadataZoneList(t, zone),
+		listFencesFn:     metadataFenceList(t, localPointFence, localPolygonFence, wgsPointFence, wgsPolygonFence),
+		listTrackablesFn: metadataTrackableList(t),
+		listProvidersFn:  metadataProviderList(t),
+	})
+	if err != nil {
+		t.Fatalf("NewMetadataCache failed: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		location   gen.Location
+		expectedID [16]byte
+	}{
+		{
+			name:       "local point",
+			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 5}),
+			expectedID: localPointFence.Id,
+		},
+		{
+			name:       "local polygon",
+			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 5}),
+			expectedID: localPolygonFence.Id,
+		},
+		{
+			name:       "wgs point",
+			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float32{8.5411, 47.3744}),
+			expectedID: wgsPointFence.Id,
+		},
+		{
+			name:       "wgs polygon",
+			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float32{8.5411, 47.3744}),
+			expectedID: wgsPolygonFence.Id,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			candidates, err := cache.FenceCandidates(tc.location)
+			if err != nil {
+				t.Fatalf("FenceCandidates failed: %v", err)
+			}
+			found := false
+			for _, candidate := range candidates {
+				if candidate.Id == tc.expectedID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected fence %s in candidates, got %+v", uuid.UUID(tc.expectedID).String(), candidates)
+			}
+		})
+	}
+}
+
 func TestMetadataCacheReconcileDiffsCreateUpdateDelete(t *testing.T) {
 	t.Parallel()
 
