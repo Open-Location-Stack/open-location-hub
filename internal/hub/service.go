@@ -1176,6 +1176,9 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 	case ScopeLocal:
 		wgs84Location, ok, err := view.WGS84(ctx)
 		if err == nil && ok {
+			if err := s.publishFenceEvents(ctx, *wgs84Location); err != nil {
+				return err
+			}
 			if emit {
 				if err := s.publishLocationScope(ctx, *wgs84Location, ScopeEPSG4326); err != nil {
 					return err
@@ -1212,10 +1215,20 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 		if emit {
 			localLocation, ok, err := view.Local(ctx)
 			if err == nil && ok {
+				if err := s.publishFenceEvents(ctx, *localLocation); err != nil {
+					return err
+				}
 				if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
 					return err
 				}
 				if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
+					return err
+				}
+			}
+		} else {
+			localLocation, ok, err := view.Local(ctx)
+			if err == nil && ok {
+				if err := s.publishFenceEvents(ctx, *localLocation); err != nil {
 					return err
 				}
 			}
@@ -2903,21 +2916,22 @@ func point2D(point gen.Point) ([2]float64, error) {
 
 func fenceContainmentForPoint(fence gen.Fence, point [2]float64) (fenceContainment, error) {
 	if p, err := fence.Region.AsPoint(); err == nil {
-		center, err := point2D(p)
-		if err != nil {
-			return fenceContainment{}, err
+		if p.Type == "Point" {
+			center, err := point2D(p)
+			if err == nil {
+				radius := 0.0
+				if fence.Radius != nil {
+					radius = float64(*fence.Radius)
+				}
+				dx := point[0] - center[0]
+				dy := point[1] - center[1]
+				distance := math.Sqrt(dx*dx + dy*dy)
+				if distance <= radius {
+					return fenceContainment{Inside: true}, nil
+				}
+				return fenceContainment{OutsideDistance: distance - radius}, nil
+			}
 		}
-		radius := 0.0
-		if fence.Radius != nil {
-			radius = float64(*fence.Radius)
-		}
-		dx := point[0] - center[0]
-		dy := point[1] - center[1]
-		distance := math.Sqrt(dx*dx + dy*dy)
-		if distance <= radius {
-			return fenceContainment{Inside: true}, nil
-		}
-		return fenceContainment{OutsideDistance: distance - radius}, nil
 	}
 	polygon, err := fence.Region.AsPolygon()
 	if err != nil {
