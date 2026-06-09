@@ -10,7 +10,7 @@ Start here if you want the local runtime:
 If you want the published container instead of a local build, the current Docker
 Hub repository is
 [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
-As of 2026-06-01, the published release tag is `0.1.1`, and `latest` points to
+As of 2026-06-09, the published release tag is `0.1.4`, and `latest` points to
 that same image.
 
 Core hub docs:
