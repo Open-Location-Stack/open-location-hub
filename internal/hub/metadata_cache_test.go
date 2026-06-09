@@ -16,7 +16,8 @@ func TestNewMetadataCacheBuildsIndexes(t *testing.T) {
 	t.Parallel()
 
 	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "foreign-zone", [2]float32{1, 2}, nil, nil)
-	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox}
+	providerIDs := gen.StringIdList{"provider-a"}
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, LocationProviders: &providerIDs}
 	provider := gen.LocationProvider{Id: "provider-a", Type: "uwb"}
 	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
 
@@ -38,6 +39,10 @@ func TestNewMetadataCacheBuildsIndexes(t *testing.T) {
 	}
 	if _, ok := cache.TrackableByID(trackable.Id.String()); !ok {
 		t.Fatal("expected trackable lookup by id")
+	}
+	matches := cache.TrackablesByProviderID(provider.Id)
+	if len(matches) != 1 || matches[0].Id != trackable.Id {
+		t.Fatalf("expected trackable lookup by provider id, got %+v", matches)
 	}
 	if _, ok := cache.ProviderByID(provider.Id); !ok {
 		t.Fatal("expected provider lookup by id")

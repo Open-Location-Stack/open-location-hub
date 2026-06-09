@@ -151,6 +151,65 @@ func TestLocationPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
 	}
 }
 
+func TestResolveLocationTrackablesAssociatesUniqueProviderMatch(t *testing.T) {
+	t.Parallel()
+
+	providerIDs := gen.StringIdList{"provider-a"}
+	trackable := gen.Trackable{
+		Id:                uuidAsOpenAPI(uuid.New()),
+		Type:              gen.TrackableTypeOmlox,
+		LocationProviders: &providerIDs,
+	}
+	service := &Service{
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, []trackableRecord{{Trackable: trackable}}, nil)},
+		logger:   zapTestLogger(t),
+	}
+	location := testLocation(t, nil)
+
+	resolved, err := service.resolveLocationTrackables(context.Background(), location)
+	if err != nil {
+		t.Fatalf("resolveLocationTrackables failed: %v", err)
+	}
+	if resolved.Trackables == nil || len(*resolved.Trackables) != 1 || (*resolved.Trackables)[0] != trackable.Id.String() {
+		t.Fatalf("expected resolved trackable id %s, got %+v", trackable.Id.String(), resolved.Trackables)
+	}
+	if resolved.Associated == nil || !*resolved.Associated {
+		t.Fatalf("expected associated=true, got %+v", resolved.Associated)
+	}
+}
+
+func TestResolveLocationTrackablesLeavesAmbiguousProviderUnassociated(t *testing.T) {
+	t.Parallel()
+
+	providerIDs := gen.StringIdList{"provider-a"}
+	trackableA := gen.Trackable{
+		Id:                uuidAsOpenAPI(uuid.New()),
+		Type:              gen.TrackableTypeOmlox,
+		LocationProviders: &providerIDs,
+	}
+	trackableB := gen.Trackable{
+		Id:                uuidAsOpenAPI(uuid.New()),
+		Type:              gen.TrackableTypeOmlox,
+		LocationProviders: &providerIDs,
+	}
+	service := &Service{
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, []trackableRecord{{Trackable: trackableA}, {Trackable: trackableB}}, nil)},
+		logger:   zapTestLogger(t),
+	}
+	location := testLocation(t, nil)
+
+	resolved, err := service.resolveLocationTrackables(context.Background(), location)
+	if err != nil {
+		t.Fatalf("resolveLocationTrackables failed: %v", err)
+	}
+	if resolved.Trackables != nil {
+		t.Fatalf("expected ambiguous provider to remain unassociated, got %+v", resolved.Trackables)
+	}
+	if resolved.Associated != nil {
+		t.Fatalf("expected associated to remain unset, got %+v", resolved.Associated)
+	}
+}
+
 func TestFenceEventPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
 	t.Parallel()
 

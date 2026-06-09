@@ -18,7 +18,7 @@ The repository documentation is now split by audience: software/runtime document
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Hub-generated UUIDs for REST-managed resources, derived fence and collision events, and JSON-RPC caller IDs now use UUIDv7 so newly issued identifiers are time-sortable.
 - UUID generation is intentionally centralized behind `internal/ids` so the repository can switch from `github.com/google/uuid` to a future Go standard-library UUIDv7 implementation with a narrowly scoped change once that support is available and stable.
-- Provider ingestion endpoints are implemented for locations and proximities, with in-memory deduplication, latest-state tracking, proximity hysteresis, fence membership, and collision state.
+- Provider ingestion endpoints are implemented for locations and proximities, with in-memory deduplication, latest-state tracking, unique-provider trackable auto-association from `Trackable.location_providers`, proximity hysteresis, fence membership, and collision state.
 - Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
 - A shared internal event bus now fans normalized hub events out to MQTT and WebSocket consumers instead of keeping MQTT as the only outbound path.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, trackable-motion, and optional collision publication.
