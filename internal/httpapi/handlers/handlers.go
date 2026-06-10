@@ -47,6 +47,28 @@ type Service interface {
 	DeleteFence(ctx context.Context, id gen.FenceId) error
 }
 
+type extendedService interface {
+	GetZoneCreateFence(ctx context.Context, id gen.ZoneId) (gen.Fence, error)
+	PutZoneTransform(ctx context.Context, id gen.ZoneId, body json.RawMessage) (map[string]any, error)
+	ListProviderLocations(ctx context.Context) ([]gen.Location, error)
+	GetProviderLocation(ctx context.Context, id gen.ProviderId) (gen.Location, error)
+	PutProviderLocation(ctx context.Context, id gen.ProviderId, location gen.Location) error
+	DeleteProviderLocation(ctx context.Context, id gen.ProviderId) error
+	DeleteProviderLocations(ctx context.Context) error
+	PutProviderLocations(ctx context.Context, locations []gen.Location) error
+	PutProviderProximity(ctx context.Context, id gen.ProviderId, proximity gen.Proximity) error
+	PutProviderProximities(ctx context.Context, proximities []gen.Proximity) error
+	ListProviderFences(ctx context.Context, id gen.ProviderId) ([]gen.Fence, error)
+	GetTrackableLocation(ctx context.Context, id gen.TrackableId) (gen.Location, error)
+	ListTrackableLocations(ctx context.Context, id gen.TrackableId) ([]gen.Location, error)
+	GetTrackableMotion(ctx context.Context, id gen.TrackableId) (gen.TrackableMotion, error)
+	ListTrackableMotions(ctx context.Context) ([]gen.TrackableMotion, error)
+	ListTrackableFences(ctx context.Context, id gen.TrackableId) ([]gen.Fence, error)
+	ListTrackableProviders(ctx context.Context, id gen.TrackableId) ([]gen.LocationProvider, error)
+	ListFenceLocations(ctx context.Context, id gen.FenceId) ([]gen.Location, error)
+	ListFenceProviders(ctx context.Context, id gen.FenceId) ([]gen.LocationProvider, error)
+}
+
 // RPCBridge captures the JSON-RPC operations exposed over HTTP.
 type RPCBridge interface {
 	AvailableMethods(ctx context.Context) (gen.RpcAvailableMethods, error)
@@ -66,6 +88,21 @@ func New(deps Dependencies) *Handler {
 func (h *Handler) ListZones(w http.ResponseWriter, r *http.Request) {
 	items, err := h.deps.Service.ListZones(r.Context())
 	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) DeleteZones(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListZones(r.Context())
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	for _, item := range items {
+		if err := h.deps.Service.DeleteZone(r.Context(), item.Id); err != nil {
+			writeJSONOrError(w, nil, err, 0)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateZone(w http.ResponseWriter, r *http.Request) {
@@ -98,9 +135,54 @@ func (h *Handler) DeleteZone(w http.ResponseWriter, r *http.Request, id gen.Zone
 	writeNoContentOrError(w, err)
 }
 
+func (h *Handler) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListZones(r.Context())
+	writeJSONOrError(w, summaryResponse("zones", len(items)), err, http.StatusOK)
+}
+
+func (h *Handler) PutZoneTransform(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
+	body, err := readRawBody(w, r, h.deps.RequestBodyLimitBytes)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "zone transform is not implemented")
+		return
+	}
+	payload, err := svc.PutZoneTransform(r.Context(), id, body)
+	writeJSONOrError(w, payload, err, http.StatusOK)
+}
+
+func (h *Handler) GetZoneCreateFence(w http.ResponseWriter, r *http.Request, id gen.ZoneId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "zone createfence is not implemented")
+		return
+	}
+	item, err := svc.GetZoneCreateFence(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
 func (h *Handler) ListTrackables(w http.ResponseWriter, r *http.Request) {
 	items, err := h.deps.Service.ListTrackables(r.Context())
 	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) DeleteTrackables(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListTrackables(r.Context())
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	for _, item := range items {
+		if err := h.deps.Service.DeleteTrackable(r.Context(), item.Id); err != nil {
+			writeJSONOrError(w, nil, err, 0)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateTrackable(w http.ResponseWriter, r *http.Request) {
@@ -133,9 +215,109 @@ func (h *Handler) DeleteTrackable(w http.ResponseWriter, r *http.Request, id gen
 	writeNoContentOrError(w, err)
 }
 
+func (h *Handler) GetTrackablesSummary(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListTrackables(r.Context())
+	writeJSONOrError(w, summaryResponse("trackables", len(items)), err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable motions are not implemented")
+		return
+	}
+	items, err := svc.ListTrackableMotions(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableFences(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable fences are not implemented")
+		return
+	}
+	items, err := svc.ListTrackableFences(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableLocation(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable location is not implemented")
+		return
+	}
+	item, err := svc.GetTrackableLocation(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableLocations(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable locations are not implemented")
+		return
+	}
+	items, err := svc.ListTrackableLocations(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableMotion(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable motion is not implemented")
+		return
+	}
+	item, err := svc.GetTrackableMotion(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableProviders(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable providers are not implemented")
+		return
+	}
+	items, err := svc.ListTrackableProviders(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetTrackableSensors(w http.ResponseWriter, r *http.Request, id gen.TrackableId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "trackable sensors are not implemented")
+		return
+	}
+	providers, err := svc.ListTrackableProviders(r.Context(), id)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	sensors := make(map[string]any, len(providers))
+	for _, provider := range providers {
+		if provider.Sensors != nil {
+			sensors[provider.Id] = *provider.Sensors
+		}
+	}
+	writeJSONOrError(w, sensors, nil, http.StatusOK)
+}
+
 func (h *Handler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	items, err := h.deps.Service.ListProviders(r.Context())
 	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) DeleteProviders(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListProviders(r.Context())
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	for _, item := range items {
+		if err := h.deps.Service.DeleteProvider(r.Context(), item.Id); err != nil {
+			writeJSONOrError(w, nil, err, 0)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateProvider(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +350,21 @@ func (h *Handler) DeleteProvider(w http.ResponseWriter, r *http.Request, id gen.
 	writeNoContentOrError(w, err)
 }
 
+func (h *Handler) GetProvidersSummary(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListProviders(r.Context())
+	writeJSONOrError(w, summaryResponse("providers", len(items)), err, http.StatusOK)
+}
+
+func (h *Handler) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "provider locations are not implemented")
+		return
+	}
+	items, err := svc.ListProviderLocations(r.Context())
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
 func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 	var body []gen.Location
 	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
@@ -176,6 +373,31 @@ func (h *Handler) PostProviderLocations(w http.ResponseWriter, r *http.Request) 
 	}
 	err := h.deps.Service.ProcessLocations(observability.WithIngestTransport(r.Context(), "http"), body)
 	writeAcceptedOrError(w, err)
+}
+
+func (h *Handler) PutProviderLocations(w http.ResponseWriter, r *http.Request) {
+	var body []gen.Location
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "bulk provider location replace is not implemented")
+		return
+	}
+	err := svc.PutProviderLocations(observability.WithIngestTransport(r.Context(), "http"), body)
+	writeAcceptedOrError(w, err)
+}
+
+func (h *Handler) DeleteProviderLocations(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "delete provider locations is not implemented")
+		return
+	}
+	err := svc.DeleteProviderLocations(r.Context())
+	writeNoContentOrError(w, err)
 }
 
 func (h *Handler) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
@@ -188,9 +410,130 @@ func (h *Handler) PostProviderProximities(w http.ResponseWriter, r *http.Request
 	writeAcceptedOrError(w, err)
 }
 
+func (h *Handler) PutProviderProximities(w http.ResponseWriter, r *http.Request) {
+	var body []gen.Proximity
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "bulk provider proximity replace is not implemented")
+		return
+	}
+	err := svc.PutProviderProximities(observability.WithIngestTransport(r.Context(), "http"), body)
+	writeAcceptedOrError(w, err)
+}
+
+func (h *Handler) GetProviderFences(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "provider fences are not implemented")
+		return
+	}
+	items, err := svc.ListProviderFences(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetProviderLocation(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "provider location is not implemented")
+		return
+	}
+	item, err := svc.GetProviderLocation(r.Context(), id)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
+func (h *Handler) PutProviderLocation(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	var body gen.Location
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "single provider location update is not implemented")
+		return
+	}
+	err := svc.PutProviderLocation(observability.WithIngestTransport(r.Context(), "http"), id, body)
+	writeAcceptedOrError(w, err)
+}
+
+func (h *Handler) DeleteProviderLocation(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "delete provider location is not implemented")
+		return
+	}
+	err := svc.DeleteProviderLocation(r.Context(), id)
+	writeNoContentOrError(w, err)
+}
+
+func (h *Handler) PutProviderProximity(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	var body gen.Proximity
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "single provider proximity update is not implemented")
+		return
+	}
+	err := svc.PutProviderProximity(observability.WithIngestTransport(r.Context(), "http"), id, body)
+	writeAcceptedOrError(w, err)
+}
+
+func (h *Handler) GetProviderSensors(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	provider, err := h.deps.Service.GetProvider(r.Context(), id)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	if provider.Sensors == nil {
+		writeJSONOrError(w, map[string]any{}, nil, http.StatusOK)
+		return
+	}
+	writeJSONOrError(w, *provider.Sensors, nil, http.StatusOK)
+}
+
+func (h *Handler) PutProviderSensors(w http.ResponseWriter, r *http.Request, id gen.ProviderId) {
+	var body map[string]any
+	if err := decodeJSONBody(w, r, h.deps.RequestBodyLimitBytes, &body); err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	provider, err := h.deps.Service.GetProvider(r.Context(), id)
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	props := gen.ExtensionProperties(body)
+	writeBody := gen.LocationProviderWrite(provider)
+	writeBody.Sensors = &props
+	item, err := h.deps.Service.UpdateProvider(r.Context(), id, writeBody)
+	writeJSONOrError(w, item, err, http.StatusOK)
+}
+
 func (h *Handler) ListFences(w http.ResponseWriter, r *http.Request) {
 	items, err := h.deps.Service.ListFences(r.Context())
 	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) DeleteFences(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListFences(r.Context())
+	if err != nil {
+		writeJSONOrError(w, nil, err, 0)
+		return
+	}
+	for _, item := range items {
+		if err := h.deps.Service.DeleteFence(r.Context(), item.Id); err != nil {
+			writeJSONOrError(w, nil, err, 0)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) CreateFence(w http.ResponseWriter, r *http.Request) {
@@ -221,6 +564,31 @@ func (h *Handler) UpdateFence(w http.ResponseWriter, r *http.Request, id gen.Fen
 func (h *Handler) DeleteFence(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
 	err := h.deps.Service.DeleteFence(r.Context(), id)
 	writeNoContentOrError(w, err)
+}
+
+func (h *Handler) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Service.ListFences(r.Context())
+	writeJSONOrError(w, summaryResponse("fences", len(items)), err, http.StatusOK)
+}
+
+func (h *Handler) GetFenceProviders(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "fence providers are not implemented")
+		return
+	}
+	items, err := svc.ListFenceProviders(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
+}
+
+func (h *Handler) GetFenceLocations(w http.ResponseWriter, r *http.Request, id gen.FenceId) {
+	svc, ok := h.extendedService()
+	if !ok {
+		writeStubNotImplemented(w, "fence locations are not implemented")
+		return
+	}
+	items, err := svc.ListFenceLocations(r.Context(), id)
+	writeJSONOrError(w, items, err, http.StatusOK)
 }
 
 func (h *Handler) GetRPCAvailable(w http.ResponseWriter, r *http.Request) {
@@ -337,5 +705,25 @@ func writeJSONOrError(w http.ResponseWriter, payload any, err error, successStat
 	w.WriteHeader(successStatus)
 	if payload != nil {
 		_ = json.NewEncoder(w).Encode(payload)
+	}
+}
+
+func writeStubNotImplemented(w http.ResponseWriter, message string) {
+	writeJSONOrError(w, nil, &hub.HTTPError{
+		Status:  http.StatusNotImplemented,
+		Type:    "not_implemented",
+		Message: message,
+	}, 0)
+}
+
+func (h *Handler) extendedService() (extendedService, bool) {
+	svc, ok := h.deps.Service.(extendedService)
+	return svc, ok
+}
+
+func summaryResponse(kind string, count int) map[string]any {
+	return map[string]any{
+		"type":  kind,
+		"count": count,
 	}
 }

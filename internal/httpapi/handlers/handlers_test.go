@@ -292,6 +292,65 @@ func TestHandlerDirectBodiesCoverRawAndTypedEndpoints(t *testing.T) {
 	}
 }
 
+func TestHandlerStubbedOmloxRoutesReturnNotImplemented(t *testing.T) {
+	t.Parallel()
+
+	zoneID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	trackableID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	fenceID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+
+	handler := newTestServer(&fakeService{}, &fakeRPC{})
+	tests := []struct {
+		method string
+		path   string
+		body   string
+		status int
+	}{
+		{method: http.MethodDelete, path: "/v2/zones", status: http.StatusNoContent},
+		{method: http.MethodGet, path: "/v2/zones/summary", status: http.StatusOK},
+		{method: http.MethodPut, path: "/v2/zones/" + zoneID.String() + "/transform", body: `{}`, status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/zones/" + zoneID.String() + "/createfence", status: http.StatusNotImplemented},
+		{method: http.MethodDelete, path: "/v2/trackables", status: http.StatusNoContent},
+		{method: http.MethodGet, path: "/v2/trackables/summary", status: http.StatusOK},
+		{method: http.MethodGet, path: "/v2/trackables/motions", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/fences", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/location", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/locations", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/motion", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/providers", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/trackables/" + trackableID.String() + "/sensors", status: http.StatusNotImplemented},
+		{method: http.MethodDelete, path: "/v2/providers", status: http.StatusNoContent},
+		{method: http.MethodGet, path: "/v2/providers/summary", status: http.StatusOK},
+		{method: http.MethodGet, path: "/v2/providers/locations", status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/locations", body: `[]`, status: http.StatusNotImplemented},
+		{method: http.MethodDelete, path: "/v2/providers/locations", status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/proximities", body: `[]`, status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/providers/provider-a/fences", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/providers/provider-a/location", status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/provider-a/location", body: `{}`, status: http.StatusNotImplemented},
+		{method: http.MethodDelete, path: "/v2/providers/provider-a/location", status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/provider-a/proximity", body: `{}`, status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/providers/provider-a/sensors", status: http.StatusOK},
+		{method: http.MethodPut, path: "/v2/providers/provider-a/sensors", body: `{}`, status: http.StatusOK},
+		{method: http.MethodDelete, path: "/v2/fences", status: http.StatusNoContent},
+		{method: http.MethodGet, path: "/v2/fences/summary", status: http.StatusOK},
+		{method: http.MethodGet, path: "/v2/fences/" + fenceID.String() + "/providers", status: http.StatusNotImplemented},
+		{method: http.MethodGet, path: "/v2/fences/" + fenceID.String() + "/locations", status: http.StatusNotImplemented},
+	}
+
+	for _, tc := range tests {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != tc.status {
+			t.Fatalf("%s %s: got %d want %d body=%s", tc.method, tc.path, rec.Code, tc.status, rec.Body.String())
+		}
+		if tc.status == http.StatusNotImplemented && !strings.Contains(rec.Body.String(), `"type":"not_implemented"`) {
+			t.Fatalf("%s %s: expected not_implemented body, got %s", tc.method, tc.path, rec.Body.String())
+		}
+	}
+}
+
 func TestDecodeJSONBodyAcceptsSingleDocument(t *testing.T) {
 	t.Parallel()
 
@@ -382,69 +441,135 @@ type fakeService struct {
 }
 
 func (f *fakeService) ListZones(ctx context.Context) ([]gen.Zone, error) {
+	if f.listZonesFn == nil {
+		return nil, nil
+	}
 	return f.listZonesFn(ctx)
 }
 func (f *fakeService) CreateZone(ctx context.Context, body json.RawMessage) (gen.Zone, error) {
+	if f.createZoneFn == nil {
+		return gen.Zone{}, nil
+	}
 	return f.createZoneFn(ctx, body)
 }
 func (f *fakeService) GetZone(ctx context.Context, id gen.ZoneId) (gen.Zone, error) {
+	if f.getZoneFn == nil {
+		return gen.Zone{}, nil
+	}
 	return f.getZoneFn(ctx, id)
 }
 func (f *fakeService) UpdateZone(ctx context.Context, id gen.ZoneId, body json.RawMessage) (gen.Zone, error) {
+	if f.updateZoneFn == nil {
+		return gen.Zone{}, nil
+	}
 	return f.updateZoneFn(ctx, id, body)
 }
 func (f *fakeService) DeleteZone(ctx context.Context, id gen.ZoneId) error {
+	if f.deleteZoneFn == nil {
+		return nil
+	}
 	return f.deleteZoneFn(ctx, id)
 }
 func (f *fakeService) ListTrackables(ctx context.Context) ([]gen.Trackable, error) {
+	if f.listTrackablesFn == nil {
+		return nil, nil
+	}
 	return f.listTrackablesFn(ctx)
 }
 func (f *fakeService) CreateTrackable(ctx context.Context, body gen.TrackableWrite) (gen.Trackable, error) {
+	if f.createTrackableFn == nil {
+		return gen.Trackable{}, nil
+	}
 	return f.createTrackableFn(ctx, body)
 }
 func (f *fakeService) GetTrackable(ctx context.Context, id gen.TrackableId) (gen.Trackable, error) {
+	if f.getTrackableFn == nil {
+		return gen.Trackable{}, nil
+	}
 	return f.getTrackableFn(ctx, id)
 }
 func (f *fakeService) UpdateTrackable(ctx context.Context, id gen.TrackableId, body gen.TrackableWrite) (gen.Trackable, error) {
+	if f.updateTrackableFn == nil {
+		return gen.Trackable{}, nil
+	}
 	return f.updateTrackableFn(ctx, id, body)
 }
 func (f *fakeService) DeleteTrackable(ctx context.Context, id gen.TrackableId) error {
+	if f.deleteTrackableFn == nil {
+		return nil
+	}
 	return f.deleteTrackableFn(ctx, id)
 }
 func (f *fakeService) ListProviders(ctx context.Context) ([]gen.LocationProvider, error) {
+	if f.listProvidersFn == nil {
+		return nil, nil
+	}
 	return f.listProvidersFn(ctx)
 }
 func (f *fakeService) CreateProvider(ctx context.Context, body gen.LocationProviderWrite) (gen.LocationProvider, error) {
+	if f.createProviderFn == nil {
+		return gen.LocationProvider{}, nil
+	}
 	return f.createProviderFn(ctx, body)
 }
 func (f *fakeService) GetProvider(ctx context.Context, id gen.ProviderId) (gen.LocationProvider, error) {
+	if f.getProviderFn == nil {
+		return gen.LocationProvider{}, nil
+	}
 	return f.getProviderFn(ctx, id)
 }
 func (f *fakeService) UpdateProvider(ctx context.Context, id gen.ProviderId, body gen.LocationProviderWrite) (gen.LocationProvider, error) {
+	if f.updateProviderFn == nil {
+		return gen.LocationProvider{}, nil
+	}
 	return f.updateProviderFn(ctx, id, body)
 }
 func (f *fakeService) DeleteProvider(ctx context.Context, id gen.ProviderId) error {
+	if f.deleteProviderFn == nil {
+		return nil
+	}
 	return f.deleteProviderFn(ctx, id)
 }
 func (f *fakeService) ProcessLocations(ctx context.Context, locations []gen.Location) error {
+	if f.processLocationsFn == nil {
+		return nil
+	}
 	return f.processLocationsFn(ctx, locations)
 }
 func (f *fakeService) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
+	if f.processProximitiesFn == nil {
+		return nil
+	}
 	return f.processProximitiesFn(ctx, proximities)
 }
 func (f *fakeService) ListFences(ctx context.Context) ([]gen.Fence, error) {
+	if f.listFencesFn == nil {
+		return nil, nil
+	}
 	return f.listFencesFn(ctx)
 }
 func (f *fakeService) CreateFence(ctx context.Context, body json.RawMessage) (gen.Fence, error) {
+	if f.createFenceFn == nil {
+		return gen.Fence{}, nil
+	}
 	return f.createFenceFn(ctx, body)
 }
 func (f *fakeService) GetFence(ctx context.Context, id gen.FenceId) (gen.Fence, error) {
+	if f.getFenceFn == nil {
+		return gen.Fence{}, nil
+	}
 	return f.getFenceFn(ctx, id)
 }
 func (f *fakeService) UpdateFence(ctx context.Context, id gen.FenceId, body json.RawMessage) (gen.Fence, error) {
+	if f.updateFenceFn == nil {
+		return gen.Fence{}, nil
+	}
 	return f.updateFenceFn(ctx, id, body)
 }
 func (f *fakeService) DeleteFence(ctx context.Context, id gen.FenceId) error {
+	if f.deleteFenceFn == nil {
+		return nil
+	}
 	return f.deleteFenceFn(ctx, id)
 }
 
@@ -454,10 +579,16 @@ type fakeRPC struct {
 }
 
 func (f *fakeRPC) AvailableMethods(ctx context.Context) (gen.RpcAvailableMethods, error) {
+	if f.availableMethodsFn == nil {
+		return nil, nil
+	}
 	return f.availableMethodsFn(ctx)
 }
 
 func (f *fakeRPC) Invoke(ctx context.Context, request gen.JsonRpcRequest) (json.RawMessage, bool, error) {
+	if f.invokeFn == nil {
+		return nil, false, nil
+	}
 	return f.invokeFn(ctx, request)
 }
 

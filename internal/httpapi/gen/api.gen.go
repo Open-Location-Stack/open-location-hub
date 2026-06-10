@@ -585,6 +585,15 @@ type Proximity struct {
 	TimestampSent *time.Time `json:"timestamp_sent,omitempty"`
 }
 
+// ResourceSummary Compact collection summary.
+type ResourceSummary struct {
+	// Count Number of resources currently known to the hub.
+	Count int `json:"count"`
+
+	// Type Resource collection represented by the summary.
+	Type string `json:"type"`
+}
+
 // RpcAvailableMethods Mapping of JSON-RPC method name to currently reachable handler IDs known to the hub.
 type RpcAvailableMethods map[string]RpcAvailableMethodsEntry
 
@@ -776,13 +785,25 @@ type bearerAuthContextKey string
 // PostProviderLocationsJSONBody defines parameters for PostProviderLocations.
 type PostProviderLocationsJSONBody = []Location
 
+// PutProviderLocationsJSONBody defines parameters for PutProviderLocations.
+type PutProviderLocationsJSONBody = []Location
+
 // PostProviderProximitiesJSONBody defines parameters for PostProviderProximities.
 type PostProviderProximitiesJSONBody = []Proximity
+
+// PutProviderProximitiesJSONBody defines parameters for PutProviderProximities.
+type PutProviderProximitiesJSONBody = []Proximity
+
+// PutProviderSensorsJSONBody defines parameters for PutProviderSensors.
+type PutProviderSensorsJSONBody map[string]interface{}
 
 // PutRPC200JSONResponseBody defines parameters for PutRPC.
 type PutRPC200JSONResponseBody struct {
 	union json.RawMessage
 }
+
+// PutZoneTransformJSONBody defines parameters for PutZoneTransform.
+type PutZoneTransformJSONBody map[string]interface{}
 
 // CreateFenceJSONRequestBody defines body for CreateFence for application/json ContentType.
 type CreateFenceJSONRequestBody = FenceWrite
@@ -796,11 +817,26 @@ type CreateProviderJSONRequestBody = LocationProviderWrite
 // PostProviderLocationsJSONRequestBody defines body for PostProviderLocations for application/json ContentType.
 type PostProviderLocationsJSONRequestBody = PostProviderLocationsJSONBody
 
+// PutProviderLocationsJSONRequestBody defines body for PutProviderLocations for application/json ContentType.
+type PutProviderLocationsJSONRequestBody = PutProviderLocationsJSONBody
+
 // PostProviderProximitiesJSONRequestBody defines body for PostProviderProximities for application/json ContentType.
 type PostProviderProximitiesJSONRequestBody = PostProviderProximitiesJSONBody
 
+// PutProviderProximitiesJSONRequestBody defines body for PutProviderProximities for application/json ContentType.
+type PutProviderProximitiesJSONRequestBody = PutProviderProximitiesJSONBody
+
 // UpdateProviderJSONRequestBody defines body for UpdateProvider for application/json ContentType.
 type UpdateProviderJSONRequestBody = LocationProviderWrite
+
+// PutProviderLocationJSONRequestBody defines body for PutProviderLocation for application/json ContentType.
+type PutProviderLocationJSONRequestBody = Location
+
+// PutProviderProximityJSONRequestBody defines body for PutProviderProximity for application/json ContentType.
+type PutProviderProximityJSONRequestBody = Proximity
+
+// PutProviderSensorsJSONRequestBody defines body for PutProviderSensors for application/json ContentType.
+type PutProviderSensorsJSONRequestBody PutProviderSensorsJSONBody
 
 // PutRPCJSONRequestBody defines body for PutRPC for application/json ContentType.
 type PutRPCJSONRequestBody = JsonRpcRequest
@@ -816,6 +852,9 @@ type CreateZoneJSONRequestBody = ZoneWrite
 
 // UpdateZoneJSONRequestBody defines body for UpdateZone for application/json ContentType.
 type UpdateZoneJSONRequestBody = ZoneWrite
+
+// PutZoneTransformJSONRequestBody defines body for PutZoneTransform for application/json ContentType.
+type PutZoneTransformJSONRequestBody PutZoneTransformJSONBody
 
 // Getter for additional properties for JsonRpcRequest_Params. Returns the specified
 // element and whether it was found
@@ -1506,12 +1545,18 @@ func (t *PutRPC200JSONResponseBody) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Delete all fences
+	// (DELETE /v2/fences)
+	DeleteFences(w http.ResponseWriter, r *http.Request)
 	// List fences
 	// (GET /v2/fences)
 	ListFences(w http.ResponseWriter, r *http.Request)
 	// Create a fence
 	// (POST /v2/fences)
 	CreateFence(w http.ResponseWriter, r *http.Request)
+	// Get fence summary
+	// (GET /v2/fences/summary)
+	GetFencesSummary(w http.ResponseWriter, r *http.Request)
 	// Delete a fence
 	// (DELETE /v2/fences/{fenceId})
 	DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
@@ -1521,18 +1566,42 @@ type ServerInterface interface {
 	// Update a fence
 	// (PUT /v2/fences/{fenceId})
 	UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	// Get fence locations
+	// (GET /v2/fences/{fenceId}/locations)
+	GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	// Get fence providers
+	// (GET /v2/fences/{fenceId}/providers)
+	GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	// Delete all providers
+	// (DELETE /v2/providers)
+	DeleteProviders(w http.ResponseWriter, r *http.Request)
 	// List providers
 	// (GET /v2/providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
 	// Create a provider
 	// (POST /v2/providers)
 	CreateProvider(w http.ResponseWriter, r *http.Request)
+	// Delete provider locations
+	// (DELETE /v2/providers/locations)
+	DeleteProviderLocations(w http.ResponseWriter, r *http.Request)
+	// Get provider locations
+	// (GET /v2/providers/locations)
+	GetProviderLocations(w http.ResponseWriter, r *http.Request)
 	// Ingest locations
 	// (POST /v2/providers/locations)
 	PostProviderLocations(w http.ResponseWriter, r *http.Request)
+	// Replace provider locations
+	// (PUT /v2/providers/locations)
+	PutProviderLocations(w http.ResponseWriter, r *http.Request)
 	// Ingest proximities
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(w http.ResponseWriter, r *http.Request)
+	// Replace provider proximities
+	// (PUT /v2/providers/proximities)
+	PutProviderProximities(w http.ResponseWriter, r *http.Request)
+	// Get provider summary
+	// (GET /v2/providers/summary)
+	GetProvidersSummary(w http.ResponseWriter, r *http.Request)
 	// Delete a provider
 	// (DELETE /v2/providers/{providerId})
 	DeleteProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
@@ -1542,18 +1611,48 @@ type ServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Get provider fences
+	// (GET /v2/providers/{providerId}/fences)
+	GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Delete provider location
+	// (DELETE /v2/providers/{providerId}/location)
+	DeleteProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Get provider location
+	// (GET /v2/providers/{providerId}/location)
+	GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Update provider location
+	// (PUT /v2/providers/{providerId}/location)
+	PutProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Update provider proximity
+	// (PUT /v2/providers/{providerId}/proximity)
+	PutProviderProximity(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Get provider sensors
+	// (GET /v2/providers/{providerId}/sensors)
+	GetProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// Update provider sensors
+	// (PUT /v2/providers/{providerId}/sensors)
+	PutProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId)
 	// Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
 	// List available RPC methods
 	// (GET /v2/rpc/available)
 	GetRPCAvailable(w http.ResponseWriter, r *http.Request)
+	// Delete all trackables
+	// (DELETE /v2/trackables)
+	DeleteTrackables(w http.ResponseWriter, r *http.Request)
 	// List trackables
 	// (GET /v2/trackables)
 	ListTrackables(w http.ResponseWriter, r *http.Request)
 	// Create a trackable
 	// (POST /v2/trackables)
 	CreateTrackable(w http.ResponseWriter, r *http.Request)
+	// List trackable motions
+	// (GET /v2/trackables/motions)
+	GetTrackableMotions(w http.ResponseWriter, r *http.Request)
+	// Get trackable summary
+	// (GET /v2/trackables/summary)
+	GetTrackablesSummary(w http.ResponseWriter, r *http.Request)
 	// Delete a trackable
 	// (DELETE /v2/trackables/{trackableId})
 	DeleteTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
@@ -1563,12 +1662,36 @@ type ServerInterface interface {
 	// Update a trackable
 	// (PUT /v2/trackables/{trackableId})
 	UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable fences
+	// (GET /v2/trackables/{trackableId}/fences)
+	GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable location
+	// (GET /v2/trackables/{trackableId}/location)
+	GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable locations
+	// (GET /v2/trackables/{trackableId}/locations)
+	GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable motion
+	// (GET /v2/trackables/{trackableId}/motion)
+	GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable providers
+	// (GET /v2/trackables/{trackableId}/providers)
+	GetTrackableProviders(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Get trackable sensors
+	// (GET /v2/trackables/{trackableId}/sensors)
+	GetTrackableSensors(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	// Delete all zones
+	// (DELETE /v2/zones)
+	DeleteZones(w http.ResponseWriter, r *http.Request)
 	// List zones
 	// (GET /v2/zones)
 	ListZones(w http.ResponseWriter, r *http.Request)
 	// Create a zone
 	// (POST /v2/zones)
 	CreateZone(w http.ResponseWriter, r *http.Request)
+	// Get zone summary
+	// (GET /v2/zones/summary)
+	GetZonesSummary(w http.ResponseWriter, r *http.Request)
 	// Delete a zone
 	// (DELETE /v2/zones/{zoneId})
 	DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
@@ -1578,11 +1701,23 @@ type ServerInterface interface {
 	// Update a zone
 	// (PUT /v2/zones/{zoneId})
 	UpdateZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
+	// Create fence from zone
+	// (GET /v2/zones/{zoneId}/createfence)
+	GetZoneCreateFence(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
+	// Update zone transform
+	// (PUT /v2/zones/{zoneId}/transform)
+	PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// Delete all fences
+// (DELETE /v2/fences)
+func (_ Unimplemented) DeleteFences(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // List fences
 // (GET /v2/fences)
@@ -1593,6 +1728,12 @@ func (_ Unimplemented) ListFences(w http.ResponseWriter, r *http.Request) {
 // Create a fence
 // (POST /v2/fences)
 func (_ Unimplemented) CreateFence(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get fence summary
+// (GET /v2/fences/summary)
+func (_ Unimplemented) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1614,6 +1755,24 @@ func (_ Unimplemented) UpdateFence(w http.ResponseWriter, r *http.Request, fence
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get fence locations
+// (GET /v2/fences/{fenceId}/locations)
+func (_ Unimplemented) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get fence providers
+// (GET /v2/fences/{fenceId}/providers)
+func (_ Unimplemented) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete all providers
+// (DELETE /v2/providers)
+func (_ Unimplemented) DeleteProviders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List providers
 // (GET /v2/providers)
 func (_ Unimplemented) ListProviders(w http.ResponseWriter, r *http.Request) {
@@ -1626,15 +1785,45 @@ func (_ Unimplemented) CreateProvider(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete provider locations
+// (DELETE /v2/providers/locations)
+func (_ Unimplemented) DeleteProviderLocations(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get provider locations
+// (GET /v2/providers/locations)
+func (_ Unimplemented) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Ingest locations
 // (POST /v2/providers/locations)
 func (_ Unimplemented) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Replace provider locations
+// (PUT /v2/providers/locations)
+func (_ Unimplemented) PutProviderLocations(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Ingest proximities
 // (POST /v2/providers/proximities)
 func (_ Unimplemented) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace provider proximities
+// (PUT /v2/providers/proximities)
+func (_ Unimplemented) PutProviderProximities(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get provider summary
+// (GET /v2/providers/summary)
+func (_ Unimplemented) GetProvidersSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1656,6 +1845,48 @@ func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, pr
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get provider fences
+// (GET /v2/providers/{providerId}/fences)
+func (_ Unimplemented) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete provider location
+// (DELETE /v2/providers/{providerId}/location)
+func (_ Unimplemented) DeleteProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get provider location
+// (GET /v2/providers/{providerId}/location)
+func (_ Unimplemented) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update provider location
+// (PUT /v2/providers/{providerId}/location)
+func (_ Unimplemented) PutProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update provider proximity
+// (PUT /v2/providers/{providerId}/proximity)
+func (_ Unimplemented) PutProviderProximity(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get provider sensors
+// (GET /v2/providers/{providerId}/sensors)
+func (_ Unimplemented) GetProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update provider sensors
+// (PUT /v2/providers/{providerId}/sensors)
+func (_ Unimplemented) PutProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Invoke JSON-RPC
 // (PUT /v2/rpc)
 func (_ Unimplemented) PutRPC(w http.ResponseWriter, r *http.Request) {
@@ -1668,6 +1899,12 @@ func (_ Unimplemented) GetRPCAvailable(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Delete all trackables
+// (DELETE /v2/trackables)
+func (_ Unimplemented) DeleteTrackables(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List trackables
 // (GET /v2/trackables)
 func (_ Unimplemented) ListTrackables(w http.ResponseWriter, r *http.Request) {
@@ -1677,6 +1914,18 @@ func (_ Unimplemented) ListTrackables(w http.ResponseWriter, r *http.Request) {
 // Create a trackable
 // (POST /v2/trackables)
 func (_ Unimplemented) CreateTrackable(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List trackable motions
+// (GET /v2/trackables/motions)
+func (_ Unimplemented) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable summary
+// (GET /v2/trackables/summary)
+func (_ Unimplemented) GetTrackablesSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1698,6 +1947,48 @@ func (_ Unimplemented) UpdateTrackable(w http.ResponseWriter, r *http.Request, t
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Get trackable fences
+// (GET /v2/trackables/{trackableId}/fences)
+func (_ Unimplemented) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable location
+// (GET /v2/trackables/{trackableId}/location)
+func (_ Unimplemented) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable locations
+// (GET /v2/trackables/{trackableId}/locations)
+func (_ Unimplemented) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable motion
+// (GET /v2/trackables/{trackableId}/motion)
+func (_ Unimplemented) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable providers
+// (GET /v2/trackables/{trackableId}/providers)
+func (_ Unimplemented) GetTrackableProviders(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get trackable sensors
+// (GET /v2/trackables/{trackableId}/sensors)
+func (_ Unimplemented) GetTrackableSensors(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete all zones
+// (DELETE /v2/zones)
+func (_ Unimplemented) DeleteZones(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List zones
 // (GET /v2/zones)
 func (_ Unimplemented) ListZones(w http.ResponseWriter, r *http.Request) {
@@ -1707,6 +1998,12 @@ func (_ Unimplemented) ListZones(w http.ResponseWriter, r *http.Request) {
 // Create a zone
 // (POST /v2/zones)
 func (_ Unimplemented) CreateZone(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get zone summary
+// (GET /v2/zones/summary)
+func (_ Unimplemented) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1728,6 +2025,18 @@ func (_ Unimplemented) UpdateZone(w http.ResponseWriter, r *http.Request, zoneId
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create fence from zone
+// (GET /v2/zones/{zoneId}/createfence)
+func (_ Unimplemented) GetZoneCreateFence(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update zone transform
+// (PUT /v2/zones/{zoneId}/transform)
+func (_ Unimplemented) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ServerInterfaceWrapper converts contexts to parameters.
 type ServerInterfaceWrapper struct {
 	Handler            ServerInterface
@@ -1736,6 +2045,26 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DeleteFences operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFences(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListFences operation middleware
 func (siw *ServerInterfaceWrapper) ListFences(w http.ResponseWriter, r *http.Request) {
@@ -1768,6 +2097,26 @@ func (siw *ServerInterfaceWrapper) CreateFence(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateFence(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFencesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFencesSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1873,6 +2222,90 @@ func (siw *ServerInterfaceWrapper) UpdateFence(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetFenceLocations operation middleware
+func (siw *ServerInterfaceWrapper) GetFenceLocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFenceLocations(w, r, fenceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFenceProviders operation middleware
+func (siw *ServerInterfaceWrapper) GetFenceProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFenceProviders(w, r, fenceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProviders operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProviders(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProviders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.Request) {
 
@@ -1913,6 +2346,46 @@ func (siw *ServerInterfaceWrapper) CreateProvider(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteProviderLocations operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProviderLocations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProviderLocations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProviderLocations operation middleware
+func (siw *ServerInterfaceWrapper) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProviderLocations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostProviderLocations operation middleware
 func (siw *ServerInterfaceWrapper) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 
@@ -1933,6 +2406,26 @@ func (siw *ServerInterfaceWrapper) PostProviderLocations(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// PutProviderLocations operation middleware
+func (siw *ServerInterfaceWrapper) PutProviderLocations(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProviderLocations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostProviderProximities operation middleware
 func (siw *ServerInterfaceWrapper) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
 
@@ -1944,6 +2437,46 @@ func (siw *ServerInterfaceWrapper) PostProviderProximities(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostProviderProximities(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProviderProximities operation middleware
+func (siw *ServerInterfaceWrapper) PutProviderProximities(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProviderProximities(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProvidersSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetProvidersSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProvidersSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2049,6 +2582,230 @@ func (siw *ServerInterfaceWrapper) UpdateProvider(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetProviderFences operation middleware
+func (siw *ServerInterfaceWrapper) GetProviderFences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProviderFences(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProviderLocation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProviderLocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProviderLocation(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProviderLocation operation middleware
+func (siw *ServerInterfaceWrapper) GetProviderLocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProviderLocation(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProviderLocation operation middleware
+func (siw *ServerInterfaceWrapper) PutProviderLocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProviderLocation(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProviderProximity operation middleware
+func (siw *ServerInterfaceWrapper) PutProviderProximity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProviderProximity(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProviderSensors operation middleware
+func (siw *ServerInterfaceWrapper) GetProviderSensors(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProviderSensors(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProviderSensors operation middleware
+func (siw *ServerInterfaceWrapper) PutProviderSensors(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProviderSensors(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutRPC operation middleware
 func (siw *ServerInterfaceWrapper) PutRPC(w http.ResponseWriter, r *http.Request) {
 
@@ -2089,6 +2846,26 @@ func (siw *ServerInterfaceWrapper) GetRPCAvailable(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTrackables operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTrackables(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTrackables(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTrackables operation middleware
 func (siw *ServerInterfaceWrapper) ListTrackables(w http.ResponseWriter, r *http.Request) {
 
@@ -2120,6 +2897,46 @@ func (siw *ServerInterfaceWrapper) CreateTrackable(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateTrackable(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableMotions operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableMotions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackablesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackablesSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackablesSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2225,6 +3042,218 @@ func (siw *ServerInterfaceWrapper) UpdateTrackable(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetTrackableFences operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableFences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableFences(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableLocation operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableLocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableLocation(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableLocations operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableLocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableLocations(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableMotion operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableMotion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableMotion(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableProviders operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableProviders(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackableSensors operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackableSensors(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "trackableId" -------------
+	var trackableId TrackableId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackableId", chi.URLParam(r, "trackableId"), &trackableId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackableId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackableSensors(w, r, trackableId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteZones operation middleware
+func (siw *ServerInterfaceWrapper) DeleteZones(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteZones(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListZones operation middleware
 func (siw *ServerInterfaceWrapper) ListZones(w http.ResponseWriter, r *http.Request) {
 
@@ -2256,6 +3285,26 @@ func (siw *ServerInterfaceWrapper) CreateZone(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateZone(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetZonesSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetZonesSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2352,6 +3401,70 @@ func (siw *ServerInterfaceWrapper) UpdateZone(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateZone(w, r, zoneId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetZoneCreateFence operation middleware
+func (siw *ServerInterfaceWrapper) GetZoneCreateFence(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "zoneId" -------------
+	var zoneId ZoneId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zoneId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetZoneCreateFence(w, r, zoneId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutZoneTransform operation middleware
+func (siw *ServerInterfaceWrapper) PutZoneTransform(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "zoneId" -------------
+	var zoneId ZoneId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "zoneId", chi.URLParam(r, "zoneId"), &zoneId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zoneId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutZoneTransform(w, r, zoneId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2475,10 +3588,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/fences", wrapper.DeleteFences)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/fences", wrapper.ListFences)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/fences", wrapper.CreateFence)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/fences/summary", wrapper.GetFencesSummary)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/v2/fences/{fenceId}", wrapper.DeleteFence)
@@ -2490,16 +3609,40 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/v2/fences/{fenceId}", wrapper.UpdateFence)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/fences/{fenceId}/locations", wrapper.GetFenceLocations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/fences/{fenceId}/providers", wrapper.GetFenceProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/providers", wrapper.DeleteProviders)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/providers", wrapper.ListProviders)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/providers", wrapper.CreateProvider)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/providers/locations", wrapper.DeleteProviderLocations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/locations", wrapper.GetProviderLocations)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/providers/locations", wrapper.PostProviderLocations)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/locations", wrapper.PutProviderLocations)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/providers/proximities", wrapper.PostProviderProximities)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/proximities", wrapper.PutProviderProximities)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/summary", wrapper.GetProvidersSummary)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/v2/providers/{providerId}", wrapper.DeleteProvider)
@@ -2511,16 +3654,46 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/v2/providers/{providerId}", wrapper.UpdateProvider)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/{providerId}/fences", wrapper.GetProviderFences)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/providers/{providerId}/location", wrapper.DeleteProviderLocation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/{providerId}/location", wrapper.GetProviderLocation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/{providerId}/location", wrapper.PutProviderLocation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/{providerId}/proximity", wrapper.PutProviderProximity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/{providerId}/sensors", wrapper.GetProviderSensors)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/providers/{providerId}/sensors", wrapper.PutProviderSensors)
+	})
+	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/rpc", wrapper.PutRPC)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/rpc/available", wrapper.GetRPCAvailable)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/trackables", wrapper.DeleteTrackables)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/trackables", wrapper.ListTrackables)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/trackables", wrapper.CreateTrackable)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/motions", wrapper.GetTrackableMotions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/summary", wrapper.GetTrackablesSummary)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/v2/trackables/{trackableId}", wrapper.DeleteTrackable)
@@ -2532,10 +3705,34 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/v2/trackables/{trackableId}", wrapper.UpdateTrackable)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/fences", wrapper.GetTrackableFences)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/location", wrapper.GetTrackableLocation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/locations", wrapper.GetTrackableLocations)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/motion", wrapper.GetTrackableMotion)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/providers", wrapper.GetTrackableProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/trackables/{trackableId}/sensors", wrapper.GetTrackableSensors)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v2/zones", wrapper.DeleteZones)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v2/zones", wrapper.ListZones)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v2/zones", wrapper.CreateZone)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/zones/summary", wrapper.GetZonesSummary)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/v2/zones/{zoneId}", wrapper.DeleteZone)
@@ -2545,6 +3742,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/zones/{zoneId}", wrapper.UpdateZone)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/zones/{zoneId}/createfence", wrapper.GetZoneCreateFence)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v2/zones/{zoneId}/transform", wrapper.PutZoneTransform)
 	})
 
 	return r
@@ -2557,6 +3760,49 @@ type ForbiddenJSONResponse ErrorResponse
 type NotFoundJSONResponse ErrorResponse
 
 type UnauthorizedJSONResponse ErrorResponse
+
+type DeleteFencesRequestObject struct {
+}
+
+type DeleteFencesResponseObject interface {
+	VisitDeleteFencesResponse(w http.ResponseWriter) error
+}
+
+type DeleteFences204Response struct {
+}
+
+func (response DeleteFences204Response) VisitDeleteFencesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFences401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteFences401JSONResponse) VisitDeleteFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFences403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteFences403JSONResponse) VisitDeleteFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListFencesRequestObject struct {
 }
@@ -2660,6 +3906,55 @@ func (response CreateFence401JSONResponse) VisitCreateFenceResponse(w http.Respo
 type CreateFence403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response CreateFence403JSONResponse) VisitCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFencesSummaryRequestObject struct {
+}
+
+type GetFencesSummaryResponseObject interface {
+	VisitGetFencesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetFencesSummary200JSONResponse ResourceSummary
+
+func (response GetFencesSummary200JSONResponse) VisitGetFencesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFencesSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFencesSummary401JSONResponse) VisitGetFencesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFencesSummary403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetFencesSummary403JSONResponse) VisitGetFencesSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2872,6 +4167,177 @@ func (response UpdateFence404JSONResponse) VisitUpdateFenceResponse(w http.Respo
 	return err
 }
 
+type GetFenceLocationsRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+}
+
+type GetFenceLocationsResponseObject interface {
+	VisitGetFenceLocationsResponse(w http.ResponseWriter) error
+}
+
+type GetFenceLocations200JSONResponse []Location
+
+func (response GetFenceLocations200JSONResponse) VisitGetFenceLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFenceLocations401JSONResponse) VisitGetFenceLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetFenceLocations403JSONResponse) VisitGetFenceLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceLocations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFenceLocations404JSONResponse) VisitGetFenceLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceProvidersRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+}
+
+type GetFenceProvidersResponseObject interface {
+	VisitGetFenceProvidersResponse(w http.ResponseWriter) error
+}
+
+type GetFenceProviders200JSONResponse []LocationProvider
+
+func (response GetFenceProviders200JSONResponse) VisitGetFenceProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceProviders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFenceProviders401JSONResponse) VisitGetFenceProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceProviders403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetFenceProviders403JSONResponse) VisitGetFenceProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceProviders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFenceProviders404JSONResponse) VisitGetFenceProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProvidersRequestObject struct {
+}
+
+type DeleteProvidersResponseObject interface {
+	VisitDeleteProvidersResponse(w http.ResponseWriter) error
+}
+
+type DeleteProviders204Response struct {
+}
+
+func (response DeleteProviders204Response) VisitDeleteProvidersResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProviders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProviders401JSONResponse) VisitDeleteProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProviders403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProviders403JSONResponse) VisitDeleteProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProvidersRequestObject struct {
 }
 
@@ -2985,6 +4451,98 @@ func (response CreateProvider403JSONResponse) VisitCreateProviderResponse(w http
 	return err
 }
 
+type DeleteProviderLocationsRequestObject struct {
+}
+
+type DeleteProviderLocationsResponseObject interface {
+	VisitDeleteProviderLocationsResponse(w http.ResponseWriter) error
+}
+
+type DeleteProviderLocations204Response struct {
+}
+
+func (response DeleteProviderLocations204Response) VisitDeleteProviderLocationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProviderLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProviderLocations401JSONResponse) VisitDeleteProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProviderLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProviderLocations403JSONResponse) VisitDeleteProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocationsRequestObject struct {
+}
+
+type GetProviderLocationsResponseObject interface {
+	VisitGetProviderLocationsResponse(w http.ResponseWriter) error
+}
+
+type GetProviderLocations200JSONResponse []Location
+
+func (response GetProviderLocations200JSONResponse) VisitGetProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProviderLocations401JSONResponse) VisitGetProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProviderLocations403JSONResponse) VisitGetProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostProviderLocationsRequestObject struct {
 	Body *PostProviderLocationsJSONRequestBody
 }
@@ -3043,6 +4601,64 @@ func (response PostProviderLocations403JSONResponse) VisitPostProviderLocationsR
 	return err
 }
 
+type PutProviderLocationsRequestObject struct {
+	Body *PutProviderLocationsJSONRequestBody
+}
+
+type PutProviderLocationsResponseObject interface {
+	VisitPutProviderLocationsResponse(w http.ResponseWriter) error
+}
+
+type PutProviderLocations202Response struct {
+}
+
+func (response PutProviderLocations202Response) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PutProviderLocations400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutProviderLocations400JSONResponse) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutProviderLocations401JSONResponse) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutProviderLocations403JSONResponse) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostProviderProximitiesRequestObject struct {
 	Body *PostProviderProximitiesJSONRequestBody
 }
@@ -3090,6 +4706,113 @@ func (response PostProviderProximities401JSONResponse) VisitPostProviderProximit
 type PostProviderProximities403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response PostProviderProximities403JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximitiesRequestObject struct {
+	Body *PutProviderProximitiesJSONRequestBody
+}
+
+type PutProviderProximitiesResponseObject interface {
+	VisitPutProviderProximitiesResponse(w http.ResponseWriter) error
+}
+
+type PutProviderProximities202Response struct {
+}
+
+func (response PutProviderProximities202Response) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PutProviderProximities400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutProviderProximities400JSONResponse) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximities401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutProviderProximities401JSONResponse) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximities403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutProviderProximities403JSONResponse) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProvidersSummaryRequestObject struct {
+}
+
+type GetProvidersSummaryResponseObject interface {
+	VisitGetProvidersSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetProvidersSummary200JSONResponse ResourceSummary
+
+func (response GetProvidersSummary200JSONResponse) VisitGetProvidersSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProvidersSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProvidersSummary401JSONResponse) VisitGetProvidersSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProvidersSummary403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProvidersSummary403JSONResponse) VisitGetProvidersSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3302,6 +5025,481 @@ func (response UpdateProvider404JSONResponse) VisitUpdateProviderResponse(w http
 	return err
 }
 
+type GetProviderFencesRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type GetProviderFencesResponseObject interface {
+	VisitGetProviderFencesResponse(w http.ResponseWriter) error
+}
+
+type GetProviderFences200JSONResponse []Fence
+
+func (response GetProviderFences200JSONResponse) VisitGetProviderFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderFences401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProviderFences401JSONResponse) VisitGetProviderFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderFences403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProviderFences403JSONResponse) VisitGetProviderFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderFences404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProviderFences404JSONResponse) VisitGetProviderFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProviderLocationRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type DeleteProviderLocationResponseObject interface {
+	VisitDeleteProviderLocationResponse(w http.ResponseWriter) error
+}
+
+type DeleteProviderLocation204Response struct {
+}
+
+func (response DeleteProviderLocation204Response) VisitDeleteProviderLocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProviderLocation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProviderLocation401JSONResponse) VisitDeleteProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProviderLocation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProviderLocation403JSONResponse) VisitDeleteProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProviderLocation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProviderLocation404JSONResponse) VisitDeleteProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocationRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type GetProviderLocationResponseObject interface {
+	VisitGetProviderLocationResponse(w http.ResponseWriter) error
+}
+
+type GetProviderLocation200JSONResponse Location
+
+func (response GetProviderLocation200JSONResponse) VisitGetProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProviderLocation401JSONResponse) VisitGetProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProviderLocation403JSONResponse) VisitGetProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderLocation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProviderLocation404JSONResponse) VisitGetProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocationRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+	Body       *PutProviderLocationJSONRequestBody
+}
+
+type PutProviderLocationResponseObject interface {
+	VisitPutProviderLocationResponse(w http.ResponseWriter) error
+}
+
+type PutProviderLocation202Response struct {
+}
+
+func (response PutProviderLocation202Response) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PutProviderLocation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutProviderLocation400JSONResponse) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutProviderLocation401JSONResponse) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutProviderLocation403JSONResponse) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderLocation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutProviderLocation404JSONResponse) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximityRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+	Body       *PutProviderProximityJSONRequestBody
+}
+
+type PutProviderProximityResponseObject interface {
+	VisitPutProviderProximityResponse(w http.ResponseWriter) error
+}
+
+type PutProviderProximity202Response struct {
+}
+
+func (response PutProviderProximity202Response) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PutProviderProximity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutProviderProximity400JSONResponse) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximity401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutProviderProximity401JSONResponse) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximity403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutProviderProximity403JSONResponse) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutProviderProximity404JSONResponse) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderSensorsRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type GetProviderSensorsResponseObject interface {
+	VisitGetProviderSensorsResponse(w http.ResponseWriter) error
+}
+
+type GetProviderSensors200JSONResponse ExtensionProperties
+
+func (response GetProviderSensors200JSONResponse) VisitGetProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderSensors401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProviderSensors401JSONResponse) VisitGetProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderSensors403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProviderSensors403JSONResponse) VisitGetProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderSensors404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProviderSensors404JSONResponse) VisitGetProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderSensorsRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+	Body       *PutProviderSensorsJSONRequestBody
+}
+
+type PutProviderSensorsResponseObject interface {
+	VisitPutProviderSensorsResponse(w http.ResponseWriter) error
+}
+
+type PutProviderSensors200JSONResponse LocationProvider
+
+func (response PutProviderSensors200JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderSensors400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutProviderSensors400JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderSensors401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutProviderSensors401JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderSensors403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutProviderSensors403JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderSensors404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutProviderSensors404JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutRPCRequestObject struct {
 	Body *PutRPCJSONRequestBody
 }
@@ -3423,6 +5621,49 @@ func (response GetRPCAvailable403JSONResponse) VisitGetRPCAvailableResponse(w ht
 	return err
 }
 
+type DeleteTrackablesRequestObject struct {
+}
+
+type DeleteTrackablesResponseObject interface {
+	VisitDeleteTrackablesResponse(w http.ResponseWriter) error
+}
+
+type DeleteTrackables204Response struct {
+}
+
+func (response DeleteTrackables204Response) VisitDeleteTrackablesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteTrackables401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteTrackables401JSONResponse) VisitDeleteTrackablesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTrackables403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteTrackables403JSONResponse) VisitDeleteTrackablesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTrackablesRequestObject struct {
 }
 
@@ -3525,6 +5766,104 @@ func (response CreateTrackable401JSONResponse) VisitCreateTrackableResponse(w ht
 type CreateTrackable403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response CreateTrackable403JSONResponse) VisitCreateTrackableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotionsRequestObject struct {
+}
+
+type GetTrackableMotionsResponseObject interface {
+	VisitGetTrackableMotionsResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableMotions200JSONResponse []TrackableMotion
+
+func (response GetTrackableMotions200JSONResponse) VisitGetTrackableMotionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotions401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableMotions401JSONResponse) VisitGetTrackableMotionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotions403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableMotions403JSONResponse) VisitGetTrackableMotionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackablesSummaryRequestObject struct {
+}
+
+type GetTrackablesSummaryResponseObject interface {
+	VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetTrackablesSummary200JSONResponse ResourceSummary
+
+func (response GetTrackablesSummary200JSONResponse) VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackablesSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackablesSummary401JSONResponse) VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackablesSummary403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackablesSummary403JSONResponse) VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3737,6 +6076,433 @@ func (response UpdateTrackable404JSONResponse) VisitUpdateTrackableResponse(w ht
 	return err
 }
 
+type GetTrackableFencesRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableFencesResponseObject interface {
+	VisitGetTrackableFencesResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableFences200JSONResponse []Fence
+
+func (response GetTrackableFences200JSONResponse) VisitGetTrackableFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableFences401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableFences401JSONResponse) VisitGetTrackableFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableFences403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableFences403JSONResponse) VisitGetTrackableFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableFences404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableFences404JSONResponse) VisitGetTrackableFencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocationRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableLocationResponseObject interface {
+	VisitGetTrackableLocationResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableLocation200JSONResponse Location
+
+func (response GetTrackableLocation200JSONResponse) VisitGetTrackableLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableLocation401JSONResponse) VisitGetTrackableLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocation403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableLocation403JSONResponse) VisitGetTrackableLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableLocation404JSONResponse) VisitGetTrackableLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocationsRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableLocationsResponseObject interface {
+	VisitGetTrackableLocationsResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableLocations200JSONResponse []Location
+
+func (response GetTrackableLocations200JSONResponse) VisitGetTrackableLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocations401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableLocations401JSONResponse) VisitGetTrackableLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocations403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableLocations403JSONResponse) VisitGetTrackableLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableLocations404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableLocations404JSONResponse) VisitGetTrackableLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotionRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableMotionResponseObject interface {
+	VisitGetTrackableMotionResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableMotion200JSONResponse TrackableMotion
+
+func (response GetTrackableMotion200JSONResponse) VisitGetTrackableMotionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotion401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableMotion401JSONResponse) VisitGetTrackableMotionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotion403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableMotion403JSONResponse) VisitGetTrackableMotionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableMotion404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableMotion404JSONResponse) VisitGetTrackableMotionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableProvidersRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableProvidersResponseObject interface {
+	VisitGetTrackableProvidersResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableProviders200JSONResponse []LocationProvider
+
+func (response GetTrackableProviders200JSONResponse) VisitGetTrackableProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableProviders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableProviders401JSONResponse) VisitGetTrackableProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableProviders403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableProviders403JSONResponse) VisitGetTrackableProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableProviders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableProviders404JSONResponse) VisitGetTrackableProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableSensorsRequestObject struct {
+	TrackableId TrackableId `json:"trackableId"`
+}
+
+type GetTrackableSensorsResponseObject interface {
+	VisitGetTrackableSensorsResponse(w http.ResponseWriter) error
+}
+
+type GetTrackableSensors200JSONResponse map[string]ExtensionProperties
+
+func (response GetTrackableSensors200JSONResponse) VisitGetTrackableSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableSensors401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetTrackableSensors401JSONResponse) VisitGetTrackableSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableSensors403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetTrackableSensors403JSONResponse) VisitGetTrackableSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackableSensors404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTrackableSensors404JSONResponse) VisitGetTrackableSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteZonesRequestObject struct {
+}
+
+type DeleteZonesResponseObject interface {
+	VisitDeleteZonesResponse(w http.ResponseWriter) error
+}
+
+type DeleteZones204Response struct {
+}
+
+func (response DeleteZones204Response) VisitDeleteZonesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteZones401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteZones401JSONResponse) VisitDeleteZonesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteZones403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteZones403JSONResponse) VisitDeleteZonesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListZonesRequestObject struct {
 }
 
@@ -3839,6 +6605,55 @@ func (response CreateZone401JSONResponse) VisitCreateZoneResponse(w http.Respons
 type CreateZone403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response CreateZone403JSONResponse) VisitCreateZoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZonesSummaryRequestObject struct {
+}
+
+type GetZonesSummaryResponseObject interface {
+	VisitGetZonesSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetZonesSummary200JSONResponse ResourceSummary
+
+func (response GetZonesSummary200JSONResponse) VisitGetZonesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZonesSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetZonesSummary401JSONResponse) VisitGetZonesSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZonesSummary403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetZonesSummary403JSONResponse) VisitGetZonesSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4051,14 +6866,183 @@ func (response UpdateZone404JSONResponse) VisitUpdateZoneResponse(w http.Respons
 	return err
 }
 
+type GetZoneCreateFenceRequestObject struct {
+	ZoneId ZoneId `json:"zoneId"`
+}
+
+type GetZoneCreateFenceResponseObject interface {
+	VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error
+}
+
+type GetZoneCreateFence200JSONResponse Fence
+
+func (response GetZoneCreateFence200JSONResponse) VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZoneCreateFence400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetZoneCreateFence400JSONResponse) VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZoneCreateFence401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetZoneCreateFence401JSONResponse) VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZoneCreateFence403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetZoneCreateFence403JSONResponse) VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetZoneCreateFence404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetZoneCreateFence404JSONResponse) VisitGetZoneCreateFenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutZoneTransformRequestObject struct {
+	ZoneId ZoneId `json:"zoneId"`
+	Body   *PutZoneTransformJSONRequestBody
+}
+
+type PutZoneTransformResponseObject interface {
+	VisitPutZoneTransformResponse(w http.ResponseWriter) error
+}
+
+type PutZoneTransform200JSONResponse struct {
+	Crs string `json:"crs"`
+
+	// Position GeoJSON point geometry.
+	Position Point              `json:"position"`
+	ZoneId   openapi_types.UUID `json:"zone_id"`
+}
+
+func (response PutZoneTransform200JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutZoneTransform400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutZoneTransform400JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutZoneTransform401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PutZoneTransform401JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutZoneTransform403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutZoneTransform403JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutZoneTransform404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutZoneTransform404JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Delete all fences
+	// (DELETE /v2/fences)
+	DeleteFences(ctx context.Context, request DeleteFencesRequestObject) (DeleteFencesResponseObject, error)
 	// List fences
 	// (GET /v2/fences)
 	ListFences(ctx context.Context, request ListFencesRequestObject) (ListFencesResponseObject, error)
 	// Create a fence
 	// (POST /v2/fences)
 	CreateFence(ctx context.Context, request CreateFenceRequestObject) (CreateFenceResponseObject, error)
+	// Get fence summary
+	// (GET /v2/fences/summary)
+	GetFencesSummary(ctx context.Context, request GetFencesSummaryRequestObject) (GetFencesSummaryResponseObject, error)
 	// Delete a fence
 	// (DELETE /v2/fences/{fenceId})
 	DeleteFence(ctx context.Context, request DeleteFenceRequestObject) (DeleteFenceResponseObject, error)
@@ -4068,18 +7052,42 @@ type StrictServerInterface interface {
 	// Update a fence
 	// (PUT /v2/fences/{fenceId})
 	UpdateFence(ctx context.Context, request UpdateFenceRequestObject) (UpdateFenceResponseObject, error)
+	// Get fence locations
+	// (GET /v2/fences/{fenceId}/locations)
+	GetFenceLocations(ctx context.Context, request GetFenceLocationsRequestObject) (GetFenceLocationsResponseObject, error)
+	// Get fence providers
+	// (GET /v2/fences/{fenceId}/providers)
+	GetFenceProviders(ctx context.Context, request GetFenceProvidersRequestObject) (GetFenceProvidersResponseObject, error)
+	// Delete all providers
+	// (DELETE /v2/providers)
+	DeleteProviders(ctx context.Context, request DeleteProvidersRequestObject) (DeleteProvidersResponseObject, error)
 	// List providers
 	// (GET /v2/providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
 	// Create a provider
 	// (POST /v2/providers)
 	CreateProvider(ctx context.Context, request CreateProviderRequestObject) (CreateProviderResponseObject, error)
+	// Delete provider locations
+	// (DELETE /v2/providers/locations)
+	DeleteProviderLocations(ctx context.Context, request DeleteProviderLocationsRequestObject) (DeleteProviderLocationsResponseObject, error)
+	// Get provider locations
+	// (GET /v2/providers/locations)
+	GetProviderLocations(ctx context.Context, request GetProviderLocationsRequestObject) (GetProviderLocationsResponseObject, error)
 	// Ingest locations
 	// (POST /v2/providers/locations)
 	PostProviderLocations(ctx context.Context, request PostProviderLocationsRequestObject) (PostProviderLocationsResponseObject, error)
+	// Replace provider locations
+	// (PUT /v2/providers/locations)
+	PutProviderLocations(ctx context.Context, request PutProviderLocationsRequestObject) (PutProviderLocationsResponseObject, error)
 	// Ingest proximities
 	// (POST /v2/providers/proximities)
 	PostProviderProximities(ctx context.Context, request PostProviderProximitiesRequestObject) (PostProviderProximitiesResponseObject, error)
+	// Replace provider proximities
+	// (PUT /v2/providers/proximities)
+	PutProviderProximities(ctx context.Context, request PutProviderProximitiesRequestObject) (PutProviderProximitiesResponseObject, error)
+	// Get provider summary
+	// (GET /v2/providers/summary)
+	GetProvidersSummary(ctx context.Context, request GetProvidersSummaryRequestObject) (GetProvidersSummaryResponseObject, error)
 	// Delete a provider
 	// (DELETE /v2/providers/{providerId})
 	DeleteProvider(ctx context.Context, request DeleteProviderRequestObject) (DeleteProviderResponseObject, error)
@@ -4089,18 +7097,48 @@ type StrictServerInterface interface {
 	// Update a provider
 	// (PUT /v2/providers/{providerId})
 	UpdateProvider(ctx context.Context, request UpdateProviderRequestObject) (UpdateProviderResponseObject, error)
+	// Get provider fences
+	// (GET /v2/providers/{providerId}/fences)
+	GetProviderFences(ctx context.Context, request GetProviderFencesRequestObject) (GetProviderFencesResponseObject, error)
+	// Delete provider location
+	// (DELETE /v2/providers/{providerId}/location)
+	DeleteProviderLocation(ctx context.Context, request DeleteProviderLocationRequestObject) (DeleteProviderLocationResponseObject, error)
+	// Get provider location
+	// (GET /v2/providers/{providerId}/location)
+	GetProviderLocation(ctx context.Context, request GetProviderLocationRequestObject) (GetProviderLocationResponseObject, error)
+	// Update provider location
+	// (PUT /v2/providers/{providerId}/location)
+	PutProviderLocation(ctx context.Context, request PutProviderLocationRequestObject) (PutProviderLocationResponseObject, error)
+	// Update provider proximity
+	// (PUT /v2/providers/{providerId}/proximity)
+	PutProviderProximity(ctx context.Context, request PutProviderProximityRequestObject) (PutProviderProximityResponseObject, error)
+	// Get provider sensors
+	// (GET /v2/providers/{providerId}/sensors)
+	GetProviderSensors(ctx context.Context, request GetProviderSensorsRequestObject) (GetProviderSensorsResponseObject, error)
+	// Update provider sensors
+	// (PUT /v2/providers/{providerId}/sensors)
+	PutProviderSensors(ctx context.Context, request PutProviderSensorsRequestObject) (PutProviderSensorsResponseObject, error)
 	// Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
 	// List available RPC methods
 	// (GET /v2/rpc/available)
 	GetRPCAvailable(ctx context.Context, request GetRPCAvailableRequestObject) (GetRPCAvailableResponseObject, error)
+	// Delete all trackables
+	// (DELETE /v2/trackables)
+	DeleteTrackables(ctx context.Context, request DeleteTrackablesRequestObject) (DeleteTrackablesResponseObject, error)
 	// List trackables
 	// (GET /v2/trackables)
 	ListTrackables(ctx context.Context, request ListTrackablesRequestObject) (ListTrackablesResponseObject, error)
 	// Create a trackable
 	// (POST /v2/trackables)
 	CreateTrackable(ctx context.Context, request CreateTrackableRequestObject) (CreateTrackableResponseObject, error)
+	// List trackable motions
+	// (GET /v2/trackables/motions)
+	GetTrackableMotions(ctx context.Context, request GetTrackableMotionsRequestObject) (GetTrackableMotionsResponseObject, error)
+	// Get trackable summary
+	// (GET /v2/trackables/summary)
+	GetTrackablesSummary(ctx context.Context, request GetTrackablesSummaryRequestObject) (GetTrackablesSummaryResponseObject, error)
 	// Delete a trackable
 	// (DELETE /v2/trackables/{trackableId})
 	DeleteTrackable(ctx context.Context, request DeleteTrackableRequestObject) (DeleteTrackableResponseObject, error)
@@ -4110,12 +7148,36 @@ type StrictServerInterface interface {
 	// Update a trackable
 	// (PUT /v2/trackables/{trackableId})
 	UpdateTrackable(ctx context.Context, request UpdateTrackableRequestObject) (UpdateTrackableResponseObject, error)
+	// Get trackable fences
+	// (GET /v2/trackables/{trackableId}/fences)
+	GetTrackableFences(ctx context.Context, request GetTrackableFencesRequestObject) (GetTrackableFencesResponseObject, error)
+	// Get trackable location
+	// (GET /v2/trackables/{trackableId}/location)
+	GetTrackableLocation(ctx context.Context, request GetTrackableLocationRequestObject) (GetTrackableLocationResponseObject, error)
+	// Get trackable locations
+	// (GET /v2/trackables/{trackableId}/locations)
+	GetTrackableLocations(ctx context.Context, request GetTrackableLocationsRequestObject) (GetTrackableLocationsResponseObject, error)
+	// Get trackable motion
+	// (GET /v2/trackables/{trackableId}/motion)
+	GetTrackableMotion(ctx context.Context, request GetTrackableMotionRequestObject) (GetTrackableMotionResponseObject, error)
+	// Get trackable providers
+	// (GET /v2/trackables/{trackableId}/providers)
+	GetTrackableProviders(ctx context.Context, request GetTrackableProvidersRequestObject) (GetTrackableProvidersResponseObject, error)
+	// Get trackable sensors
+	// (GET /v2/trackables/{trackableId}/sensors)
+	GetTrackableSensors(ctx context.Context, request GetTrackableSensorsRequestObject) (GetTrackableSensorsResponseObject, error)
+	// Delete all zones
+	// (DELETE /v2/zones)
+	DeleteZones(ctx context.Context, request DeleteZonesRequestObject) (DeleteZonesResponseObject, error)
 	// List zones
 	// (GET /v2/zones)
 	ListZones(ctx context.Context, request ListZonesRequestObject) (ListZonesResponseObject, error)
 	// Create a zone
 	// (POST /v2/zones)
 	CreateZone(ctx context.Context, request CreateZoneRequestObject) (CreateZoneResponseObject, error)
+	// Get zone summary
+	// (GET /v2/zones/summary)
+	GetZonesSummary(ctx context.Context, request GetZonesSummaryRequestObject) (GetZonesSummaryResponseObject, error)
 	// Delete a zone
 	// (DELETE /v2/zones/{zoneId})
 	DeleteZone(ctx context.Context, request DeleteZoneRequestObject) (DeleteZoneResponseObject, error)
@@ -4125,6 +7187,12 @@ type StrictServerInterface interface {
 	// Update a zone
 	// (PUT /v2/zones/{zoneId})
 	UpdateZone(ctx context.Context, request UpdateZoneRequestObject) (UpdateZoneResponseObject, error)
+	// Create fence from zone
+	// (GET /v2/zones/{zoneId}/createfence)
+	GetZoneCreateFence(ctx context.Context, request GetZoneCreateFenceRequestObject) (GetZoneCreateFenceResponseObject, error)
+	// Update zone transform
+	// (PUT /v2/zones/{zoneId}/transform)
+	PutZoneTransform(ctx context.Context, request PutZoneTransformRequestObject) (PutZoneTransformResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -4154,6 +7222,30 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// DeleteFences operation middleware
+func (sh *strictHandler) DeleteFences(w http.ResponseWriter, r *http.Request) {
+	var request DeleteFencesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFences(ctx, request.(DeleteFencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFencesResponseObject); ok {
+		if err := validResponse.VisitDeleteFencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListFences operation middleware
@@ -4204,6 +7296,30 @@ func (sh *strictHandler) CreateFence(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateFenceResponseObject); ok {
 		if err := validResponse.VisitCreateFenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFencesSummary operation middleware
+func (sh *strictHandler) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetFencesSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFencesSummary(ctx, request.(GetFencesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFencesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFencesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetFencesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4296,6 +7412,82 @@ func (sh *strictHandler) UpdateFence(w http.ResponseWriter, r *http.Request, fen
 	}
 }
 
+// GetFenceLocations operation middleware
+func (sh *strictHandler) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	var request GetFenceLocationsRequestObject
+
+	request.FenceId = fenceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFenceLocations(ctx, request.(GetFenceLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFenceLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFenceLocationsResponseObject); ok {
+		if err := validResponse.VisitGetFenceLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFenceProviders operation middleware
+func (sh *strictHandler) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+	var request GetFenceProvidersRequestObject
+
+	request.FenceId = fenceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFenceProviders(ctx, request.(GetFenceProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFenceProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFenceProvidersResponseObject); ok {
+		if err := validResponse.VisitGetFenceProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProviders operation middleware
+func (sh *strictHandler) DeleteProviders(w http.ResponseWriter, r *http.Request) {
+	var request DeleteProvidersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProviders(ctx, request.(DeleteProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProvidersResponseObject); ok {
+		if err := validResponse.VisitDeleteProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProviders operation middleware
 func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	var request ListProvidersRequestObject
@@ -4351,6 +7543,54 @@ func (sh *strictHandler) CreateProvider(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// DeleteProviderLocations operation middleware
+func (sh *strictHandler) DeleteProviderLocations(w http.ResponseWriter, r *http.Request) {
+	var request DeleteProviderLocationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProviderLocations(ctx, request.(DeleteProviderLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProviderLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProviderLocationsResponseObject); ok {
+		if err := validResponse.VisitDeleteProviderLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProviderLocations operation middleware
+func (sh *strictHandler) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
+	var request GetProviderLocationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderLocations(ctx, request.(GetProviderLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProviderLocationsResponseObject); ok {
+		if err := validResponse.VisitGetProviderLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostProviderLocations operation middleware
 func (sh *strictHandler) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
 	var request PostProviderLocationsRequestObject
@@ -4382,6 +7622,37 @@ func (sh *strictHandler) PostProviderLocations(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// PutProviderLocations operation middleware
+func (sh *strictHandler) PutProviderLocations(w http.ResponseWriter, r *http.Request) {
+	var request PutProviderLocationsRequestObject
+
+	var body PutProviderLocationsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProviderLocations(ctx, request.(PutProviderLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProviderLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProviderLocationsResponseObject); ok {
+		if err := validResponse.VisitPutProviderLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostProviderProximities operation middleware
 func (sh *strictHandler) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
 	var request PostProviderProximitiesRequestObject
@@ -4406,6 +7677,61 @@ func (sh *strictHandler) PostProviderProximities(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostProviderProximitiesResponseObject); ok {
 		if err := validResponse.VisitPostProviderProximitiesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProviderProximities operation middleware
+func (sh *strictHandler) PutProviderProximities(w http.ResponseWriter, r *http.Request) {
+	var request PutProviderProximitiesRequestObject
+
+	var body PutProviderProximitiesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProviderProximities(ctx, request.(PutProviderProximitiesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProviderProximities")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProviderProximitiesResponseObject); ok {
+		if err := validResponse.VisitPutProviderProximitiesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProvidersSummary operation middleware
+func (sh *strictHandler) GetProvidersSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetProvidersSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProvidersSummary(ctx, request.(GetProvidersSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProvidersSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProvidersSummaryResponseObject); ok {
+		if err := validResponse.VisitGetProvidersSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4498,6 +7824,209 @@ func (sh *strictHandler) UpdateProvider(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// GetProviderFences operation middleware
+func (sh *strictHandler) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request GetProviderFencesRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderFences(ctx, request.(GetProviderFencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderFences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProviderFencesResponseObject); ok {
+		if err := validResponse.VisitGetProviderFencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProviderLocation operation middleware
+func (sh *strictHandler) DeleteProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request DeleteProviderLocationRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProviderLocation(ctx, request.(DeleteProviderLocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProviderLocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProviderLocationResponseObject); ok {
+		if err := validResponse.VisitDeleteProviderLocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProviderLocation operation middleware
+func (sh *strictHandler) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request GetProviderLocationRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderLocation(ctx, request.(GetProviderLocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderLocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProviderLocationResponseObject); ok {
+		if err := validResponse.VisitGetProviderLocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProviderLocation operation middleware
+func (sh *strictHandler) PutProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request PutProviderLocationRequestObject
+
+	request.ProviderId = providerId
+
+	var body PutProviderLocationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProviderLocation(ctx, request.(PutProviderLocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProviderLocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProviderLocationResponseObject); ok {
+		if err := validResponse.VisitPutProviderLocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProviderProximity operation middleware
+func (sh *strictHandler) PutProviderProximity(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request PutProviderProximityRequestObject
+
+	request.ProviderId = providerId
+
+	var body PutProviderProximityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProviderProximity(ctx, request.(PutProviderProximityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProviderProximity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProviderProximityResponseObject); ok {
+		if err := validResponse.VisitPutProviderProximityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProviderSensors operation middleware
+func (sh *strictHandler) GetProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request GetProviderSensorsRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderSensors(ctx, request.(GetProviderSensorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderSensors")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProviderSensorsResponseObject); ok {
+		if err := validResponse.VisitGetProviderSensorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProviderSensors operation middleware
+func (sh *strictHandler) PutProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request PutProviderSensorsRequestObject
+
+	request.ProviderId = providerId
+
+	var body PutProviderSensorsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProviderSensors(ctx, request.(PutProviderSensorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProviderSensors")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProviderSensorsResponseObject); ok {
+		if err := validResponse.VisitPutProviderSensorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutRPC operation middleware
 func (sh *strictHandler) PutRPC(w http.ResponseWriter, r *http.Request) {
 	var request PutRPCRequestObject
@@ -4553,6 +8082,30 @@ func (sh *strictHandler) GetRPCAvailable(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+// DeleteTrackables operation middleware
+func (sh *strictHandler) DeleteTrackables(w http.ResponseWriter, r *http.Request) {
+	var request DeleteTrackablesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTrackables(ctx, request.(DeleteTrackablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTrackables")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTrackablesResponseObject); ok {
+		if err := validResponse.VisitDeleteTrackablesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListTrackables operation middleware
 func (sh *strictHandler) ListTrackables(w http.ResponseWriter, r *http.Request) {
 	var request ListTrackablesRequestObject
@@ -4601,6 +8154,54 @@ func (sh *strictHandler) CreateTrackable(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateTrackableResponseObject); ok {
 		if err := validResponse.VisitCreateTrackableResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableMotions operation middleware
+func (sh *strictHandler) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+	var request GetTrackableMotionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableMotions(ctx, request.(GetTrackableMotionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableMotions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableMotionsResponseObject); ok {
+		if err := validResponse.VisitGetTrackableMotionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackablesSummary operation middleware
+func (sh *strictHandler) GetTrackablesSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetTrackablesSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackablesSummary(ctx, request.(GetTrackablesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackablesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackablesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetTrackablesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4693,6 +8294,186 @@ func (sh *strictHandler) UpdateTrackable(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// GetTrackableFences operation middleware
+func (sh *strictHandler) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableFencesRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableFences(ctx, request.(GetTrackableFencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableFences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableFencesResponseObject); ok {
+		if err := validResponse.VisitGetTrackableFencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableLocation operation middleware
+func (sh *strictHandler) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableLocationRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableLocation(ctx, request.(GetTrackableLocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableLocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableLocationResponseObject); ok {
+		if err := validResponse.VisitGetTrackableLocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableLocations operation middleware
+func (sh *strictHandler) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableLocationsRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableLocations(ctx, request.(GetTrackableLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableLocationsResponseObject); ok {
+		if err := validResponse.VisitGetTrackableLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableMotion operation middleware
+func (sh *strictHandler) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableMotionRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableMotion(ctx, request.(GetTrackableMotionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableMotion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableMotionResponseObject); ok {
+		if err := validResponse.VisitGetTrackableMotionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableProviders operation middleware
+func (sh *strictHandler) GetTrackableProviders(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableProvidersRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableProviders(ctx, request.(GetTrackableProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableProvidersResponseObject); ok {
+		if err := validResponse.VisitGetTrackableProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackableSensors operation middleware
+func (sh *strictHandler) GetTrackableSensors(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+	var request GetTrackableSensorsRequestObject
+
+	request.TrackableId = trackableId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackableSensors(ctx, request.(GetTrackableSensorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackableSensors")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackableSensorsResponseObject); ok {
+		if err := validResponse.VisitGetTrackableSensorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteZones operation middleware
+func (sh *strictHandler) DeleteZones(w http.ResponseWriter, r *http.Request) {
+	var request DeleteZonesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteZones(ctx, request.(DeleteZonesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteZones")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteZonesResponseObject); ok {
+		if err := validResponse.VisitDeleteZonesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListZones operation middleware
 func (sh *strictHandler) ListZones(w http.ResponseWriter, r *http.Request) {
 	var request ListZonesRequestObject
@@ -4741,6 +8522,30 @@ func (sh *strictHandler) CreateZone(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateZoneResponseObject); ok {
 		if err := validResponse.VisitCreateZoneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetZonesSummary operation middleware
+func (sh *strictHandler) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetZonesSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetZonesSummary(ctx, request.(GetZonesSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetZonesSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetZonesSummaryResponseObject); ok {
+		if err := validResponse.VisitGetZonesSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4826,6 +8631,65 @@ func (sh *strictHandler) UpdateZone(w http.ResponseWriter, r *http.Request, zone
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateZoneResponseObject); ok {
 		if err := validResponse.VisitUpdateZoneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetZoneCreateFence operation middleware
+func (sh *strictHandler) GetZoneCreateFence(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	var request GetZoneCreateFenceRequestObject
+
+	request.ZoneId = zoneId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetZoneCreateFence(ctx, request.(GetZoneCreateFenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetZoneCreateFence")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetZoneCreateFenceResponseObject); ok {
+		if err := validResponse.VisitGetZoneCreateFenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutZoneTransform operation middleware
+func (sh *strictHandler) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+	var request PutZoneTransformRequestObject
+
+	request.ZoneId = zoneId
+
+	var body PutZoneTransformJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutZoneTransform(ctx, request.(PutZoneTransformRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutZoneTransform")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutZoneTransformResponseObject); ok {
+		if err := validResponse.VisitPutZoneTransformResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

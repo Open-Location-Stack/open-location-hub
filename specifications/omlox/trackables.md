@@ -29,7 +29,20 @@ Key fields from section 6.7.13:
 ## Operations
 
 ### Inferred resource lifecycle operations
-Trackable API is defined as a management API; companion OpenAPI is expected to define CRUD endpoints under `/v2/trackables` and `/v2/trackables/{trackableId}`.
+Trackable API is defined as a management API. The companion OpenAPI surface used in this repository now includes:
+- `/v2/trackables`
+- `/v2/trackables/summary`
+- `/v2/trackables/motions`
+- `/v2/trackables/{trackableId}`
+- `/v2/trackables/{trackableId}/fences`
+- `/v2/trackables/{trackableId}/location`
+- `/v2/trackables/{trackableId}/locations`
+- `/v2/trackables/{trackableId}/motion`
+- `/v2/trackables/{trackableId}/providers`
+- `/v2/trackables/{trackableId}/sensors`
+
+Current repository contract status:
+- CRUD, summary, motion, nested read endpoints, and collection delete are implemented.
 
 ## Behavioral requirements
 
