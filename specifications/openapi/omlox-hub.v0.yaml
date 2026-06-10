@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Open Location Hub API
-  version: 0.1.5
+  version: 0.1.6
   description: |
     REST API documentation for Open Location Hub.
 
@@ -53,6 +53,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [zones]
+      operationId: deleteZones
+      summary: Delete all zones
+      description: Removes all zones known to the hub.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [zones]
       operationId: createZone
@@ -76,6 +88,23 @@ paths:
                 $ref: '#/components/schemas/Zone'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/zones/summary:
+    get:
+      tags: [zones]
+      operationId: getZonesSummary
+      summary: Get zone summary
+      description: Returns a compact count of zones known to the hub.
+      responses:
+        '200':
+          description: Zone summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -141,6 +170,68 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v2/zones/{zoneId}/transform:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+    put:
+      tags: [zones]
+      operationId: putZoneTransform
+      summary: Update zone transform
+      description: Transforms a point between zone-local coordinates and WGS84.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Transformed point
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [position, crs, zone_id]
+                properties:
+                  position:
+                    $ref: '#/components/schemas/Point'
+                  crs:
+                    type: string
+                  zone_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/zones/{zoneId}/createfence:
+    parameters:
+      - $ref: '#/components/parameters/ZoneId'
+    get:
+      tags: [zones]
+      operationId: getZoneCreateFence
+      summary: Create fence from zone
+      description: Derives an approximate fence document from a zone definition.
+      responses:
+        '200':
+          description: Derived fence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fence'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/trackables:
     get:
       tags: [trackables]
@@ -156,6 +247,18 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Trackable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [trackables]
+      operationId: deleteTrackables
+      summary: Delete all trackables
+      description: Removes all trackables known to the hub.
+      responses:
+        '204':
+          description: Deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -180,6 +283,42 @@ paths:
                 $ref: '#/components/schemas/Trackable'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/summary:
+    get:
+      tags: [trackables]
+      operationId: getTrackablesSummary
+      summary: Get trackable summary
+      description: Returns a compact count of trackables known to the hub.
+      responses:
+        '200':
+          description: Trackable summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/motions:
+    get:
+      tags: [trackables]
+      operationId: getTrackableMotions
+      summary: List trackable motions
+      description: Returns all active trackable motions held in transient state.
+      responses:
+        '200':
+          description: Active trackable motions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrackableMotion'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -245,6 +384,140 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/fences:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableFences
+      summary: Get trackable fences
+      description: Returns fences that currently contain the trackable.
+      responses:
+        '200':
+          description: Active fence memberships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Fence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/location:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableLocation
+      summary: Get trackable location
+      description: Returns the latest derived location known for the trackable.
+      responses:
+        '200':
+          description: Latest trackable location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/locations:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableLocations
+      summary: Get trackable locations
+      description: Returns active provider locations associated with the trackable.
+      responses:
+        '200':
+          description: Trackable provider locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/motion:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableMotion
+      summary: Get trackable motion
+      description: Returns the latest derived motion known for the trackable.
+      responses:
+        '200':
+          description: Latest trackable motion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackableMotion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/providers:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableProviders
+      summary: Get trackable providers
+      description: Returns providers assigned to the trackable.
+      responses:
+        '200':
+          description: Assigned providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationProvider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/trackables/{trackableId}/sensors:
+    parameters:
+      - $ref: '#/components/parameters/TrackableId'
+    get:
+      tags: [trackables]
+      operationId: getTrackableSensors
+      summary: Get trackable sensors
+      description: Returns provider sensor objects grouped by provider identifier.
+      responses:
+        '200':
+          description: Trackable sensors
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/ExtensionProperties'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers:
     get:
       tags: [providers]
@@ -260,6 +533,18 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LocationProvider'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [providers]
+      operationId: deleteProviders
+      summary: Delete all providers
+      description: Removes all location providers known to the hub.
+      responses:
+        '204':
+          description: Deleted
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -284,6 +569,23 @@ paths:
                 $ref: '#/components/schemas/LocationProvider'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/providers/summary:
+    get:
+      tags: [providers]
+      operationId: getProvidersSummary
+      summary: Get provider summary
+      description: Returns a compact count of location providers known to the hub.
+      responses:
+        '200':
+          description: Provider summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -349,7 +651,178 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v2/providers/{providerId}/location:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags: [providers]
+      operationId: getProviderLocation
+      summary: Get provider location
+      description: Returns the latest active location known for the provider.
+      responses:
+        '200':
+          description: Latest provider location
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Location'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [providers]
+      operationId: putProviderLocation
+      summary: Update provider location
+      description: Processes a single location update for the provider identifier in the path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Location'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [providers]
+      operationId: deleteProviderLocation
+      summary: Delete provider location
+      description: Clears active location and associated transient state for the provider.
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/providers/{providerId}/fences:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags: [providers]
+      operationId: getProviderFences
+      summary: Get provider fences
+      description: Returns fences containing the provider's latest active location.
+      responses:
+        '200':
+          description: Provider fences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Fence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/providers/{providerId}/sensors:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags: [providers]
+      operationId: getProviderSensors
+      summary: Get provider sensors
+      description: Returns the provider sensor extension object.
+      responses:
+        '200':
+          description: Provider sensors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtensionProperties'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [providers]
+      operationId: putProviderSensors
+      summary: Update provider sensors
+      description: Replaces the provider sensor extension object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationProvider'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/providers/{providerId}/proximity:
+    parameters:
+      - $ref: '#/components/parameters/ProviderId'
+    put:
+      tags: [providers]
+      operationId: putProviderProximity
+      summary: Update provider proximity
+      description: Processes a single proximity update for the provider identifier in the path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Proximity'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers/locations:
+    get:
+      tags: [providers]
+      operationId: getProviderLocations
+      summary: Get provider locations
+      description: Returns all active latest provider locations held in transient state.
+      responses:
+        '200':
+          description: Active provider locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [providers]
       operationId: postProviderLocations
@@ -372,7 +845,63 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [providers]
+      operationId: putProviderLocations
+      summary: Replace provider locations
+      description: Processes a batch of provider location updates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Location'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [providers]
+      operationId: deleteProviderLocations
+      summary: Delete provider locations
+      description: Clears all active provider location state.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v2/providers/proximities:
+    put:
+      tags: [providers]
+      operationId: putProviderProximities
+      summary: Replace provider proximities
+      description: Processes a batch of proximity updates.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Proximity'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [providers]
       operationId: postProviderProximities
@@ -414,6 +943,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    delete:
+      tags: [fences]
+      operationId: deleteFences
+      summary: Delete all fences
+      description: Removes all fences known to the hub.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       tags: [fences]
       operationId: createFence
@@ -434,6 +975,23 @@ paths:
                 $ref: '#/components/schemas/Fence'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/fences/summary:
+    get:
+      tags: [fences]
+      operationId: getFencesSummary
+      summary: Get fence summary
+      description: Returns a compact count of fences known to the hub.
+      responses:
+        '200':
+          description: Fence summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -493,6 +1051,52 @@ paths:
       responses:
         '204':
           description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/fences/{fenceId}/providers:
+    parameters:
+      - $ref: '#/components/parameters/FenceId'
+    get:
+      tags: [fences]
+      operationId: getFenceProviders
+      summary: Get fence providers
+      description: Returns providers whose active latest locations are inside the fence.
+      responses:
+        '200':
+          description: Providers inside the fence
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationProvider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/fences/{fenceId}/locations:
+    parameters:
+      - $ref: '#/components/parameters/FenceId'
+    get:
+      tags: [fences]
+      operationId: getFenceLocations
+      summary: Get fence locations
+      description: Returns active latest locations inside the fence.
+      responses:
+        '200':
+          description: Locations inside the fence
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -636,6 +1240,19 @@ components:
         message:
           type: string
           description: Human-readable error message.
+
+    ResourceSummary:
+      type: object
+      description: Compact collection summary.
+      required: [type, count]
+      properties:
+        type:
+          type: string
+          description: Resource collection represented by the summary.
+        count:
+          type: integer
+          minimum: 0
+          description: Number of resources currently known to the hub.
 
     ExtensionProperties:
       type: object

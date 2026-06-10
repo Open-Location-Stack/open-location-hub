@@ -34,7 +34,15 @@ Used for both:
 - initialized zone announcement (complete required fields)
 
 ### Inferred resource lifecycle operations
-The Zone API is defined as setup/management API. In the companion OpenAPI this typically includes list/read/update/delete forms for `/v2/zones` and `/v2/zones/{zoneId}`.
+The Zone API is defined as setup/management API. The companion OpenAPI surface used in this repository now includes:
+- `/v2/zones`
+- `/v2/zones/summary`
+- `/v2/zones/{zoneId}`
+- `/v2/zones/{zoneId}/transform`
+- `/v2/zones/{zoneId}/createfence`
+
+Current repository contract status:
+- CRUD, summary, transform, collection delete, and fence derivation routes are implemented.
 
 ## Behavioral requirements
 

@@ -92,10 +92,74 @@ func (s *ProcessingState) SetLatestLocation(key string, value gen.Location, ttl 
 	s.latestLocations[key] = expiringLocation{value: value, expiresAt: s.nowUTC().Add(ttl)}
 }
 
+func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.latestLocations[key]
+	if !ok || !item.expiresAt.After(s.nowUTC()) {
+		delete(s.latestLocations, key)
+		return gen.Location{}, false
+	}
+	return item.value, true
+}
+
+func (s *ProcessingState) DeleteLatestLocation(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.latestLocations, key)
+}
+
+func (s *ProcessingState) ListLatestLocations() []gen.Location {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowUTC()
+	locations := make([]gen.Location, 0, len(s.latestLocations))
+	for key, item := range s.latestLocations {
+		if !item.expiresAt.After(now) {
+			delete(s.latestLocations, key)
+			continue
+		}
+		locations = append(locations, item.value)
+	}
+	return locations
+}
+
 func (s *ProcessingState) SetTrackableLocation(key string, value gen.Location, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.latestTrackableLocation[key] = expiringLocation{value: value, expiresAt: s.nowUTC().Add(ttl)}
+}
+
+func (s *ProcessingState) GetTrackableLocation(key string) (gen.Location, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.latestTrackableLocation[key]
+	if !ok || !item.expiresAt.After(s.nowUTC()) {
+		delete(s.latestTrackableLocation, key)
+		return gen.Location{}, false
+	}
+	return item.value, true
+}
+
+func (s *ProcessingState) DeleteTrackableLocation(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.latestTrackableLocation, key)
+}
+
+func (s *ProcessingState) ListTrackableLocations() []gen.Location {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowUTC()
+	locations := make([]gen.Location, 0, len(s.latestTrackableLocation))
+	for key, item := range s.latestTrackableLocation {
+		if !item.expiresAt.After(now) {
+			delete(s.latestTrackableLocation, key)
+			continue
+		}
+		locations = append(locations, item.value)
+	}
+	return locations
 }
 
 func (s *ProcessingState) GetProximityState(key string) (proximityResolutionState, bool) {

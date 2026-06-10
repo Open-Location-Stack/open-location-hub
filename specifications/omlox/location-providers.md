@@ -43,4 +43,16 @@ Current repository behavior for proximity ingestion:
 - per-zone tuning comes from `Zone.properties.proximity_resolution`
 
 ### Inferred resource lifecycle operations
-The Location Provider API is defined as setup + update advertisement API; companion OpenAPI is expected to define provider management endpoints under `/v2/providers` and `/v2/providers/{providerId}`.
+The Location Provider API is defined as setup + update advertisement API. The companion OpenAPI surface used in this repository now includes:
+- `/v2/providers`
+- `/v2/providers/summary`
+- `/v2/providers/locations`
+- `/v2/providers/proximities`
+- `/v2/providers/{providerId}`
+- `/v2/providers/{providerId}/fences`
+- `/v2/providers/{providerId}/location`
+- `/v2/providers/{providerId}/proximity`
+- `/v2/providers/{providerId}/sensors`
+
+Current repository contract status:
+- CRUD, summaries, bulk and per-provider ingest, nested provider reads, sensor updates, and collection delete routes are implemented.

@@ -407,6 +407,113 @@ func (s *Service) DeleteZone(ctx context.Context, id openapi_types.UUID) error {
 	return nil
 }
 
+// GetZoneCreateFence derives an approximate fence from an existing zone.
+func (s *Service) GetZoneCreateFence(ctx context.Context, id openapi_types.UUID) (gen.Fence, error) {
+	zone, err := s.GetZone(ctx, id)
+	if err != nil {
+		return gen.Fence{}, err
+	}
+	if zone.Position != nil {
+		var region gen.Fence_Region
+		if err := region.FromPoint(*zone.Position); err != nil {
+			return gen.Fence{}, err
+		}
+		fence := gen.Fence{
+			Id:     ids.NewUUID(),
+			Region: region,
+			Radius: zone.Radius,
+			Name:   zone.Name,
+		}
+		epsg := gen.FenceElevationRefFloor
+		fence.ElevationRef = &epsg
+		if zone.Type != "rfid" && zone.Type != "ibeacon" {
+			crs := "EPSG:4326"
+			fence.Crs = &crs
+		}
+		return fence, nil
+	}
+	if zone.GroundControlPoints != nil && len(*zone.GroundControlPoints) >= 3 {
+		ring := make([]gen.GeoJsonPosition, 0, len(*zone.GroundControlPoints)+1)
+		for _, gcp := range *zone.GroundControlPoints {
+			local, err := gcp.Local.Coordinates.AsGeoJsonPosition2D()
+			if err != nil {
+				return gen.Fence{}, badRequest("zone ground_control_points contained invalid local coordinates")
+			}
+			var position gen.GeoJsonPosition
+			if err := position.FromGeoJsonPosition2D(gen.GeoJsonPosition2D{local[0], local[1]}); err != nil {
+				return gen.Fence{}, err
+			}
+			ring = append(ring, position)
+		}
+		ring = append(ring, ring[0])
+		polygon := gen.Polygon{
+			Type:        "Polygon",
+			Coordinates: [][]gen.GeoJsonPosition{ring},
+		}
+		var region gen.Fence_Region
+		if err := region.FromPolygon(polygon); err != nil {
+			return gen.Fence{}, err
+		}
+		fence := gen.Fence{
+			Id:     ids.NewUUID(),
+			Region: region,
+			Name:   zone.Name,
+		}
+		localCRS := "local"
+		fence.Crs = &localCRS
+		elevationRef := gen.FenceElevationRefFloor
+		fence.ElevationRef = &elevationRef
+		zoneID := zone.Id.String()
+		fence.ZoneId = &zoneID
+		return fence, nil
+	}
+	return gen.Fence{}, badRequest("zone could not be approximated as a fence")
+}
+
+// PutZoneTransform transforms a point between local and WGS84 for a zone.
+func (s *Service) PutZoneTransform(ctx context.Context, id openapi_types.UUID, body json.RawMessage) (map[string]any, error) {
+	var request struct {
+		Position gen.Point `json:"position"`
+		Crs      string    `json:"crs"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return nil, badRequest("invalid transform payload")
+	}
+	if request.Position.Type != "Point" {
+		return nil, badRequest("transform payload requires a GeoJSON Point")
+	}
+	source := id.String()
+	location := gen.Location{
+		ProviderId:   "zone-transform",
+		ProviderType: "zone-transform",
+		Source:       source,
+		Position:     request.Position,
+	}
+	inputCRS := strings.TrimSpace(request.Crs)
+	if inputCRS == "" {
+		inputCRS = "local"
+	}
+	location.Crs = &inputCRS
+	var transformed gen.Location
+	var err error
+	switch inputCRS {
+	case "local":
+		transformed, err = s.locationToWGS84(ctx, location)
+	case "EPSG:4326":
+		transformed, err = s.locationToLocal(ctx, location)
+	default:
+		return nil, badRequest("transform crs must be local or EPSG:4326")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"position": transformed.Position,
+		"crs":      strings.TrimSpace(locationCRS(transformed)),
+		"zone_id":  source,
+	}, nil
+}
+
 // ListProviders returns all location providers known to the hub.
 func (s *Service) ListProviders(ctx context.Context) ([]gen.LocationProvider, error) {
 	if cache := s.metadataCache(); cache != nil {
@@ -521,6 +628,78 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 		Timestamp: s.now().UTC(),
 	})
 	return nil
+}
+
+// ListProviderLocations returns the active latest locations held in memory.
+func (s *Service) ListProviderLocations(_ context.Context) ([]gen.Location, error) {
+	locations := s.processingState().ListLatestLocations()
+	sort.Slice(locations, func(i, j int) bool {
+		return locationTime(locations[i]).After(locationTime(locations[j]))
+	})
+	return locations, nil
+}
+
+// GetProviderLocation returns the latest location known for a provider.
+func (s *Service) GetProviderLocation(ctx context.Context, id string) (gen.Location, error) {
+	if _, ok := s.providerByID(ctx, id); !ok {
+		return gen.Location{}, notFound("provider not found")
+	}
+	location, ok := latestLocationForProvider(s.processingState().ListLatestLocations(), id)
+	if !ok {
+		return gen.Location{}, notFound("provider location not found")
+	}
+	return location, nil
+}
+
+// PutProviderLocation validates and processes a single provider location update.
+func (s *Service) PutProviderLocation(ctx context.Context, id string, location gen.Location) error {
+	location.ProviderId = id
+	return s.ProcessLocations(ctx, []gen.Location{location})
+}
+
+// DeleteProviderLocation clears the active latest location state for a provider.
+func (s *Service) DeleteProviderLocation(ctx context.Context, id string) error {
+	if _, ok := s.providerByID(ctx, id); !ok {
+		return notFound("provider not found")
+	}
+	removed := s.deleteProviderState(ctx, id)
+	if !removed {
+		return notFound("provider location not found")
+	}
+	return nil
+}
+
+// DeleteProviderLocations clears all active latest provider location state.
+func (s *Service) DeleteProviderLocations(_ context.Context) error {
+	for _, location := range s.processingState().ListLatestLocations() {
+		_ = s.deleteProviderState(context.Background(), location.ProviderId)
+	}
+	return nil
+}
+
+// PutProviderLocations validates and processes a batch of provider locations.
+func (s *Service) PutProviderLocations(ctx context.Context, locations []gen.Location) error {
+	return s.ProcessLocations(ctx, locations)
+}
+
+// PutProviderProximity validates and processes a single proximity update.
+func (s *Service) PutProviderProximity(ctx context.Context, id string, proximity gen.Proximity) error {
+	proximity.ProviderId = id
+	return s.ProcessProximities(ctx, []gen.Proximity{proximity})
+}
+
+// PutProviderProximities validates and processes a batch of proximity updates.
+func (s *Service) PutProviderProximities(ctx context.Context, proximities []gen.Proximity) error {
+	return s.ProcessProximities(ctx, proximities)
+}
+
+// ListProviderFences returns the fences currently containing the provider's latest location.
+func (s *Service) ListProviderFences(ctx context.Context, id string) ([]gen.Fence, error) {
+	location, err := s.GetProviderLocation(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.fencesForLocation(ctx, location)
 }
 
 // ListTrackables returns all trackables known to the hub.
@@ -639,6 +818,94 @@ func (s *Service) DeleteTrackable(ctx context.Context, id openapi_types.UUID) er
 	return nil
 }
 
+// GetTrackableLocation returns the latest derived location known for a trackable.
+func (s *Service) GetTrackableLocation(ctx context.Context, id openapi_types.UUID) (gen.Location, error) {
+	if _, err := s.GetTrackable(ctx, id); err != nil {
+		return gen.Location{}, err
+	}
+	location, ok := s.processingState().GetTrackableLocation(latestTrackableLocationKey(id.String()))
+	if !ok {
+		return gen.Location{}, notFound("trackable location not found")
+	}
+	return location, nil
+}
+
+// ListTrackableLocations returns the latest provider locations associated to a trackable.
+func (s *Service) ListTrackableLocations(ctx context.Context, id openapi_types.UUID) ([]gen.Location, error) {
+	trackable, err := s.GetTrackable(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	providerSet := make(map[string]struct{}, len(stringSliceValue(trackable.LocationProviders)))
+	for _, providerID := range stringSliceValue(trackable.LocationProviders) {
+		providerSet[providerID] = struct{}{}
+	}
+	locations := s.processingState().ListLatestLocations()
+	filtered := make([]gen.Location, 0, len(locations))
+	for _, location := range locations {
+		if _, ok := providerSet[location.ProviderId]; ok || locationAssociatedWithTrackable(location, id.String()) {
+			filtered = append(filtered, location)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return locationTime(filtered[i]).After(locationTime(filtered[j]))
+	})
+	return filtered, nil
+}
+
+// GetTrackableMotion returns the latest derived motion known for a trackable.
+func (s *Service) GetTrackableMotion(ctx context.Context, id openapi_types.UUID) (gen.TrackableMotion, error) {
+	if _, err := s.GetTrackable(ctx, id); err != nil {
+		return gen.TrackableMotion{}, err
+	}
+	motion, ok := s.processingState().GetMotion(id.String())
+	if !ok {
+		return gen.TrackableMotion{}, notFound("trackable motion not found")
+	}
+	return motion, nil
+}
+
+// ListTrackableMotions returns all active trackable motions held in memory.
+func (s *Service) ListTrackableMotions(_ context.Context) ([]gen.TrackableMotion, error) {
+	motions := s.processingState().ListActiveMotions()
+	sort.Slice(motions, func(i, j int) bool {
+		return locationTime(motions[i].Location).After(locationTime(motions[j].Location))
+	})
+	return motions, nil
+}
+
+// ListTrackableFences returns the fences currently containing the trackable.
+func (s *Service) ListTrackableFences(ctx context.Context, id openapi_types.UUID) ([]gen.Fence, error) {
+	if _, err := s.GetTrackable(ctx, id); err != nil {
+		return nil, err
+	}
+	activeFenceIDs := s.processingState().ListInsideFences(id.String())
+	fences := make([]gen.Fence, 0, len(activeFenceIDs))
+	for _, fenceID := range activeFenceIDs {
+		fence, ok := s.fenceByID(ctx, fenceID)
+		if ok {
+			fences = append(fences, fence)
+		}
+	}
+	return fences, nil
+}
+
+// ListTrackableProviders returns the providers assigned to a trackable.
+func (s *Service) ListTrackableProviders(ctx context.Context, id openapi_types.UUID) ([]gen.LocationProvider, error) {
+	trackable, err := s.GetTrackable(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	providers := make([]gen.LocationProvider, 0, len(stringSliceValue(trackable.LocationProviders)))
+	for _, providerID := range stringSliceValue(trackable.LocationProviders) {
+		provider, ok := s.providerByID(ctx, providerID)
+		if ok {
+			providers = append(providers, provider)
+		}
+	}
+	return providers, nil
+}
+
 // ListFences returns all fences known to the hub.
 func (s *Service) ListFences(ctx context.Context) ([]gen.Fence, error) {
 	if cache := s.metadataCache(); cache != nil {
@@ -753,6 +1020,47 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 		Timestamp: s.now().UTC(),
 	})
 	return nil
+}
+
+// ListFenceLocations returns active latest locations currently inside a fence.
+func (s *Service) ListFenceLocations(ctx context.Context, id openapi_types.UUID) ([]gen.Location, error) {
+	fence, err := s.GetFence(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	locations := s.processingState().ListLatestLocations()
+	filtered := make([]gen.Location, 0, len(locations))
+	for _, location := range locations {
+		if fenceContainsLocation(fence, location) {
+			filtered = append(filtered, location)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return locationTime(filtered[i]).After(locationTime(filtered[j]))
+	})
+	return filtered, nil
+}
+
+// ListFenceProviders returns providers with active latest locations inside a fence.
+func (s *Service) ListFenceProviders(ctx context.Context, id openapi_types.UUID) ([]gen.LocationProvider, error) {
+	locations, err := s.ListFenceLocations(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	providers := make([]gen.LocationProvider, 0, len(locations))
+	for _, location := range locations {
+		if _, ok := seen[location.ProviderId]; ok {
+			continue
+		}
+		provider, ok := s.providerByID(ctx, location.ProviderId)
+		if !ok {
+			continue
+		}
+		seen[location.ProviderId] = struct{}{}
+		providers = append(providers, provider)
+	}
+	return providers, nil
 }
 
 // ProcessLocations validates, stores, and republishes provider location
@@ -2652,6 +2960,79 @@ func latestLocationKey(providerID, source string) string {
 
 func latestTrackableLocationKey(trackableID string) string {
 	return fmt.Sprintf("hub:trackable:%s:location", trackableID)
+}
+
+func latestLocationForProvider(locations []gen.Location, providerID string) (gen.Location, bool) {
+	var latest gen.Location
+	found := false
+	for _, location := range locations {
+		if location.ProviderId != providerID {
+			continue
+		}
+		if !found || locationTime(location).After(locationTime(latest)) {
+			latest = location
+			found = true
+		}
+	}
+	return latest, found
+}
+
+func locationAssociatedWithTrackable(location gen.Location, trackableID string) bool {
+	if location.Trackables == nil {
+		return false
+	}
+	for _, id := range *location.Trackables {
+		if id == trackableID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) deleteProviderState(ctx context.Context, providerID string) bool {
+	removed := false
+	for _, location := range s.processingState().ListLatestLocations() {
+		if location.ProviderId != providerID {
+			continue
+		}
+		removed = true
+		s.processingState().DeleteLatestLocation(latestLocationKey(location.ProviderId, location.Source))
+		for _, trackableID := range stringSliceValue(location.Trackables) {
+			s.processingState().DeleteTrackableLocation(latestTrackableLocationKey(trackableID))
+			s.processingState().DeleteMotion(trackableID)
+			for _, fenceID := range s.processingState().ListInsideFences(trackableID) {
+				s.processingState().ClearInsideFence(trackableID, fenceID)
+			}
+		}
+	}
+	return removed
+}
+
+func (s *Service) fencesForLocation(ctx context.Context, location gen.Location) ([]gen.Fence, error) {
+	fences, err := s.fenceCandidatesForLocation(ctx, location)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gen.Fence, 0, len(fences))
+	for _, fence := range fences {
+		if !fenceContainsLocation(fence, location) {
+			continue
+		}
+		out = append(out, fence)
+	}
+	return out, nil
+}
+
+func fenceContainsLocation(fence gen.Fence, location gen.Location) bool {
+	if !fenceMatchesFloor(fence, location) {
+		return false
+	}
+	point, err := point2D(location.Position)
+	if err != nil {
+		return false
+	}
+	inside, err := fenceContainsPoint(fence, point)
+	return err == nil && inside
 }
 
 func proximityResolutionStateKey(providerType, providerID string) string {
