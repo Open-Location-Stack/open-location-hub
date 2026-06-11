@@ -160,6 +160,8 @@ func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
 		{name: "get fence", method: http.MethodGet, path: "/v2/fences/" + fenceID.String(), wantStatus: http.StatusOK, wantContains: fenceID.String()},
 		{name: "delete fence", method: http.MethodDelete, path: "/v2/fences/" + fenceID.String(), wantStatus: http.StatusNoContent},
 		{name: "rpc available auth error", method: http.MethodGet, path: "/v2/rpc/available", wantStatus: http.StatusForbidden, wantContains: `"rpc discover denied"`},
+		{name: "unknown path", method: http.MethodGet, path: "/v2/does-not-exist", wantStatus: http.StatusNotFound, wantContains: `"path /v2/does-not-exist does not exist"`},
+		{name: "invalid path parameter", method: http.MethodGet, path: "/v2/zones/not-a-uuid", wantStatus: http.StatusBadRequest, wantContains: `"path parameter \"zoneId\" has invalid value \"not-a-uuid\"`},
 	}
 
 	for _, tc := range tests {
@@ -394,11 +396,16 @@ func TestReadRawBodyAcceptsArbitraryJSON(t *testing.T) {
 
 func newTestServer(svc Service, rpcBridge RPCBridge) http.Handler {
 	router := chi.NewRouter()
-	return gen.HandlerFromMux(New(Dependencies{
+	router.NotFound(WriteNotFound)
+	router.MethodNotAllowed(WriteMethodNotAllowed)
+	return gen.HandlerWithOptions(New(Dependencies{
 		Service:               svc,
 		RPC:                   rpcBridge,
 		RequestBodyLimitBytes: testRequestBodyLimitBytes,
-	}), router)
+	}), gen.ChiServerOptions{
+		BaseRouter:       router,
+		ErrorHandlerFunc: WriteRequestError,
+	})
 }
 
 func jsonEqual(a, b any) bool {

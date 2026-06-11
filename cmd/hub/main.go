@@ -300,6 +300,8 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 
 	r := chi.NewRouter()
+	r.NotFound(handlers.WriteNotFound)
+	r.MethodNotAllowed(handlers.WriteMethodNotAllowed)
 	r.Use(observability.RequestLogger(logger))
 	r.Use(auth.Middleware(authenticator, cfg.Auth, registry, r))
 
@@ -323,7 +325,10 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		RPC:                   rpcBridge,
 		RequestBodyLimitBytes: cfg.HTTPRequestBodyLimitBytes,
 	})
-	gen.HandlerFromMux(h, r)
+	gen.HandlerWithOptions(h, gen.ChiServerOptions{
+		BaseRouter:       r,
+		ErrorHandlerFunc: handlers.WriteRequestError,
+	})
 	wsHub := ws.New(
 		logger,
 		service,

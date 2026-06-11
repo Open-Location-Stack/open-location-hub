@@ -208,6 +208,9 @@ type ErrorResponse struct {
 	// Code HTTP status code associated with the error.
 	Code int `json:"code"`
 
+	// Details Actionable validation, routing, or authorization details that explain how to correct the request.
+	Details *[]string `json:"details,omitempty"`
+
 	// Message Human-readable error message.
 	Message *string `json:"message,omitempty"`
 

@@ -261,13 +261,14 @@ func validateRule(pattern string, perms map[Permission]struct{}) error {
 func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 	requiredAny, requiredOwn, err := permissionsForMethod(req.Method)
 	if err != nil {
-		return forbidden(err.Error())
+		return forbidden("request method is not authorized", err.Error())
 	}
 	if principal == nil {
 		return unauthorized("missing authenticated principal")
 	}
 
 	matched := false
+	var matchedDetails []string
 	for _, role := range principal.Roles {
 		policy := r.roles[role]
 		rule, params, ok := bestMatchingRule(policy.Routes, req.URL.Path)
@@ -281,11 +282,15 @@ func (r *Registry) Authorize(req *http.Request, principal *Principal) error {
 		if _, ok := rule.Permissions[requiredOwn]; ok && ownsAll(principal, params) {
 			return nil
 		}
+		matchedDetails = append(matchedDetails, authorizationFailureDetails(rule, params, principal, requiredAny, requiredOwn)...)
 	}
 	if !matched {
-		return forbidden("token does not grant access to this endpoint")
+		return forbidden("token does not grant access to this endpoint",
+			fmt.Sprintf("no authorization rule matched %s %s for the token roles", req.Method, req.URL.Path),
+			fmt.Sprintf("the request requires %s or %s on a matching route", requiredAny, requiredOwn),
+		)
 	}
-	return forbidden("token does not grant access to this endpoint")
+	return forbidden("token does not satisfy the authorization rule for this endpoint", matchedDetails...)
 }
 
 // AuthorizeRPCDiscover checks whether the principal may list reachable RPC methods.
@@ -298,7 +303,7 @@ func (r *Registry) AuthorizeRPCDiscover(principal *Principal) error {
 			return nil
 		}
 	}
-	return forbidden("token does not grant access to rpc method discovery")
+	return forbidden("token does not grant access to rpc method discovery", "the token roles must grant rpc.discover=true")
 }
 
 // AuthorizeRPCInvoke checks whether the principal may invoke the supplied RPC method.
@@ -311,7 +316,7 @@ func (r *Registry) AuthorizeRPCInvoke(principal *Principal, method string) error
 			return nil
 		}
 	}
-	return forbidden("token does not grant access to rpc method invocation")
+	return forbidden("token does not grant access to rpc method invocation", fmt.Sprintf("no rpc.invoke rule matched method %q", method))
 }
 
 // AuthorizeWebSocketSubscribe checks whether the principal may subscribe to
@@ -325,7 +330,7 @@ func (r *Registry) AuthorizeWebSocketSubscribe(principal *Principal, topic strin
 			return nil
 		}
 	}
-	return forbidden("token does not grant access to websocket topic subscription")
+	return forbidden("token does not grant access to websocket topic subscription", fmt.Sprintf("no websocket.subscribe rule matched topic %q", topic))
 }
 
 // AuthorizeWebSocketPublish checks whether the principal may publish to the
@@ -339,7 +344,54 @@ func (r *Registry) AuthorizeWebSocketPublish(principal *Principal, topic string)
 			return nil
 		}
 	}
-	return forbidden("token does not grant access to websocket topic publish")
+	return forbidden("token does not grant access to websocket topic publish", fmt.Sprintf("no websocket.publish rule matched topic %q", topic))
+}
+
+func authorizationFailureDetails(rule Rule, params map[string]string, principal *Principal, requiredAny, requiredOwn Permission) []string {
+	details := []string{
+		fmt.Sprintf("matched route pattern %q", rule.Pattern),
+		fmt.Sprintf("request requires %s, or %s with matching ownership claims", requiredAny, requiredOwn),
+		fmt.Sprintf("matched rule grants: %s", formatPermissions(rule.Permissions)),
+	}
+	if _, ok := rule.Permissions[requiredOwn]; ok {
+		details = append(details, ownershipFailureDetails(params, principal)...)
+	}
+	return details
+}
+
+func formatPermissions(perms map[Permission]struct{}) string {
+	if len(perms) == 0 {
+		return "<none>"
+	}
+	items := make([]string, 0, len(perms))
+	for perm := range perms {
+		items = append(items, string(perm))
+	}
+	sort.Strings(items)
+	return strings.Join(items, ", ")
+}
+
+func ownershipFailureDetails(params map[string]string, principal *Principal) []string {
+	if len(params) == 0 {
+		return []string{"ownership could not be evaluated because the route has no path parameters"}
+	}
+	details := make([]string, 0, len(params))
+	for name, value := range params {
+		key := ownedResourceKey(name)
+		values, ok := principal.OwnedResources[key]
+		switch {
+		case !ok:
+			details = append(details, fmt.Sprintf("ownership claim %q is missing for path parameter %q", key, name))
+		case values == nil:
+			details = append(details, fmt.Sprintf("ownership claim %q is empty for path parameter %q", key, name))
+		default:
+			if _, ok := values[value]; !ok {
+				details = append(details, fmt.Sprintf("ownership claim %q does not include requested %s value %q", key, name, value))
+			}
+		}
+	}
+	sort.Strings(details)
+	return details
 }
 
 func permissionsForMethod(method string) (Permission, Permission, error) {
