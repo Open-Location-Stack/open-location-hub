@@ -11,6 +11,7 @@ type authError struct {
 	status    int
 	typ       string
 	message   string
+	details   []string
 	challenge string
 }
 
@@ -20,6 +21,7 @@ func (e *authError) Type() string  { return e.typ }
 func (e *authError) Message() string {
 	return e.message
 }
+func (e *authError) Details() []string { return e.details }
 
 func unauthorized(message string) error {
 	return &authError{
@@ -30,11 +32,12 @@ func unauthorized(message string) error {
 	}
 }
 
-func forbidden(message string) error {
+func forbidden(message string, details ...string) error {
 	return &authError{
 		status:  http.StatusForbidden,
 		typ:     "authorization_failed",
 		message: message,
+		details: details,
 	}
 }
 
@@ -53,9 +56,13 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(authErr.status)
 	msg := authErr.message
-	_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
+	body := gen.ErrorResponse{
 		Type:    authErr.typ,
 		Code:    authErr.status,
 		Message: &msg,
-	})
+	}
+	if len(authErr.details) > 0 {
+		body.Details = &authErr.details
+	}
+	_ = json.NewEncoder(w).Encode(body)
 }

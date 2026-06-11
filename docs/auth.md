@@ -153,9 +153,22 @@ For `*_OWN` permissions, the request path parameter must be present in the match
 
 ## Error Handling
 
+- REST errors use the standard JSON envelope:
+
+```json
+{
+  "type": "bad_request",
+  "code": 400,
+  "message": "invalid request body",
+  "details": ["JSON syntax error at byte offset 18: invalid character '}' looking for beginning of object key string"]
+}
+```
+
 - `401 Unauthorized`: missing bearer header, malformed token, invalid signature, bad issuer, bad audience, expired token, or other authentication failure
-- `403 Forbidden`: authenticated token lacks a matching permission or ownership claim
-- `403 Forbidden` on RPC also covers missing method-level discovery or invocation permission
+- `400 Bad Request`: invalid JSON, multiple JSON documents, oversized request bodies, invalid path parameters, or service validation failures; the `details` array identifies the field, parameter, byte offset, limit, or validation rule where possible
+- `403 Forbidden`: authenticated token lacks a matching permission or ownership claim; REST responses include the required permission pair, the matched route rule when one exists, and ownership claim details when `_OWN` permissions are involved
+- `403 Forbidden` on RPC and WebSocket policy checks also names the missing discovery, invocation, subscribe, or publish rule
+- `404 Not Found`: unknown REST paths name the requested path; missing resources return the resource-specific not-found message
 - WebSocket auth failures are returned as OMLOX wrapper `error` events with code `10004`
 
 Authentication failures return a `WWW-Authenticate: Bearer` header and the API error body.

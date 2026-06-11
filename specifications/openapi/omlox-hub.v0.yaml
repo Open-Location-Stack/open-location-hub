@@ -1240,6 +1240,11 @@ components:
         message:
           type: string
           description: Human-readable error message.
+        details:
+          type: array
+          description: Actionable validation, routing, or authorization details that explain how to correct the request.
+          items:
+            type: string
 
     ResourceSummary:
       type: object

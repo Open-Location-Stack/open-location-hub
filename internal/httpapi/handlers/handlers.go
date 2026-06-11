@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-location-hub/internal/hub"
 	"github.com/formation-res/open-location-hub/internal/observability"
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -618,7 +621,7 @@ func (h *Handler) PutRPC(w http.ResponseWriter, r *http.Request) {
 
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst any) error {
 	if err := decodeSingleJSONDocument(w, r, limit, dst); err != nil {
-		return &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
+		return badRequestError("invalid request body", describeBodyDecodeError(err, limit))
 	}
 	return nil
 }
@@ -626,7 +629,7 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst any
 func readRawBody(w http.ResponseWriter, r *http.Request, limit int64) (json.RawMessage, error) {
 	var raw json.RawMessage
 	if err := decodeSingleJSONDocument(w, r, limit, &raw); err != nil {
-		return nil, &hub.HTTPError{Status: 400, Type: "bad_request", Message: "invalid request body"}
+		return nil, badRequestError("invalid request body", describeBodyDecodeError(err, limit))
 	}
 	return raw, nil
 }
@@ -666,13 +669,7 @@ func writeJSONOrError(w http.ResponseWriter, payload any, err error, successStat
 	if err != nil {
 		var httpErr *hub.HTTPError
 		if errors.As(err, &httpErr) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(httpErr.Status)
-			_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
-				Type:    httpErr.Type,
-				Code:    httpErr.Status,
-				Message: &httpErr.Message,
-			})
+			writeErrorResponse(w, httpErr.Status, httpErr.Type, httpErr.Message, httpErr.Details)
 			return
 		}
 		var authErr interface {
@@ -681,24 +678,18 @@ func writeJSONOrError(w http.ResponseWriter, payload any, err error, successStat
 			Message() string
 		}
 		if errors.As(err, &authErr) {
-			message := authErr.Message()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(authErr.Status())
-			_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
-				Type:    authErr.Type(),
-				Code:    authErr.Status(),
-				Message: &message,
-			})
+			var detailed interface {
+				Details() []string
+			}
+			var details []string
+			if errors.As(err, &detailed) {
+				details = detailed.Details()
+			}
+			writeErrorResponse(w, authErr.Status(), authErr.Type(), authErr.Message(), details)
 			return
 		}
 		message := err.Error()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(gen.ErrorResponse{
-			Type:    "internal_error",
-			Code:    http.StatusInternalServerError,
-			Message: &message,
-		})
+		writeErrorResponse(w, http.StatusInternalServerError, "internal_error", message, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -714,6 +705,83 @@ func writeStubNotImplemented(w http.ResponseWriter, message string) {
 		Type:    "not_implemented",
 		Message: message,
 	}, 0)
+}
+
+// WriteRequestError renders OpenAPI path and parameter validation failures as
+// the standard JSON error envelope.
+func WriteRequestError(w http.ResponseWriter, r *http.Request, err error) {
+	detail := err.Error()
+	var invalidParam *gen.InvalidParamFormatError
+	if errors.As(err, &invalidParam) {
+		detail = fmt.Sprintf("path parameter %q has invalid value %q: expected %s", invalidParam.ParamName, chiURLParam(r, invalidParam.ParamName), invalidParam.Err.Error())
+	}
+	writeErrorResponse(w, http.StatusBadRequest, "bad_request", "invalid request parameters", []string{detail})
+}
+
+// WriteNotFound renders unmatched routes as a JSON 404 that identifies the
+// requested method and path.
+func WriteNotFound(w http.ResponseWriter, r *http.Request) {
+	message := fmt.Sprintf("path %s does not exist", r.URL.Path)
+	details := []string{fmt.Sprintf("%s %s did not match any Open Location Hub REST route", r.Method, r.URL.Path)}
+	writeErrorResponse(w, http.StatusNotFound, "not_found", message, details)
+}
+
+// WriteMethodNotAllowed renders known paths with unsupported methods as JSON.
+func WriteMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	message := fmt.Sprintf("method %s is not allowed for path %s", r.Method, r.URL.Path)
+	details := []string{"use one of the HTTP methods documented for this Open Location Hub REST path"}
+	writeErrorResponse(w, http.StatusMethodNotAllowed, "method_not_allowed", message, details)
+}
+
+func badRequestError(message string, details []string) error {
+	return &hub.HTTPError{Status: http.StatusBadRequest, Type: "bad_request", Message: message, Details: details}
+}
+
+func describeBodyDecodeError(err error, limit int64) []string {
+	switch {
+	case errors.Is(err, io.EOF):
+		return []string{"request body is empty; send a single JSON document"}
+	case strings.Contains(err.Error(), "http: request body too large"):
+		return []string{fmt.Sprintf("request body exceeds the configured limit of %d bytes", limit)}
+	}
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return []string{fmt.Sprintf("JSON syntax error at byte offset %d: %s", syntaxErr.Offset, syntaxErr.Error())}
+	}
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		field := typeErr.Field
+		if field == "" {
+			field = typeErr.Value
+		}
+		return []string{fmt.Sprintf("JSON field %q has value type %q but must be %s", field, typeErr.Value, typeErr.Type.String())}
+	}
+	if err.Error() == "unexpected trailing JSON content" {
+		return []string{"request body must contain exactly one JSON document; remove trailing content after the first document"}
+	}
+	return []string{err.Error()}
+}
+
+func writeErrorResponse(w http.ResponseWriter, status int, typ, message string, details []string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	body := gen.ErrorResponse{
+		Type:    typ,
+		Code:    status,
+		Message: &message,
+	}
+	if len(details) > 0 {
+		body.Details = &details
+	}
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func chiURLParam(r *http.Request, name string) string {
+	value := chi.URLParam(r, name)
+	if value == "" {
+		return "<empty>"
+	}
+	return value
 }
 
 func (h *Handler) extendedService() (extendedService, bool) {

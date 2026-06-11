@@ -82,6 +82,7 @@ type HTTPError struct {
 	Status  int
 	Type    string
 	Message string
+	Details []string
 }
 
 func (e *HTTPError) Error() string {
