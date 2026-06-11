@@ -1483,6 +1483,11 @@ func (s *Service) processDerivedLocation(ctx context.Context, location gen.Locat
 	if err := s.publishFenceEvents(ctx, location); err != nil {
 		return err
 	}
+	if emit && s.cfg.KalmanFilterEnabled {
+		if _, err := s.publishTrackableMotionsForLocation(ctx, location, view.NativeScope()); err != nil {
+			return err
+		}
+	}
 	switch view.NativeScope() {
 	case ScopeLocal:
 		wgs84Location, ok, err := view.WGS84(ctx)

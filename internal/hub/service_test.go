@@ -1482,6 +1482,46 @@ func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
 	}
 }
 
+func TestProcessDerivedLocationPublishesNativeMotionWhenKalmanEnabled(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.5412, 47.3745})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:            bus,
+		cfg:            Config{KalmanFilterEnabled: true},
+		metadata:       &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, nil, nil, nil)},
+		crsTransformer: transform.NewCRSTransformer(),
+		transformCache: transform.NewCache(),
+		logger:         zapTestLogger(t),
+	}
+
+	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
+		t.Fatalf("processDerivedLocation failed: %v", err)
+	}
+
+	events := collectEvents(ch, 3)
+	var nativeMotionSeen bool
+	for _, event := range events {
+		if event.Kind == EventTrackableMotion && event.Scope == ScopeEPSG4326 {
+			motion := decodeEventMotion(t, event)
+			if motion.Location.Crs != nil && *motion.Location.Crs == "EPSG:4326" {
+				nativeMotionSeen = true
+			}
+		}
+	}
+	if !nativeMotionSeen {
+		t.Fatalf("expected Kalman-derived native CRS trackable motion, got %+v", events)
+	}
+}
+
 func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
 	t.Parallel()
 
