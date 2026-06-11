@@ -1411,10 +1411,12 @@ func (s *Service) processNativeLocation(ctx context.Context, location gen.Locati
 		span.End()
 		return err
 	}
-	if _, err := s.publishNativeTrackableMotions(stageCtx, location); err != nil {
-		span.RecordError(err)
-		span.End()
-		return err
+	if !s.cfg.KalmanFilterEnabled {
+		if _, err := s.publishNativeTrackableMotions(stageCtx, location); err != nil {
+			span.RecordError(err)
+			span.End()
+			return err
+		}
 	}
 	if s.derivedQueue != nil {
 		s.derivedQueue.Submit(derivedLocationWork{Context: stageCtx, Location: location, EnqueuedAt: time.Now()})

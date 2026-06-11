@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
@@ -119,14 +120,16 @@ func (s *kalmanDecisionStage) normalizeTrackable(location gen.Location, trackabl
 		decisionAt = now
 	}
 
-	state, ok := s.state.GetKalmanTrackState(trackableID)
+	crs := locationCRS(location)
+	stateKey := kalmanTrackStateKey(trackableID, crs)
+	state, ok := s.state.GetKalmanTrackState(stateKey)
 	if !ok {
 		state = kalmanTrackState{}
 	}
-	if state.CRS != "" && state.CRS != locationCRS(location) {
+	if state.CRS != "" && state.CRS != crs {
 		state = kalmanTrackState{}
 	}
-	state.CRS = locationCRS(location)
+	state.CRS = crs
 	if state.LastDecision != nil && !state.LastDecision.At.IsZero() && decisionAt.Sub(state.LastDecision.At) > s.maxAge {
 		state = kalmanTrackState{CRS: state.CRS}
 	}
@@ -187,8 +190,12 @@ func (s *kalmanDecisionStage) normalizeTrackable(location gen.Location, trackabl
 	if ttl <= 0 {
 		ttl = s.maxAge * kalmanDecisionTTLFactor
 	}
-	s.state.SetKalmanTrackState(trackableID, state, ttl)
+	s.state.SetKalmanTrackState(stateKey, state, ttl)
 	return out, emit, nil
+}
+
+func kalmanTrackStateKey(trackableID, crs string) string {
+	return strings.TrimSpace(trackableID) + "\x00" + strings.TrimSpace(crs)
 }
 
 func trimKalmanSamples(samples []kalmanObservation, now time.Time, maxAge time.Duration, maxPoints int) []kalmanObservation {

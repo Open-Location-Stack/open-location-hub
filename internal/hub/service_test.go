@@ -1629,6 +1629,53 @@ func TestProcessNativeLocationPublishesNativeAndQueuesDecisionWork(t *testing.T)
 	}
 }
 
+func TestProcessNativeLocationSkipsNativeTrackableMotionsWhenKalmanEnabled(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	ch, unsubscribe := bus.Subscribe(8)
+	defer unsubscribe()
+	queue := &capturingDerivedSubmitter{}
+	crs := "EPSG:4326"
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	trackables := []string{"trackable-a"}
+	location.Trackables = &trackables
+
+	service := &Service{
+		bus:          bus,
+		derivedQueue: queue,
+		cfg: Config{
+			DerivedLocationBuffer:      16,
+			LocationTTL:                time.Minute,
+			DedupTTL:                   time.Minute,
+			CollisionStateTTL:          time.Minute,
+			CollisionCollidingDebounce: time.Second,
+			MetadataReconcileInterval:  time.Second,
+			KalmanFilterEnabled:        true,
+		},
+		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
+		state:    NewProcessingState(time.Now),
+		logger:   zapTestLogger(t),
+	}
+
+	if err := service.processNativeLocation(context.Background(), location); err != nil {
+		t.Fatalf("processNativeLocation failed: %v", err)
+	}
+	events := collectEvents(ch, 2)
+	if len(events) != 1 {
+		t.Fatalf("expected only the native location event, got %d events", len(events))
+	}
+	if events[0].Kind != EventLocation {
+		t.Fatalf("expected native location event, got %s", events[0].Kind)
+	}
+	if got := decodeEventLocation(t, events[0]); got.Source != location.Source {
+		t.Fatalf("unexpected native location source: %s", got.Source)
+	}
+	if len(queue.works) != 1 {
+		t.Fatalf("expected one queued decision work item, got %d", len(queue.works))
+	}
+}
+
 func testPolicy() proximityResolutionPolicy {
 	return proximityResolutionPolicy{
 		ExitGraceDuration: 15 * time.Second,

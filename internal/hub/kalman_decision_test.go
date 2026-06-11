@@ -205,3 +205,53 @@ func TestKalmanDecisionStageAppliesEmitFrequencyOnlyToPublication(t *testing.T) 
 		t.Fatal("expected normalized state to continue updating despite throttling")
 	}
 }
+
+func TestKalmanDecisionStageKeepsThrottleStateAcrossAlternatingCRS(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)
+	stage := newKalmanDecisionStage(NewProcessingState(func() time.Time { return now }), Config{
+		LocationTTL:              time.Minute,
+		KalmanLocationMaxPoints:  8,
+		KalmanLocationMaxAge:     10 * time.Second,
+		KalmanEmitMaxFrequencyHz: 1,
+	}, func() time.Time { return now })
+	trackables := []string{"trackable-a"}
+	localCRS := "local"
+	wgs84CRS := "EPSG:4326"
+
+	firstLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{0, 0})
+	firstLocal.Trackables = &trackables
+	firstLocal.TimestampGenerated = &now
+	localResults, err := stage.Process(context.Background(), firstLocal)
+	if err != nil {
+		t.Fatalf("first local process failed: %v", err)
+	}
+	if !localResults[0].Emit {
+		t.Fatal("expected first local sample to emit")
+	}
+
+	now = now.Add(100 * time.Millisecond)
+	firstWGS84 := testLocationWithCoordinates(t, &wgs84CRS, "zone-a", [2]float32{8.5, 47.3})
+	firstWGS84.Trackables = &trackables
+	firstWGS84.TimestampGenerated = &now
+	wgsResults, err := stage.Process(context.Background(), firstWGS84)
+	if err != nil {
+		t.Fatalf("first wgs84 process failed: %v", err)
+	}
+	if !wgsResults[0].Emit {
+		t.Fatal("expected first wgs84 sample to emit")
+	}
+
+	now = now.Add(100 * time.Millisecond)
+	secondLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 0})
+	secondLocal.Trackables = &trackables
+	secondLocal.TimestampGenerated = &now
+	localResults, err = stage.Process(context.Background(), secondLocal)
+	if err != nil {
+		t.Fatalf("second local process failed: %v", err)
+	}
+	if localResults[0].Emit {
+		t.Fatal("expected second local sample to remain publication-throttled after wgs84 input")
+	}
+}
