@@ -5,7 +5,7 @@ authentication, RPC behavior, and connector development.
 
 Start here if you want the local runtime:
 
-- [`docs/getting-started.md`](docs/getting-started.md)
+- [`docs/getting-started.md`](getting-started.md)
 
 If you want the published container instead of a local build, the current Docker
 Hub repository is
@@ -27,17 +27,17 @@ brew install jillesvangurp/tap/open-location-hub-cli
 
 Core hub docs:
 
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/configuration.md`](docs/configuration.md)
-- [`docs/auth.md`](docs/auth.md)
-- [`docs/rpc.md`](docs/rpc.md)
-- [`deploy/hetzner/README.md`](deploy/hetzner/README.md)
+- [`docs/architecture.md`](architecture.md)
+- [`docs/configuration.md`](configuration.md)
+- [`docs/auth.md`](auth.md)
+- [`docs/rpc.md`](rpc.md)
+- [`deploy/hetzner/README.md`](../deploy/hetzner/README.md)
 
 Connector docs:
 
-- [`docs/connectors.md`](docs/connectors.md)
-- [`docs/connectors-websocket.md`](docs/connectors-websocket.md)
-- [`docs/connectors-mqtt.md`](docs/connectors-mqtt.md)
+- [`docs/connectors.md`](connectors.md)
+- [`docs/connectors-websocket.md`](connectors-websocket.md)
+- [`docs/connectors-mqtt.md`](connectors-mqtt.md)
 
 Connector demonstrators live outside the hub runtime under
 [`connectors/`](../connectors).

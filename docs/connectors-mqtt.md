@@ -5,7 +5,7 @@ adapters naturally publish broker messages, or when broker-based routing fits
 better than a long-lived WebSocket client connection.
 
 This repository ships a concrete MQTT connector example in
-[`connectors/gtfs/README.md`](connectors/gtfs/README.md).
+[`connectors/gtfs/README.md`](../connectors/gtfs/README.md).
 The MQTT connector path is documented here against the hub's implemented OMLOX
 MQTT surface. Transport details live in
 [`specifications/omlox/mqtt.md`](specifications/omlox/mqtt.md).
@@ -21,7 +21,7 @@ Choose MQTT when:
 
 For user-facing applications and general connector examples, WebSocket is often
 the simpler starting point. See
-[docs/connectors-websocket.md](docs/connectors-websocket.md).
+[docs/connectors-websocket.md](connectors-websocket.md).
 
 ## Required Inputs
 
@@ -33,7 +33,7 @@ An MQTT-based connector usually needs:
 - `HUB_TOKEN` only if the connector also uses REST against an auth-enabled hub
 
 The hub's runtime broker URL is documented in
-[`docs/configuration.md`](docs/configuration.md).
+[`docs/configuration.md`](configuration.md).
 
 ## Minimal Runtime Flow
 
@@ -117,10 +117,10 @@ same as the bundled examples:
 
 These repository examples are the best templates for that structure:
 
-- [`connectors/gtfs/README.md`](connectors/gtfs/README.md):
+- [`connectors/gtfs/README.md`](../connectors/gtfs/README.md):
   includes both a WebSocket connector and an MQTT connector that publish the
   same normalized GTFS-derived `Location` payloads
-- [`connectors/opensky/README.md`](connectors/opensky/README.md)
+- [`connectors/opensky/README.md`](../connectors/opensky/README.md)
 
 The GTFS project is now the direct MQTT example. The OpenSky project remains a
 useful example for shared project layout, env handling, and REST bootstrap.
@@ -134,6 +134,6 @@ local-hub/start_demo.sh
 ```
 
 That stack includes the hub, Postgres, Dex, and Mosquitto. See
-[`local-hub/README.md`](local-hub/README.md)
+[`local-hub/README.md`](../local-hub/README.md)
 for the local runtime details and the token helper if your connector also uses
 REST against an auth-enabled hub.

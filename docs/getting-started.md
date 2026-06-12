@@ -91,7 +91,7 @@ The CLI covers resource CRUD, ingest helpers, WebSocket streams, and RPC calls.
   best when you want the hub plus a prewired observability setup for traces, metrics, and logs
 
 The basic stack uses the repository root [`docker-compose.yml`](docker-compose.yml).
-The local demo stack is documented in [`local-hub/README.md`](local-hub/README.md).
+The local demo stack is documented in [`local-hub/README.md`](../local-hub/README.md).
 
 ## What This Setup Is For
 
@@ -111,8 +111,8 @@ This starter stack is not positioned as a production deployment recipe.
 
 ## Good Next Steps
 
-- [`connectors/gtfs/README.md`](connectors/gtfs/README.md) for GTFS transit vehicle ingest over WebSocket or MQTT
-- [`connectors/opensky/README.md`](connectors/opensky/README.md) for OpenSky aircraft ingest over WebSocket
-- [`connectors/replay/README.md`](connectors/replay/README.md) for replaying captured `location_updates` traffic
-- [`docs/index.md`](docs/index.md) for the full software documentation set
-- [`docs/connectors.md`](docs/connectors.md) for connector structure and transport guidance
+- [`connectors/gtfs/README.md`](../connectors/gtfs/README.md) for GTFS transit vehicle ingest over WebSocket or MQTT
+- [`connectors/opensky/README.md`](../connectors/opensky/README.md) for OpenSky aircraft ingest over WebSocket
+- [`connectors/replay/README.md`](../connectors/replay/README.md) for replaying captured `location_updates` traffic
+- [`docs/index.md`](index.md) for the full software documentation set
+- [`docs/connectors.md`](connectors.md) for connector structure and transport guidance
