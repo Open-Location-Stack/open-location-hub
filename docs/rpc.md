@@ -207,7 +207,7 @@ The hub logs:
 - whether the call was accepted or rejected
 - handler selection and timeout/failure paths
 
-Operators should treat those logs as the primary audit trail for RPC use.
+Those logs are the primary audit trail for RPC use.
 
 ## Repository behavior
 

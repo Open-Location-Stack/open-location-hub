@@ -10,8 +10,20 @@ Start here if you want the local runtime:
 If you want the published container instead of a local build, the current Docker
 Hub repository is
 [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
-As of 2026-06-10, the published release tag is `0.1.5`, and `latest` points to
-that same image.
+As of 2026-06-11, the published release tag is `0.1.8`, and `latest` points to
+the current release image.
+
+The companion command line client is
+[`Open-Location-Stack/open-location-hub-cli`](https://github.com/Open-Location-Stack/open-location-hub-cli).
+It installs as `olh` and covers local login, resource CRUD, ingest helpers,
+WebSocket streams, and RPC calls.
+
+Homebrew install:
+
+```bash
+brew tap jillesvangurp/tap
+brew install jillesvangurp/tap/open-location-hub-cli
+```
 
 Core hub docs:
 

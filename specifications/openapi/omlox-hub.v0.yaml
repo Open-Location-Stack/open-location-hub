@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Open Location Hub API
-  version: 0.1.6
+  version: 0.1.8
   description: |
     REST API documentation for Open Location Hub.
 
@@ -71,8 +71,8 @@ paths:
       summary: Create a zone
       description: |
         Creates a zone definition. The request may describe either a fully
-        configured zone or a partially configured zone that will be completed
-        later.
+        configured zone or an incomplete zone announcement with
+        `incomplete_configuration=true`.
       requestBody:
         required: true
         content:
@@ -1873,7 +1873,7 @@ components:
 
     Collision:
       type: object
-      description: Collision participant snapshot used by future collision-event modeling.
+      description: Collision participant snapshot used in emitted collision events.
       required: [id, object_type, position, geometry]
       properties:
         id:
@@ -1891,7 +1891,7 @@ components:
 
     CollisionEvent:
       type: object
-      description: Collision event model reserved for future collision processing support.
+      description: Collision event model emitted when collision processing is enabled.
       required: [id, collision_type, collisions]
       properties:
         id:

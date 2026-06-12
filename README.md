@@ -9,6 +9,7 @@ Key capabilities:
 - OMLOX WebSocket companion surface
 - OMLOX MQTT companion surface
 - OMLOX RPC control-plane support through the hub
+- companion `olh` CLI for REST, WebSocket, and RPC operations
 - JWT auth modes: `oidc`, `static`, and `hybrid`
 - RBAC and ownership-aware authorization
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
@@ -50,7 +51,7 @@ Notes:
 - `just bootstrap` installs the pinned Go code generators used by this repository
 - Docker builds install the required PROJ packages inside the image
 - Linux and Docker workflows are the validated CRS execution paths in this repository
-- direct `go test` and `go build` invocations should set `PKG_CONFIG="$PWD/tools/bin/pkg-config"` when `pkg-config` is not globally available
+- direct `go test` and `go build` invocations use `PKG_CONFIG="$PWD/tools/bin/pkg-config"` when `pkg-config` is not globally available
 - the repo-local `tools/bin/pkg-config` shim emits a one-time warning on macOS when it is used
 
 ## Key Commands
@@ -60,17 +61,53 @@ Notes:
 - `just test-int` runs integration tests with Docker
 - `just compose-logs` tails compose services
 
+## CLI
+
+The companion CLI lives in
+[`Open-Location-Stack/open-location-hub-cli`](https://github.com/Open-Location-Stack/open-location-hub-cli).
+It installs as `olh` and covers hub login, CRUD for zones, trackables,
+providers, and fences, location/proximity ingest, WebSocket streams, and RPC
+calls.
+
+Install it with Homebrew:
+
+```bash
+brew tap jillesvangurp/tap
+brew install jillesvangurp/tap/open-location-hub-cli
+```
+
+With the local Dex fixture, `olh login` stores the hub and OAuth settings used
+by subsequent commands:
+
+```bash
+olh login \
+  --hub-endpoint http://localhost:8080 \
+  --token-endpoint http://localhost:5556/dex/token \
+  --client-id open-location-cli \
+  --client-secret cli-secret \
+  --oauth-username admin@example.com \
+  --oauth-password testpass123
+```
+
+Common checks:
+
+```bash
+olh zones list
+olh locations stream
+olh rpc available
+```
+
 ## Docker Images
 
 Open Location Hub images are available on Docker Hub as [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
 
-As of 2026-06-10, the published tags are `0.1.5` and `latest`, and `latest`
-points to the same image as `0.1.5`.
+As of 2026-06-11, the published tags include `0.1.8` and `latest`, and
+`latest` points to the current release image.
 
 Pull the current release explicitly with:
 
 ```bash
-docker pull tryformation/openlocationhub:0.1.5
+docker pull tryformation/openlocationhub:0.1.8
 ```
 
 Or follow the moving release tag with:
@@ -113,6 +150,9 @@ Elasticsearch, see [`deploy/hetzner/README.md`](deploy/hetzner/README.md).
 - [scripts/log_fence_events.py](scripts/log_fence_events.py)
 - [scripts/log_collision_events.py](scripts/log_collision_events.py)
 - [scripts/check_fence_alignment.py](scripts/check_fence_alignment.py)
+
+## Companion Projects
+- [Open Location Hub CLI](https://github.com/Open-Location-Stack/open-location-hub-cli)
 
 ## Engineering Docs
 - [engineering/index.md](engineering/index.md)

@@ -359,9 +359,9 @@ Example:
 }
 ```
 
-## Implementation checklist
+## Repository WebSocket Surface
 
-The hub should implement all of the following:
+The repository WebSocket surface covers:
 - WebSocket upgrade at `/v2/ws/socket`
 - wrapper event handling for all six event types
 - unique runtime `subscription_id` generation
@@ -412,7 +412,7 @@ Sources:
   - `collision_id_1` / `collision_id_2` as aliases around the OMLOX collision object filters
 - The reference implementation documents a stronger ownership model for authorization, where topic access may depend on resource ownership claims in the JWT.
 
-### Guidance for this repository
+### Repository boundary
 
 - Treat the OMLOX PDF as normative for required behavior.
 - Treat the product-specific additions above as optional extensions unless we explicitly adopt them.

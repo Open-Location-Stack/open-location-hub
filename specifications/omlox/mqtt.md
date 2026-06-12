@@ -10,7 +10,7 @@ Spec references:
 ## Status
 
 - MQTT is an optional OMLOX Hub extension.
-- If this hub supports MQTT, it should implement all MQTT behavior described here.
+- This repository implements the MQTT topic families and RPC bridge behavior described here.
 - RPC over MQTT is part of the optional extension surface.
 
 ## Design constraints from the PDF
@@ -131,7 +131,7 @@ Purpose:
 
 Relevant behavior:
 - fence events must be generated according to chapter 8.2
-- MQTT clients should treat these topics as read-only
+- MQTT clients treat these topics as read-only
 
 The hub must publish each generated fence event to all applicable topics below.
 
@@ -375,11 +375,10 @@ Unless the topic is explicitly JSON-RPC:
 For RPC topics:
 - payloads are JSON-RPC request/response objects with the OMLOX restrictions and reserved parameters described above
 
-## Implementation checklist
+## Repository MQTT Surface
 
-If this hub implements MQTT, it should implement:
+The repository MQTT surface covers:
 - topic hierarchy rooted at `/omlox/...`
-- MQTT v5 support for retained/expiring RPC announcements
 - location ingest and processed location publication
 - proximity ingest and derived location publication
 - fence event fan-out to all applicable topics
@@ -387,6 +386,9 @@ If this hub implements MQTT, it should implement:
 - collision event publication in WGS84
 - RPC method announcements, request handling topics, and response topics
 - support for OMLOX reserved RPC parameters and error codes
+
+Current limitation:
+- the hub publishes retained availability announcements for hub-owned RPC methods but does not enforce MQTT v5 message expiry because the current client layer does not expose that broker feature cleanly
 
 ## Reference implementation notes
 
@@ -418,7 +420,7 @@ Sources:
 - The public MQTT reference describes publication to `omlox/json/collision_events/epsg4326/{trackable_id}`.
 - Treat the PDF form as normative for this repository unless we intentionally add the product-specific variant as an extension.
 
-### Guidance for this repository
+### Repository boundary
 
-- Implement the OMLOX MQTT topic hierarchy first.
-- Keep product-specific MQTT additions separate and clearly labeled if we choose to support them later.
+- The OMLOX MQTT topic hierarchy is the implemented baseline.
+- Product-specific MQTT additions stay separate from the OMLOX topic families when they are adopted.

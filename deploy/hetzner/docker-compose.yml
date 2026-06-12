@@ -61,7 +61,7 @@ services:
         condition: service_healthy
 
   hub:
-    image: tryformation/openlocationhub:0.1.1
+    image: tryformation/openlocationhub:0.1.8
     restart: unless-stopped
     environment:
       HTTP_LISTEN_ADDR: ":8080"
@@ -88,7 +88,7 @@ services:
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-location-hub}
-      OTEL_SERVICE_VERSION: "0.1.1"
+      OTEL_SERVICE_VERSION: "0.1.8"
       OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-hetzner}
       COLLISIONS_ENABLED: ${COLLISIONS_ENABLED:-true}
       KALMAN_FILTER_ENABLED: ${KALMAN_FILTER_ENABLED:-true}

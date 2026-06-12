@@ -17,7 +17,7 @@ where:
 - edge or on-prem hubs keep a local in-memory metadata snapshot for low-latency
   location, geofence, and collision processing
 - downstream peers need a cheap signal that metadata changed and local caches or
-  reconciliation loops should react
+  reconciliation loops need refresh work
 
 The extension is intentionally small. It is a change notification stream, not a
 replacement for snapshot or CRUD APIs.
@@ -95,12 +95,12 @@ or a snapshot sync flow.
 
 For centrally controlled metadata:
 
-- the central hub should remain the write authority for shared metadata
-- edge hubs should treat `metadata_changes` as an invalidation or reconcile
+- the central hub remains the write authority for shared metadata
+- edge hubs treat `metadata_changes` as an invalidation or reconcile
   signal, not as an authoritative full-state payload
-- receivers should keep a local last-known snapshot so ingest and derived event
+- receivers keep a local last-known snapshot so ingest and derived event
   generation can continue during central-link outages
-- receivers should combine this change stream with periodic full reconciliation
+- receivers combine this change stream with periodic full reconciliation
   because a subscriber may miss notifications during disconnects or restarts
 
 Recommended receiver flow:

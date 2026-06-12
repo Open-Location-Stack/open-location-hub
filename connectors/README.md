@@ -7,11 +7,11 @@ If you are new to the repository and want to run the hub on your laptop first,
 start with [`local-hub/README.md`](local-hub/README.md)
 before coming back to these connector examples.
 
-Connector projects in this repository should:
+Connector projects in this repository:
 
 - stay environment-driven and runnable outside the hub process
 - document their upstream data sources and any source-specific limitations
-- prefer the hub's existing OMLOX interfaces over private integration paths
+- use the hub's existing OMLOX interfaces instead of private integration paths
 - keep bootstrap utilities and runtime connectors in the same project when they
   depend on the same upstream metadata
 - reuse the shared local runtime under [`local-hub/`](local-hub) when they need a local demo stack

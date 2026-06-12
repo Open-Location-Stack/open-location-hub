@@ -25,10 +25,10 @@ Useful next stops after the stack is up:
 
 ## Development Scope
 
-- This setup is intended for local development, demos, and laptop experimentation.
-- Dex is a good fit for that workflow, but the included Dex fixture should not be treated as a production identity setup.
+- This setup is for local development, demos, and laptop experimentation.
+- Dex provides repeatable local OIDC tokens for that workflow. The included Dex fixture is not a production identity setup.
 - SigNoz is included because it is a modern observability stack that is easy to script and automate on top of ClickHouse, but the hub does not require SigNoz specifically.
-- You should be able to point the hub at other OpenTelemetry-compatible collectors and observability stacks instead.
+- The hub exports standard OTLP signals and can use other OpenTelemetry-compatible collectors and observability stacks.
 
 ## Files
 

@@ -3,7 +3,7 @@
 This directory contains a production-oriented Docker Compose setup for running
 Open Location Hub on a Hetzner host with:
 
-- `tryformation/openlocationhub:0.1.1`
+- `tryformation/openlocationhub:0.1.8`
 - local PostgreSQL
 - local Mosquitto, which the hub runtime requires at startup
 - an OpenTelemetry Collector that forwards traces, metrics, and logs to an
@@ -53,7 +53,7 @@ The compose file already pins:
 - `AUTH_MODE=oidc`
 - `AUTH_ISSUER=https://api.tryformation.com`
 
-The hub will use OIDC discovery and JWKS from that issuer.
+The hub uses OIDC discovery and JWKS from that issuer.
 
 ## Elasticsearch Routing
 

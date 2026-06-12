@@ -21,7 +21,7 @@ This file records project-specific rules for handling gaps between the OMLOX PDF
 Put a rule in OpenAPI when:
 - it is a stable field type, enum, array shape, or simple required property
 - it tightens request validation without breaking generated models
-- it is part of the external REST contract clients should discover directly from the schema
+- it is part of the external REST contract clients discover directly from the schema
 
 Put a rule in companion documentation when:
 - it is protocol-specific to WebSocket or MQTT
@@ -38,7 +38,7 @@ Put a rule in runtime validation when:
 - Keep inferred REST endpoints explicitly labeled as inferred when the PDF implies behavior but does not enumerate verb/path pairs.
 - Preserve OMLOX `/v2` compatibility.
 - Keep non-REST protocol details in `specifications/omlox/`.
-- If runtime validation is required because of an OpenAPI/tooling gap, the handler or service layer should still reject invalid input with an OMLOX-aligned error response.
+- If runtime validation is required because of an OpenAPI/tooling gap, the handler or service layer rejects invalid input with an OMLOX-aligned error response.
 
 ## Initial gaps worth tracking
 
@@ -59,4 +59,4 @@ Put a rule in runtime validation when:
 
 - Keep request validation as close to the transport boundary as practical.
 - Keep stateful OMLOX processing rules in domain or service code, not in generated transport glue.
-- When a runtime-only rule is added, document it here if it is important for future spec work or code generation choices.
+- When a runtime-only rule is added, document it here if it affects spec maintenance or code generation choices.

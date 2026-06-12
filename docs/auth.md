@@ -55,7 +55,7 @@ Method mapping:
 
 ## Permissions File
 
-The permissions file is YAML. Top-level keys are values from the configured role claim. In production this would usually be a role or group claim. For the included Dex development fixture, the role claim is set to `email` because Dex's local password database produces deterministic user identity claims without extra role mapping. That is a development convenience, not a production recommendation.
+The permissions file is YAML. Top-level keys are values from the configured role claim. Production deployments normally use a role or group claim. The included Dex development fixture uses `email` because Dex's local password database produces deterministic user identity claims without extra role mapping. That is a development convenience, not a production recommendation.
 
 Example:
 
@@ -220,7 +220,7 @@ Keycloak and similar OIDC providers fit the same model if they expose:
 - a stable audience for the hub
 - a claim that can be mapped via `AUTH_ROLES_CLAIM`
 
-For production deployments, prefer a real role or group claim instead of the Dex development fixture's email-based mapping. The hub is intended to verify JWT access tokens from the production IdP, not development-specific token handling.
+For production deployments, use a role or group claim instead of the Dex development fixture's email-based mapping. The hub verifies JWT access tokens from the configured production IdP.
 
 ## RPC Security Guidance
 

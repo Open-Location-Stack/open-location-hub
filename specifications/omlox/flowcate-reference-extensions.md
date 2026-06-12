@@ -1,10 +1,10 @@
 # Reference Extensions
 
-This document records public reference APIs and protocol features that go beyond the OMLOX Hub PDF but may still be useful implementation ideas for this repository.
+This document records public reference APIs and protocol features that go beyond the OMLOX Hub PDF.
 
 These items are not normative OMLOX requirements. Treat them as candidate extensions or implementation patterns.
 
-## Additional API surfaces worth tracking
+## External API Surfaces
 
 ### Object change event feeds
 
@@ -15,7 +15,7 @@ A reference implementation exposes object change events over both WebSocket and 
 - `zone_changes`
 - `anchor_changes`
 
-Why this may be useful:
+Repository relevance:
 - cache invalidation for clients
 - reactive admin UIs
 - integration/event streaming without polling
@@ -24,7 +24,7 @@ Why this may be useful:
 
 A reference implementation adds an Anchor API and `anchor` entities associated with zones.
 
-Why this may be useful:
+Repository relevance:
 - better modeling of physical location infrastructure
 - improved georeferencing and benchmark-based transformations
 - richer admin and diagnostics workflows
@@ -35,7 +35,7 @@ A reference implementation adds helper endpoints such as:
 - `/zones/fromlocal`
 - `/fences/fromlocal`
 
-Why this may be useful:
+Repository relevance:
 - easier creation of georeferenced zones/fences from local coordinates
 - better operator tooling and setup workflows
 
@@ -43,7 +43,7 @@ Why this may be useful:
 
 A reference implementation exposes `/version` for API versions.
 
-Why this may be useful:
+Repository relevance:
 - health and compatibility checks
 - deployment diagnostics
 
@@ -51,7 +51,7 @@ Why this may be useful:
 
 A reference implementation documents a Mobile Zone Extension where a proximity zone can move based on updates from a provider or trackable, configured through zone properties.
 
-Why this may be useful:
+Repository relevance:
 - mobile RFID/iBeacon readers
 - forklifts, carts, handheld scanners, or moving gateways
 
@@ -59,7 +59,7 @@ Why this may be useful:
 
 A reference implementation documents a locating rule extension around trackables and provider selection.
 
-Why this may be useful:
+Repository relevance:
 - deterministic provider arbitration
 - user-configurable tracking behavior beyond the minimum OMLOX baseline
 
@@ -70,7 +70,7 @@ A reference implementation documents product-specific integration surfaces such 
 - ISO-24730 adapter support
 - Quuppa connector support
 
-Why this may be useful:
+Repository relevance:
 - easier ingestion from legacy or vendor-specific positioning systems
 - lower-friction adoption for real customer environments
 
@@ -78,7 +78,7 @@ Why this may be useful:
 
 A reference implementation documents MQTT support in the context of a Unified Namespace.
 
-Why this may be useful:
+Repository relevance:
 - plant-wide event distribution
 - integration with broader IIoT architectures
 
@@ -86,11 +86,11 @@ Why this may be useful:
 
 A reference implementation presents RPC as an API surface for interacting with devices and services beyond the minimal OMLOX examples.
 
-Why this may be useful:
-- future device control workflows
+Repository relevance:
+- device control workflows
 - firmware or device capability management
 
-## Suggested priority for this repository
+## Repository Triage
 
 Most immediately useful:
 - object change event feeds
@@ -98,7 +98,7 @@ Most immediately useful:
 - helper endpoints for local-to-global object creation
 - anchors
 
-Potentially useful later:
+Useful when a concrete integration needs them:
 - mobile zones
 - vendor adapters
 - Unified Namespace support

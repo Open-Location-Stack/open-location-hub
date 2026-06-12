@@ -37,13 +37,13 @@ local-hub/fetch_demo_token.sh
 If you do not want to build the hub first, use the published Docker Hub image:
 [`tryformation/openlocationhub`](https://hub.docker.com/r/tryformation/openlocationhub).
 
-As of 2026-06-10, the published tags are `0.1.5` and `latest`, and `latest`
-points to the same image as `0.1.5`.
+As of 2026-06-11, the published tags include `0.1.8` and `latest`, and
+`latest` points to the current release image.
 
 Pull the current release explicitly with:
 
 ```bash
-docker pull tryformation/openlocationhub:0.1.5
+docker pull tryformation/openlocationhub:0.1.8
 ```
 
 Or follow the moving release tag with:
@@ -55,6 +55,33 @@ docker pull tryformation/openlocationhub:latest
 Use the published image when you already have Postgres, Mosquitto, and your
 identity provider handled elsewhere. Use the local compose and demo stacks when
 you want the full reference setup from this repository.
+
+## Command Line Client
+
+The companion CLI lives in
+[`Open-Location-Stack/open-location-hub-cli`](https://github.com/Open-Location-Stack/open-location-hub-cli)
+and installs as `olh`.
+
+Install it with Homebrew:
+
+```bash
+brew tap jillesvangurp/tap
+brew install jillesvangurp/tap/open-location-hub-cli
+```
+
+For the local Dex fixture:
+
+```bash
+olh login \
+  --hub-endpoint http://localhost:8080 \
+  --token-endpoint http://localhost:5556/dex/token \
+  --client-id open-location-cli \
+  --client-secret cli-secret \
+  --oauth-username admin@example.com \
+  --oauth-password testpass123
+```
+
+The CLI covers resource CRUD, ingest helpers, WebSocket streams, and RPC calls.
 
 ## Which Stack To Use
 
@@ -80,7 +107,7 @@ This starter stack is not positioned as a production deployment recipe.
 - Dex is included because it is convenient for local OIDC and repeatable demo users, not because it is the recommended production IdP choice.
 - the local demo stack adds SigNoz, ClickHouse, and the OpenTelemetry collector around that core runtime
 - SigNoz is included because it is easy to bootstrap and script for modern local observability workflows, but the hub does not depend on SigNoz specifically.
-- Alternative OpenTelemetry-compatible collectors and observability stacks should work as well.
+- The hub exports standard OTLP signals, so it can use other OpenTelemetry-compatible collectors and observability stacks.
 
 ## Good Next Steps
 

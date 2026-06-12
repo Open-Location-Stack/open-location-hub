@@ -66,7 +66,7 @@ Stateful ingest behavior:
 - WebSocket liveness uses server ping frames every `WEBSOCKET_PING_INTERVAL` and considers the connection stale when no inbound message or pong arrives before `WEBSOCKET_READ_TIMEOUT`
 - internal event-bus subscribers such as MQTT and WebSocket consume behind `EVENT_BUS_SUBSCRIBER_BUFFER`
 - native location publication is queued behind `NATIVE_LOCATION_BUFFER` so ingest can decouple from transport fan-out
-- post-native decision work such as future filtering, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
+- post-native decision work such as Kalman normalization, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
 - when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `PPROF_ENABLED=true`, the auth-protected `/debug/pprof/*` handlers are registered on the main HTTP server for local profiling

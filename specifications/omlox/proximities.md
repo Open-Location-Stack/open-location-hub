@@ -29,8 +29,8 @@ Optional:
 
 - Hub MUST map proximity data to a zone and derive `Location` for normal processing.
 - Zone type validation MUST ensure proximity zone types (RFID/iBeacon).
-- The hub may apply stateful proximity resolution before emitting the derived `Location`.
-- Default hub behavior should:
+- The hub applies stateful proximity resolution before emitting the derived `Location`.
+- Default hub behavior:
   - enter the first confirmed proximity zone immediately
   - keep the current zone briefly during competing nearby-zone observations to reduce flapping
   - expire stale zone membership after a configurable grace interval

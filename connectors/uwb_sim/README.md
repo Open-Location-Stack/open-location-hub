@@ -2,8 +2,8 @@
 
 This connector generates a repeatable WGS84 UWB demo stream for Open Location Hub.
 It simulates 10 objects moving through a 3-floor Pac-Man-style building,
-publishes raw `location_updates` at 25Hz, and is intended to run against a hub
-configured to emit Kalman-normalized derived output at 2Hz.
+publishes raw `location_updates` at 25Hz, and works with a hub configured to
+emit Kalman-normalized derived output at 2Hz.
 
 The connector also bootstraps building metadata into the hub:
 
@@ -54,8 +54,9 @@ Corner order is always:
 
 The zone bootstrap also includes three `ground_control_points` per floor. The
 simulator still uses a local corridor graph internally, but it publishes WGS84
-positions and exposes both local and WGS84 image-corner metadata so a future
-visualizer can place the generated floorplan image behind live movement points.
+positions and exposes both local and WGS84 image-corner metadata. A visualizer
+can use that metadata to place the generated floorplan image behind live
+movement points.
 
 ## Shared Local Hub
 
@@ -71,7 +72,7 @@ Fetch an admin token when auth is enabled:
 local-hub/fetch_demo_token.sh
 ```
 
-The local demo compose for this repository should enable:
+The local demo compose for this repository enables:
 
 - `COLLISIONS_ENABLED=true`
 - `KALMAN_FILTER_ENABLED=true`

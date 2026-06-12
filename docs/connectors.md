@@ -5,8 +5,7 @@ small process that reads data from some upstream system, maps that data to the
 hub's OMLOX-facing model, and submits it through the hub's supported transport
 surfaces.
 
-The key point is simple: creating a connector is easy. You do not need to patch
-the hub. In most cases you only need:
+Connectors do not require hub patches. Most connectors need:
 
 1. a small runtime loop that reads upstream data
 2. some mapping code that builds OMLOX `Location` or `Proximity` payloads
@@ -27,12 +26,12 @@ The repository already includes a few connector-oriented projects under
 - [`connectors/uwb_sim/README.md`](connectors/uwb_sim/README.md):
   mock 3-floor UWB simulator with generated georeferenced floorplan images and WGS84 location ingest
 
-The bundled runtime connectors now cover both transport styles. The GTFS
+The bundled runtime connectors cover both transport styles. The GTFS
 project includes WebSocket and MQTT ingest variants, and the OpenSky project
 shows the WebSocket path. Together they are useful examples for connector
 structure, env handling, bootstrap logic, and local development flow.
 
-The recommended local runtime itself now lives outside `connectors/` under
+The recommended local runtime lives outside `connectors/` under
 [`local-hub/README.md`](local-hub/README.md)
 because it is broader than connector bootstrapping. It is the normal starting
 point when you want a local hub plus observability stack on your laptop.
@@ -63,7 +62,7 @@ Most custom connectors follow the same shape:
 
 ## Shared Connector Shape
 
-The bundled connectors show a practical split that is easy to copy:
+The bundled connectors use this practical split:
 
 - one runtime script that polls or subscribes to the upstream source
 - one small client helper module for hub REST and transport calls
@@ -102,8 +101,8 @@ local-hub/fetch_demo_token.sh
 4. Run the connector process.
 
 The bundled demos use `HUB_HTTP_URL` for REST bootstrap work and `HUB_WS_URL`
-for WebSocket ingest. MQTT-based connectors would typically use `HUB_HTTP_URL`
-plus `MQTT_BROKER_URL` or equivalent broker settings.
+for WebSocket ingest. MQTT-based connectors use `HUB_HTTP_URL` plus
+`MQTT_BROKER_URL` or equivalent broker settings.
 
 ## Choosing A Transport
 
@@ -131,4 +130,4 @@ If you want a fast starting point:
   [`specifications/omlox/mqtt.md`](specifications/omlox/mqtt.md)
   as the transport source of truth
 
-That is usually enough to get a first connector running quickly.
+Those files cover the structure needed for a first connector.

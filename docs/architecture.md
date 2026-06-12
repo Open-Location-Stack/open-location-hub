@@ -85,8 +85,8 @@ Built-in identify behavior:
 - `com.omlox.identify` also returns the stable persisted `hub_id`
 
 Trust boundaries:
-- HTTP clients should talk to the hub, not directly to MQTT devices
-- MQTT should be restricted to the hub and trusted device/adaptor components
+- HTTP clients talk to the hub, not directly to MQTT devices
+- MQTT is restricted to the hub and trusted device/adaptor components
 - the hub is the policy, audit, and handler-selection boundary for control-plane actions
 
 ## Proximity Resolution Path

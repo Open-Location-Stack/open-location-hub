@@ -167,7 +167,7 @@ func (e TrackableWriteType) Valid() bool {
 	}
 }
 
-// Collision Collision participant snapshot used by future collision-event modeling.
+// Collision Collision participant snapshot used in emitted collision events.
 type Collision struct {
 	Floor *float32 `json:"floor,omitempty"`
 
@@ -182,7 +182,7 @@ type Collision struct {
 	Position Point `json:"position"`
 }
 
-// CollisionEvent Collision event model reserved for future collision processing support.
+// CollisionEvent Collision event model emitted when collision processing is enabled.
 type CollisionEvent struct {
 	// CenterDistance Approximate center-to-center separation in meters at evaluation time.
 	CenterDistance *float32                      `json:"center_distance,omitempty"`

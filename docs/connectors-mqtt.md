@@ -91,7 +91,7 @@ as the source of truth for topic families and payload expectations.
 ## Example Ingest Shape
 
 For MQTT, the message body is the normalized OMLOX object itself. For example,
-a connector publishing a location update would send a `Location` JSON payload to
+a connector publishing a location update sends a `Location` JSON payload to
 `/omlox/json/location_updates/pub/{provider_id}`:
 
 ```json
