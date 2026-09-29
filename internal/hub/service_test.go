@@ -83,13 +83,13 @@ func TestFenceContainsPointForPointFence(t *testing.T) {
 
 	var region gen.Fence_Region
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{10, 20}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{10, 20}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	if err := region.FromPoint(point); err != nil {
 		t.Fatalf("region setup failed: %v", err)
 	}
-	radius := float32(5)
+	radius := float64(5)
 	inside, err := fenceContainsPoint(gen.Fence{Region: region, Radius: &radius}, [2]float64{12, 23})
 	if err != nil {
 		t.Fatalf("contains check failed: %v", err)
@@ -99,12 +99,12 @@ func TestFenceContainsPointForPointFence(t *testing.T) {
 	}
 }
 
-func TestEffectiveRadiusMetersUsesConfiguredDefault(t *testing.T) {
+func TestEffectiveRadiusMetersDefaultsToZero(t *testing.T) {
 	t.Parallel()
 
 	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox}
-	if got := effectiveRadiusMeters(trackable, 12.5); got != 12.5 {
-		t.Fatalf("expected configured default radius, got %v", got)
+	if got := effectiveRadiusMeters(trackable, 12.5); got != 0 {
+		t.Fatalf("expected standard zero radius, got %v", got)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestEffectiveRadiusMetersPrefersTrackableOverride(t *testing.T) {
 	trackable := gen.Trackable{
 		Id:     uuidAsOpenAPI(uuid.New()),
 		Type:   gen.TrackableTypeOmlox,
-		Radius: float32Ptr(7),
+		Radius: float64Ptr(7),
 	}
 	if got := effectiveRadiusMeters(trackable, 12.5); got != 7 {
 		t.Fatalf("expected trackable radius override, got %v", got)
@@ -125,9 +125,9 @@ func TestLocationPropertiesExcludeGeometryAndPreserveFields(t *testing.T) {
 	t.Parallel()
 
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, "source-a", [2]float32{1, 2})
+	location := testLocationWithCoordinates(t, &crs, "source-a", [2]float64{1, 2})
 	location.ProviderId = "provider-a"
-	accuracy := float32(1.5)
+	accuracy := float64(1.5)
 	location.Accuracy = &accuracy
 	location.Properties = &gen.ExtensionProperties{"label": "test"}
 
@@ -178,7 +178,7 @@ func TestResolveLocationTrackablesAssociatesUniqueProviderMatch(t *testing.T) {
 	}
 }
 
-func TestResolveLocationTrackablesLeavesAmbiguousProviderUnassociated(t *testing.T) {
+func TestResolveLocationTrackablesAssociatesEveryAssignedTrackable(t *testing.T) {
 	t.Parallel()
 
 	providerIDs := gen.StringIdList{"provider-a"}
@@ -202,11 +202,11 @@ func TestResolveLocationTrackablesLeavesAmbiguousProviderUnassociated(t *testing
 	if err != nil {
 		t.Fatalf("resolveLocationTrackables failed: %v", err)
 	}
-	if resolved.Trackables != nil {
-		t.Fatalf("expected ambiguous provider to remain unassociated, got %+v", resolved.Trackables)
+	if resolved.Trackables == nil || len(*resolved.Trackables) != 2 {
+		t.Fatalf("expected both assigned trackables, got %+v", resolved.Trackables)
 	}
-	if resolved.Associated != nil {
-		t.Fatalf("expected associated to remain unset, got %+v", resolved.Associated)
+	if resolved.Associated == nil || !*resolved.Associated {
+		t.Fatal("expected associated=true")
 	}
 }
 
@@ -252,9 +252,9 @@ func TestMotionsMayCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	t.Parallel()
 
 	crs := "EPSG:4326"
-	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
-	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.3778})}
-	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(50)}
+	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float64{8.5411, 47.3769})}
+	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float64{8.5411, 47.3778})}
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float64Ptr(50)}
 	leftPoint, err := point2D(leftMotion.Location.Position)
 	if err != nil {
 		t.Fatalf("left point decode failed: %v", err)
@@ -273,9 +273,9 @@ func TestMotionsCollideUsesMeterAwareWGS84Approximation(t *testing.T) {
 	t.Parallel()
 
 	crs := "EPSG:4326"
-	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float32{8.5411, 47.3769})}
-	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float32{8.5411, 47.37735})}
-	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float32Ptr(30)}
+	leftMotion := gen.TrackableMotion{Id: "left", Location: testLocationWithCoordinates(t, &crs, "left", [2]float64{8.5411, 47.3769})}
+	rightMotion := gen.TrackableMotion{Id: "right", Location: testLocationWithCoordinates(t, &crs, "right", [2]float64{8.5411, 47.37735})}
+	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, Radius: float64Ptr(30)}
 	leftPoint, err := point2D(leftMotion.Location.Position)
 	if err != nil {
 		t.Fatalf("left point decode failed: %v", err)
@@ -298,7 +298,7 @@ func TestPointSquarePolygonConvertsMetersForWGS84(t *testing.T) {
 	t.Parallel()
 
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "point", [2]float32{8.5411, 47.3769})
+	location := testLocationWithCoordinates(t, &crs, "point", [2]float64{8.5411, 47.3769})
 	polygon := pointSquarePolygon(location, 50)
 	if polygon == nil {
 		t.Fatal("expected fallback polygon")
@@ -316,9 +316,9 @@ func TestCollisionSpatialIndexNearbyFiltersFarWGS84Candidates(t *testing.T) {
 	t.Parallel()
 
 	crs := "EPSG:4326"
-	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{8.5411, 47.37735})}
-	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{8.5411, 47.39})}
-	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{8.5411, 47.3769})}
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float64{8.5411, 47.37735})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float64{8.5411, 47.39})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float64{8.5411, 47.3769})}
 
 	var indexed []indexedCollisionMotion
 	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
@@ -355,9 +355,9 @@ func TestCollisionSpatialIndexNearbyFiltersFarLocalCandidates(t *testing.T) {
 	t.Parallel()
 
 	crs := "local"
-	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float32{20, 20})}
-	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float32{600, 600})}
-	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float32{0, 0})}
+	nearMotion := gen.TrackableMotion{Id: "near", Location: testLocationWithCoordinates(t, &crs, "near", [2]float64{20, 20})}
+	farMotion := gen.TrackableMotion{Id: "far", Location: testLocationWithCoordinates(t, &crs, "far", [2]float64{600, 600})}
+	queryMotion := gen.TrackableMotion{Id: "query", Location: testLocationWithCoordinates(t, &crs, "query", [2]float64{0, 0})}
 
 	var indexed []indexedCollisionMotion
 	for _, motion := range []gen.TrackableMotion{nearMotion, farMotion} {
@@ -410,7 +410,7 @@ func TestResolveProximityCandidateRejectsUnknownZone(t *testing.T) {
 		ProviderId:   "provider-a",
 		ProviderType: "rfid",
 		Source:       "missing-zone",
-	}, []gen.Zone{testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, nil, nil)}, testPolicy())
+	}, []gen.Zone{testZone(t, uuid.New(), "rfid", [2]float64{1, 2}, nil, nil)}, testPolicy())
 	if err == nil {
 		t.Fatal("expected missing zone error")
 	}
@@ -437,7 +437,7 @@ func TestResolveProximityCandidateRejectsNonProximityZoneType(t *testing.T) {
 		ProviderId:   "provider-a",
 		ProviderType: "uwb",
 		Source:       "zone-a",
-	}, []gen.Zone{testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{1, 2}, nil, nil)}, testPolicy())
+	}, []gen.Zone{testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float64{1, 2}, nil, nil)}, testPolicy())
 	if err == nil {
 		t.Fatal("expected proximity zone type validation error")
 	}
@@ -447,8 +447,8 @@ func TestResolveProximitySticksWithinBoundaryGrace(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
-	currentZone := testZone(t, uuid.New(), "rfid", [2]float32{0, 0}, float32Ptr(3), nil)
-	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float32{5, 0}, float32Ptr(3), nil)
+	currentZone := testZone(t, uuid.New(), "rfid", [2]float64{0, 0}, float64Ptr(3), nil)
+	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float64{5, 0}, float64Ptr(3), nil)
 	candidate, err := resolveProximityCandidate(testProximity(candidateZone.Id.String()), []gen.Zone{candidateZone}, testPolicy())
 	if err != nil {
 		t.Fatalf("candidate resolution failed: %v", err)
@@ -475,8 +475,8 @@ func TestResolveProximitySwitchesAfterGraceExpires(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
-	currentZone := testZone(t, uuid.New(), "rfid", [2]float32{0, 0}, float32Ptr(3), nil)
-	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float32{5, 0}, float32Ptr(3), nil)
+	currentZone := testZone(t, uuid.New(), "rfid", [2]float64{0, 0}, float64Ptr(3), nil)
+	candidateZone := testZone(t, uuid.New(), "ibeacon", [2]float64{5, 0}, float64Ptr(3), nil)
 	candidate, err := resolveProximityCandidate(testProximity(candidateZone.Id.String()), []gen.Zone{candidateZone}, testPolicy())
 	if err != nil {
 		t.Fatalf("candidate resolution failed: %v", err)
@@ -509,7 +509,7 @@ func TestProximityPolicyForZoneAppliesOverrides(t *testing.T) {
 			"exit_grace_duration": "30s",
 		},
 	}
-	zone := testZone(t, uuid.New(), "rfid", [2]float32{0, 0}, float32Ptr(2), &props)
+	zone := testZone(t, uuid.New(), "rfid", [2]float64{0, 0}, float64Ptr(2), &props)
 	policy, err := proximityPolicyForZone(zone, defaults)
 	if err != nil {
 		t.Fatalf("policy parse failed: %v", err)
@@ -522,7 +522,7 @@ func TestProximityPolicyForZoneAppliesOverrides(t *testing.T) {
 func TestDeriveLocationFromProximityAddsResolutionMetadata(t *testing.T) {
 	t.Parallel()
 
-	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, nil, nil)
+	zone := testZone(t, uuid.New(), "rfid", [2]float64{1, 2}, nil, nil)
 	props := gen.ExtensionProperties{"raw": "value"}
 	location := deriveLocationFromProximity(gen.Proximity{
 		ProviderId:   "provider-a",
@@ -542,8 +542,8 @@ func TestDeriveLocationFromProximityAddsResolutionMetadata(t *testing.T) {
 	if (*location.Properties)["raw"] != "value" {
 		t.Fatal("expected original proximity properties to be preserved")
 	}
-	if location.Crs == nil || *location.Crs != "local" {
-		t.Fatal("expected proximity-derived location to remain in local CRS")
+	if location.Crs == nil || *location.Crs != "EPSG:4326" {
+		t.Fatal("expected proximity-derived location in WGS84")
 	}
 }
 
@@ -651,7 +651,7 @@ func TestProcessProximitiesReEntersAfterStaleStateExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
-	zone := testZone(t, uuid.New(), "rfid", [2]float32{1, 2}, float32Ptr(2), nil)
+	zone := testZone(t, uuid.New(), "rfid", [2]float64{1, 2}, float64Ptr(2), nil)
 	proximity := testProximity(zone.Id.String())
 	service := &Service{
 		state: NewProcessingState(func() time.Time { return now }),
@@ -718,7 +718,7 @@ func TestPublishLocationTransformsLocalToWGS84(t *testing.T) {
 		logger:         zapTestLogger(t),
 	}
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 7})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{5, 7})
 
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
@@ -754,7 +754,7 @@ func TestPublishLocationEmitsOriginHubIDWhenConfigured(t *testing.T) {
 		logger:         zapTestLogger(t),
 	}
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 7})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{5, 7})
 
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
@@ -783,7 +783,7 @@ func TestPublishLocationTransformsWGS84ToLocalWhenZoneIsGeoreferenced(t *testing
 		logger:         zapTestLogger(t),
 	}
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{-70.6692, -33.4488})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{-70.6692, -33.4488})
 
 	if err := service.publishLocation(context.Background(), location); err != nil {
 		t.Fatalf("publishLocation failed: %v", err)
@@ -807,7 +807,7 @@ func TestPublishLocationSkipsUnavailableDerivedVariant(t *testing.T) {
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, "missing-zone", [2]float32{2, 3})
+	location := testLocationWithCoordinates(t, &crs, "missing-zone", [2]float64{2, 3})
 	service := &Service{
 		bus:            bus,
 		metadata:       &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
@@ -841,11 +841,11 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 		logger:         zapTestLogger(t),
 	}
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{5, 5})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{5, 5})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
-	if _, err := service.publishTrackableMotions(context.Background(), location); err != nil {
+	if err := service.publishSelectedTrackable(context.Background(), location, true); err != nil {
 		t.Fatalf("publishTrackableMotions failed: %v", err)
 	}
 	events := collectEvents(ch, 2)
@@ -859,13 +859,14 @@ func TestPublishTrackableMotionsUsesTransformedVariants(t *testing.T) {
 	}
 }
 
-func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
+func TestPublishFenceEventsInfiniteTimeoutSurvivesLocationTTL(t *testing.T) {
 	t.Parallel()
 
-	state := NewProcessingState(time.Now)
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	now := time.Now()
+	state := NewProcessingState(func() time.Time { return now })
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
 	service := &Service{
@@ -874,7 +875,7 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 		bus:      NewEventBus(),
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
-	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{1, 2})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -885,6 +886,12 @@ func TestPublishFenceEventsUsesLocationTTLForMembershipState(t *testing.T) {
 	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
 		t.Fatal("expected fence membership state to be held in memory")
 	}
+	now = now.Add(24 * time.Hour)
+	state.SweepExpired()
+	service.eventScheduler().runDue()
+	if !state.IsInsideFence("trackable-a", fence.Id.String()) {
+		t.Fatal("an infinite fence timeout must not expire with the location cache")
+	}
 }
 
 func TestPublishFenceEventsEmitsExitForActiveFenceOutsideCurrentCandidates(t *testing.T) {
@@ -894,9 +901,9 @@ func TestPublishFenceEventsEmitsExitForActiveFenceOutsideCurrentCandidates(t *te
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
 	state := NewProcessingState(time.Now)
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
 	service := &Service{
@@ -905,7 +912,7 @@ func TestPublishFenceEventsEmitsExitForActiveFenceOutsideCurrentCandidates(t *te
 		bus:      bus,
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
-	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{100, 100})
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{100, 100})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 	state.SetInsideFence("trackable-a", fence.Id.String(), time.Minute)
@@ -937,12 +944,12 @@ func TestPublishFenceEventsIgnoresMismatchedFenceFloorAndClearsActiveMembership(
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
 	state := NewProcessingState(time.Now)
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
-	fenceFloor := float32(2)
+	fenceFloor := float64(2)
 	fence.Floor = &fenceFloor
 	service := &Service{
 		state:    state,
@@ -950,8 +957,8 @@ func TestPublishFenceEventsIgnoresMismatchedFenceFloorAndClearsActiveMembership(
 		bus:      bus,
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
-	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
-	locationFloor := float32(1)
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{1, 2})
+	locationFloor := float64(1)
 	location.Floor = &locationFloor
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
@@ -961,12 +968,9 @@ func TestPublishFenceEventsIgnoresMismatchedFenceFloorAndClearsActiveMembership(
 		t.Fatalf("publishFenceEvents failed: %v", err)
 	}
 
-	events := collectEvents(ch, 0)
-	if len(events) != 0 {
-		t.Fatalf("expected no fence events for floor mismatch, got %d", len(events))
-	}
+	expectNoEvent(t, ch, 20*time.Millisecond)
 	if state.IsInsideFence("trackable-a", fence.Id.String()) {
-		t.Fatal("expected floor mismatch to clear active fence membership without emitting an event")
+		t.Fatal("expected floor mismatch to clear active fence membership")
 	}
 }
 
@@ -979,12 +983,12 @@ func TestPublishFenceEventsHonorsExitToleranceTimeout(t *testing.T) {
 
 	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
 	state := NewProcessingState(func() time.Time { return now })
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
-	fence.ExitTolerance = float32Ptr(1)
+	fence.ExitTolerance = float64Ptr(1)
 	fence.ToleranceTimeout = positiveOrMinusOneDuration(t, 30000)
 	service := &Service{
 		state:    state,
@@ -993,7 +997,7 @@ func TestPublishFenceEventsHonorsExitToleranceTimeout(t *testing.T) {
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
 
-	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{1, 2})
 	trackables := []string{"trackable-a"}
 	inside.Trackables = &trackables
 	if err := service.publishFenceEvents(context.Background(), inside); err != nil {
@@ -1002,7 +1006,7 @@ func TestPublishFenceEventsHonorsExitToleranceTimeout(t *testing.T) {
 	collectEvents(ch, 1)
 
 	now = now.Add(10 * time.Second)
-	toleratedOutside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{6.5, 2})
+	toleratedOutside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{6.5, 2})
 	toleratedOutside.Trackables = &trackables
 	if err := service.publishFenceEvents(context.Background(), toleratedOutside); err != nil {
 		t.Fatalf("publishFenceEvents failed: %v", err)
@@ -1038,12 +1042,13 @@ func TestPublishFenceEventsHonorsExitDelay(t *testing.T) {
 
 	now := time.Date(2026, 6, 9, 13, 0, 0, 0, time.UTC)
 	state := NewProcessingState(func() time.Time { return now })
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
 	fence.ExitDelay = positiveOrMinusOneDuration(t, 5000)
+	fence.ToleranceTimeout = disabledPositiveOrMinusOne(t)
 	service := &Service{
 		state:    state,
 		metadata: &MetadataCache{snapshot: newMetadataSnapshot([]zoneRecord{{Zone: zone, Signature: "zone"}}, []fenceRecord{{Fence: fence, Signature: "fence"}}, nil, nil)},
@@ -1051,7 +1056,7 @@ func TestPublishFenceEventsHonorsExitDelay(t *testing.T) {
 		cfg:      Config{LocationTTL: 90 * time.Second},
 	}
 
-	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	inside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{1, 2})
 	trackables := []string{"trackable-a"}
 	inside.Trackables = &trackables
 	if err := service.publishFenceEvents(context.Background(), inside); err != nil {
@@ -1059,7 +1064,7 @@ func TestPublishFenceEventsHonorsExitDelay(t *testing.T) {
 	}
 	collectEvents(ch, 1)
 
-	outside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{10, 2})
+	outside := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{10, 2})
 	outside.Trackables = &trackables
 
 	now = now.Add(1 * time.Second)
@@ -1091,37 +1096,37 @@ func TestPublishFenceEventsHonorsExitDelay(t *testing.T) {
 	}
 }
 
-func TestResolveFenceExitPolicyUsesOverridePrecedenceAndIgnoresDisabledValues(t *testing.T) {
+func TestResolveFenceExitPolicyUsesProviderThenTrackableThenFence(t *testing.T) {
 	t.Parallel()
 
 	fence := gen.Fence{
-		ExitTolerance:    float32Ptr(0.5),
+		ExitTolerance:    float64Ptr(0.5),
 		ToleranceTimeout: positiveOrMinusOneDuration(t, 30000),
 		ExitDelay:        positiveOrMinusOneDuration(t, 1000),
 	}
 	provider := gen.LocationProvider{
 		Id:               "provider-a",
 		Type:             "uwb",
-		ExitTolerance:    float32Ptr(1),
+		ExitTolerance:    float64Ptr(1),
 		ToleranceTimeout: disabledPositiveOrMinusOne(t),
 		ExitDelay:        positiveOrMinusOneDuration(t, 2000),
 	}
 	trackable := gen.Trackable{
 		Id:            uuidAsOpenAPI(uuid.New()),
 		Type:          gen.TrackableTypeOmlox,
-		ExitTolerance: float32Ptr(1.5),
+		ExitTolerance: float64Ptr(1.5),
 		ExitDelay:     disabledPositiveOrMinusOne(t),
 	}
 
 	policy := resolveFenceExitPolicy(fence, trackable, true, provider, true)
-	if policy.ExitTolerance != 1.5 {
-		t.Fatalf("expected trackable exit tolerance override, got %v", policy.ExitTolerance)
+	if policy.ExitTolerance != 1 {
+		t.Fatalf("expected provider exit tolerance override, got %v", policy.ExitTolerance)
 	}
-	if policy.ToleranceTimeoutActive || policy.ToleranceTimeout != 0 {
-		t.Fatalf("expected disabled provider tolerance timeout to clear to conservative default, got active=%t duration=%s", policy.ToleranceTimeoutActive, policy.ToleranceTimeout)
+	if policy.ToleranceTimeoutActive || policy.ToleranceTimeout >= 0 {
+		t.Fatalf("expected infinite provider tolerance timeout, got active=%t duration=%s", policy.ToleranceTimeoutActive, policy.ToleranceTimeout)
 	}
-	if policy.ExitDelay != 0 {
-		t.Fatalf("expected disabled trackable exit delay to clear to conservative default, got %s", policy.ExitDelay)
+	if policy.ExitDelay != 2*time.Second {
+		t.Fatalf("expected provider exit delay override, got %s", policy.ExitDelay)
 	}
 }
 
@@ -1156,19 +1161,19 @@ func TestEnqueueCollisionWorkUsesCollisionQueueWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *testing.T) {
+func TestPublishSelectedTrackableEvaluatesGeofencesWhenPublicationSuppressed(t *testing.T) {
 	t.Parallel()
 
 	bus := NewEventBus()
 	ch, unsubscribe := bus.Subscribe(8)
 	defer unsubscribe()
 	state := NewProcessingState(time.Now)
-	zone := testZone(t, uuid.New(), "uwb", [2]float32{0, 0}, nil, nil)
+	zone := testZone(t, uuid.New(), "uwb", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
-	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{1, 2})
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{1, 2})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1181,8 +1186,8 @@ func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *te
 		cfg:            Config{LocationTTL: time.Minute},
 	}
 
-	if err := service.processDerivedLocation(context.Background(), location, false); err != nil {
-		t.Fatalf("processDerivedLocation failed: %v", err)
+	if err := service.publishSelectedTrackable(context.Background(), location, false); err != nil {
+		t.Fatalf("publishSelectedTrackable failed: %v", err)
 	}
 
 	events := collectEvents(ch, 1)
@@ -1194,7 +1199,7 @@ func TestProcessDerivedLocationEvaluatesGeofencesWhenPublicationSuppressed(t *te
 	}
 }
 
-func TestProcessDerivedLocationEvaluatesLocalFencesForWGS84Input(t *testing.T) {
+func TestPublishSelectedTrackableEvaluatesLocalFencesForWGS84Input(t *testing.T) {
 	t.Parallel()
 
 	bus := NewEventBus()
@@ -1203,11 +1208,11 @@ func TestProcessDerivedLocationEvaluatesLocalFencesForWGS84Input(t *testing.T) {
 	state := NewProcessingState(time.Now)
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	localCRS := "local"
-	fence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
+	fence := testPointFence(t, uuid.New(), [2]float64{5, 5}, 2)
 	fence.Crs = &localCRS
 	fence.ZoneId = stringPtrValueRef(zone.Id.String())
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.54115, 47.37445})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{8.54115, 47.37445})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1220,8 +1225,8 @@ func TestProcessDerivedLocationEvaluatesLocalFencesForWGS84Input(t *testing.T) {
 		cfg:            Config{LocationTTL: time.Minute},
 	}
 
-	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
-		t.Fatalf("processDerivedLocation failed: %v", err)
+	if err := service.publishSelectedTrackable(context.Background(), location, true); err != nil {
+		t.Fatalf("publishSelectedTrackable failed: %v", err)
 	}
 
 	events := collectEvents(ch, 3)
@@ -1265,7 +1270,7 @@ func TestProcessLocationsEmitsFenceEventForProductionAreaScenario(t *testing.T) 
 	}
 	fence := productionAreaFenceFixture(t, fenceID)
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	location := testLocationWithCoordinates(t, &crs, "simulated-tag-1", [2]float64{8.90318, 52.01776})
 	location.ProviderId = "simulated-tag-1"
 	location.ProviderType = "virtual"
 
@@ -1340,7 +1345,7 @@ func TestPublishFenceEventsForProductionAreaScenario(t *testing.T) {
 		t.Fatalf("parse trackable id failed: %v", err)
 	}
 	fence := productionAreaFenceFixture(t, fenceID)
-	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float64{8.90318, 52.01776})
 	location.ProviderId = "simulated-tag-1"
 	location.ProviderType = "virtual"
 	trackables := []string{trackableID.String()}
@@ -1390,8 +1395,8 @@ func TestPublishFenceEventsForProductionAreaScenario(t *testing.T) {
 func TestFenceContainmentForPointSupportsPointAndPolygon(t *testing.T) {
 	t.Parallel()
 
-	pointFence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
-	polygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+	pointFence := testPointFence(t, uuid.New(), [2]float64{5, 5}, 2)
+	polygonFence := testPolygonFence(t, uuid.New(), [][2]float64{
 		{4, 4}, {6, 4}, {6, 6}, {4, 6}, {4, 4},
 	})
 
@@ -1420,13 +1425,13 @@ func TestFenceContainmentForPointSupportsPointAndPolygon(t *testing.T) {
 	}
 }
 
-func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *testing.T) {
+func TestPublishSelectedTrackableEvaluatesCollisionsWhenPublicationSuppressed(t *testing.T) {
 	t.Parallel()
 
 	queue := &captureCollisionQueue{}
 	bus := NewEventBus()
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float64{8.5, 47.3})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1439,8 +1444,8 @@ func TestProcessDerivedLocationEvaluatesCollisionsWhenPublicationSuppressed(t *t
 		},
 	}
 
-	if err := service.processDerivedLocation(context.Background(), location, false); err != nil {
-		t.Fatalf("processDerivedLocation failed: %v", err)
+	if err := service.publishSelectedTrackable(context.Background(), location, false); err != nil {
+		t.Fatalf("publishSelectedTrackable failed: %v", err)
 	}
 	if len(queue.works) != 1 {
 		t.Fatalf("expected one collision work item, got %d", len(queue.works))
@@ -1455,7 +1460,7 @@ func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
 	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.5412, 47.3745})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{8.5412, 47.3745})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1471,8 +1476,8 @@ func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
 		t.Fatalf("processDerivedLocation failed: %v", err)
 	}
 
-	events := collectEvents(ch, 2)
-	if len(events) != 2 {
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
 		t.Fatalf("expected only local derived events, got %d", len(events))
 	}
 	for _, event := range events {
@@ -1482,7 +1487,7 @@ func TestProcessDerivedLocationForWGS84PublishesOnlyLocalVariant(t *testing.T) {
 	}
 }
 
-func TestProcessDerivedLocationPublishesNativeMotionWhenKalmanEnabled(t *testing.T) {
+func TestPublishSelectedTrackablePublishesNativeMotionWhenKalmanEnabled(t *testing.T) {
 	t.Parallel()
 
 	bus := NewEventBus()
@@ -1490,7 +1495,7 @@ func TestProcessDerivedLocationPublishesNativeMotionWhenKalmanEnabled(t *testing
 	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float32{8.5412, 47.3745})
+	location := testLocationWithCoordinates(t, &crs, zone.Id.String(), [2]float64{8.5412, 47.3745})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1503,11 +1508,11 @@ func TestProcessDerivedLocationPublishesNativeMotionWhenKalmanEnabled(t *testing
 		logger:         zapTestLogger(t),
 	}
 
-	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
-		t.Fatalf("processDerivedLocation failed: %v", err)
+	if err := service.publishSelectedTrackable(context.Background(), location, true); err != nil {
+		t.Fatalf("publishSelectedTrackable failed: %v", err)
 	}
 
-	events := collectEvents(ch, 3)
+	events := collectEvents(ch, 2)
 	var nativeMotionSeen bool
 	for _, event := range events {
 		if event.Kind == EventTrackableMotion && event.Scope == ScopeEPSG4326 {
@@ -1530,7 +1535,7 @@ func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
 	defer unsubscribe()
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
 	localCRS := "local"
-	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 7})
+	location := testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{5, 7})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1546,8 +1551,8 @@ func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
 		t.Fatalf("processDerivedLocation failed: %v", err)
 	}
 
-	events := collectEvents(ch, 2)
-	if len(events) != 2 {
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
 		t.Fatalf("expected only wgs84 derived events, got %d", len(events))
 	}
 	for _, event := range events {
@@ -1557,13 +1562,13 @@ func TestProcessDerivedLocationForLocalPublishesOnlyWGS84Variant(t *testing.T) {
 	}
 }
 
-func TestProcessDerivedLocationSkipsCollisionsWhenWGS84Unavailable(t *testing.T) {
+func TestPublishSelectedTrackableSkipsCollisionsWhenWGS84Unavailable(t *testing.T) {
 	t.Parallel()
 
 	queue := &captureCollisionQueue{}
 	bus := NewEventBus()
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float64{8.5, 47.3})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1576,8 +1581,8 @@ func TestProcessDerivedLocationSkipsCollisionsWhenWGS84Unavailable(t *testing.T)
 		},
 	}
 
-	if err := service.processDerivedLocation(context.Background(), location, true); err != nil {
-		t.Fatalf("processDerivedLocation failed: %v", err)
+	if err := service.publishSelectedTrackable(context.Background(), location, true); err != nil {
+		t.Fatalf("publishSelectedTrackable failed: %v", err)
 	}
 	if len(queue.works) != 0 {
 		t.Fatalf("expected no collision work without WGS84 transform, got %d", len(queue.works))
@@ -1598,7 +1603,7 @@ func TestRecordLocationWithNativeQueueQueuesWork(t *testing.T) {
 	bus := NewEventBus()
 	queue := &capturingDerivedSubmitter{}
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float64{8.5, 47.3})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1606,12 +1611,11 @@ func TestRecordLocationWithNativeQueueQueuesWork(t *testing.T) {
 		bus:         bus,
 		nativeQueue: queue,
 		cfg: Config{
-			NativeLocationBuffer:       16,
-			LocationTTL:                time.Minute,
-			DedupTTL:                   time.Minute,
-			CollisionStateTTL:          time.Minute,
-			CollisionCollidingDebounce: time.Second,
-			MetadataReconcileInterval:  time.Second,
+			NativeLocationBuffer:      16,
+			LocationTTL:               time.Minute,
+			DedupTTL:                  time.Minute,
+			CollisionStateTTL:         time.Minute,
+			MetadataReconcileInterval: time.Second,
 		},
 		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
 		state:    NewProcessingState(time.Now),
@@ -1634,7 +1638,7 @@ func TestProcessNativeLocationPublishesNativeAndQueuesDecisionWork(t *testing.T)
 	defer unsubscribe()
 	queue := &capturingDerivedSubmitter{}
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float64{8.5, 47.3})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1642,12 +1646,11 @@ func TestProcessNativeLocationPublishesNativeAndQueuesDecisionWork(t *testing.T)
 		bus:          bus,
 		derivedQueue: queue,
 		cfg: Config{
-			DerivedLocationBuffer:      16,
-			LocationTTL:                time.Minute,
-			DedupTTL:                   time.Minute,
-			CollisionStateTTL:          time.Minute,
-			CollisionCollidingDebounce: time.Second,
-			MetadataReconcileInterval:  time.Second,
+			DerivedLocationBuffer:     16,
+			LocationTTL:               time.Minute,
+			DedupTTL:                  time.Minute,
+			CollisionStateTTL:         time.Minute,
+			MetadataReconcileInterval: time.Second,
 		},
 		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
 		state:    NewProcessingState(time.Now),
@@ -1657,9 +1660,9 @@ func TestProcessNativeLocationPublishesNativeAndQueuesDecisionWork(t *testing.T)
 	if err := service.processNativeLocation(context.Background(), location); err != nil {
 		t.Fatalf("processNativeLocation failed: %v", err)
 	}
-	events := collectEvents(ch, 2)
-	if len(events) != 2 {
-		t.Fatalf("expected 2 native events, got %d", len(events))
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one provider event before trackable selection, got %d", len(events))
 	}
 	if got := decodeEventLocation(t, eventByScope(t, events, ScopeEPSG4326)); got.Source != location.Source {
 		t.Fatalf("unexpected native location source: %s", got.Source)
@@ -1677,7 +1680,7 @@ func TestProcessNativeLocationSkipsNativeTrackableMotionsWhenKalmanEnabled(t *te
 	defer unsubscribe()
 	queue := &capturingDerivedSubmitter{}
 	crs := "EPSG:4326"
-	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float32{8.5, 47.3})
+	location := testLocationWithCoordinates(t, &crs, "external-source", [2]float64{8.5, 47.3})
 	trackables := []string{"trackable-a"}
 	location.Trackables = &trackables
 
@@ -1685,13 +1688,12 @@ func TestProcessNativeLocationSkipsNativeTrackableMotionsWhenKalmanEnabled(t *te
 		bus:          bus,
 		derivedQueue: queue,
 		cfg: Config{
-			DerivedLocationBuffer:      16,
-			LocationTTL:                time.Minute,
-			DedupTTL:                   time.Minute,
-			CollisionStateTTL:          time.Minute,
-			CollisionCollidingDebounce: time.Second,
-			MetadataReconcileInterval:  time.Second,
-			KalmanFilterEnabled:        true,
+			DerivedLocationBuffer:     16,
+			LocationTTL:               time.Minute,
+			DedupTTL:                  time.Minute,
+			CollisionStateTTL:         time.Minute,
+			MetadataReconcileInterval: time.Second,
+			KalmanFilterEnabled:       true,
 		},
 		metadata: &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)},
 		state:    NewProcessingState(time.Now),
@@ -1728,13 +1730,13 @@ func testPolicy() proximityResolutionPolicy {
 
 func testLocation(t *testing.T, crs *string) gen.Location {
 	t.Helper()
-	return testLocationWithCoordinates(t, crs, "zone-a", [2]float32{1, 2})
+	return testLocationWithCoordinates(t, crs, "zone-a", [2]float64{1, 2})
 }
 
-func testLocationWithCoordinates(t *testing.T, crs *string, source string, coordinates [2]float32) gen.Location {
+func testLocationWithCoordinates(t *testing.T, crs *string, source string, coordinates [2]float64) gen.Location {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{coordinates[0], coordinates[1]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return gen.Location{
@@ -1746,10 +1748,10 @@ func testLocationWithCoordinates(t *testing.T, crs *string, source string, coord
 	}
 }
 
-func testLocationWithCoordinates3D(t *testing.T, crs *string, source string, coordinates [3]float32) gen.Location {
+func testLocationWithCoordinates3D(t *testing.T, crs *string, source string, coordinates [3]float64) gen.Location {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition3D([]float32{coordinates[0], coordinates[1], coordinates[2]}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition3D([]float64{coordinates[0], coordinates[1], coordinates[2]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return gen.Location{
@@ -1769,10 +1771,10 @@ func testProximity(source string) gen.Proximity {
 	}
 }
 
-func testZone(t *testing.T, id uuid.UUID, zoneType string, coordinates [2]float32, radius *float32, props *gen.ExtensionProperties) gen.Zone {
+func testZone(t *testing.T, id uuid.UUID, zoneType string, coordinates [2]float64, radius *float64, props *gen.ExtensionProperties) gen.Zone {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{coordinates[0], coordinates[1]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	return gen.Zone{
@@ -1784,17 +1786,17 @@ func testZone(t *testing.T, id uuid.UUID, zoneType string, coordinates [2]float3
 	}
 }
 
-func testZoneWithForeignID(t *testing.T, id uuid.UUID, zoneType, foreignID string, coordinates [2]float32, radius *float32, props *gen.ExtensionProperties) gen.Zone {
+func testZoneWithForeignID(t *testing.T, id uuid.UUID, zoneType, foreignID string, coordinates [2]float64, radius *float64, props *gen.ExtensionProperties) gen.Zone {
 	t.Helper()
 	zone := testZone(t, id, zoneType, coordinates, radius, props)
 	zone.ForeignId = &foreignID
 	return zone
 }
 
-func testPointFence(t *testing.T, id uuid.UUID, coordinates [2]float32, radius float32) gen.Fence {
+func testPointFence(t *testing.T, id uuid.UUID, coordinates [2]float64, radius float64) gen.Fence {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{coordinates[0], coordinates[1]}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{coordinates[0], coordinates[1]}); err != nil {
 		t.Fatalf("coordinates setup failed: %v", err)
 	}
 	var region gen.Fence_Region
@@ -1835,7 +1837,7 @@ func productionAreaFenceFixture(t *testing.T, id uuid.UUID) gen.Fence {
 	}
 }
 
-func testPolygonFence(t *testing.T, id uuid.UUID, coordinates [][2]float32) gen.Fence {
+func testPolygonFence(t *testing.T, id uuid.UUID, coordinates [][2]float64) gen.Fence {
 	t.Helper()
 	ring := make([]gen.GeoJsonPosition, 0, len(coordinates))
 	for _, coordinate := range coordinates {
@@ -1859,7 +1861,7 @@ func uuidAsOpenAPI(id uuid.UUID) [16]byte {
 	return [16]byte(id)
 }
 
-func float32Ptr(value float32) *float32 {
+func float64Ptr(value float64) *float64 {
 	return &value
 }
 
@@ -1904,7 +1906,7 @@ func expectNoEvent(t *testing.T, ch <-chan Event, timeout time.Duration) {
 	}
 }
 
-func positiveOrMinusOneDuration(t *testing.T, milliseconds float32) *gen.PositiveOrMinusOne {
+func positiveOrMinusOneDuration(t *testing.T, milliseconds float64) *gen.PositiveOrMinusOne {
 	t.Helper()
 	var value gen.PositiveOrMinusOne
 	if err := value.FromPositiveNumber(gen.PositiveNumber(milliseconds)); err != nil {
@@ -1952,10 +1954,10 @@ func georeferencedZoneFixture(t *testing.T, lat, lon float64) gen.Zone {
 	t.Helper()
 	zoneID := uuid.New()
 	gcps := []gen.GroundControlPoint{
-		{Local: pointAt(t, 0, 0), Wgs84: pointAt(t, lon, lat)},
-		{Local: pointAt(t, 10, 0), Wgs84: pointAt(t, lon+0.0001, lat)},
-		{Local: pointAt(t, 0, 10), Wgs84: pointAt(t, lon, lat+0.0001)},
+		{lon, lat}, {0, 0}, {lon + 0.0001, lat}, {10, 0},
+		{lon + 0.0001, lat + 0.0001}, {10, 10}, {lon, lat + 0.0001}, {0, 10},
 	}
+
 	return gen.Zone{
 		Id:                  [16]byte(zoneID),
 		Type:                "uwb",
@@ -1963,19 +1965,10 @@ func georeferencedZoneFixture(t *testing.T, lat, lon float64) gen.Zone {
 	}
 }
 
-func pointAt(t *testing.T, x, y float64) gen.Point {
-	t.Helper()
-	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
-		t.Fatalf("coordinates setup failed: %v", err)
-	}
-	return point
-}
-
 func geoPosition2D(t *testing.T, x, y float64) gen.GeoJsonPosition {
 	t.Helper()
 	var position gen.GeoJsonPosition
-	if err := position.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
+	if err := position.FromGeoJsonPosition2D([]float64{float64(x), float64(y)}); err != nil {
 		t.Fatalf("position setup failed: %v", err)
 	}
 	return position

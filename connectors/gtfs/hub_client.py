@@ -120,7 +120,9 @@ class HubRESTClient:
             response = self._request("POST", collection_path, json_body=payload, expected={201})
             return response.json()
 
-        response = self._request("PUT", item_path, json_body=payload, expected={200})
+        response = self._request("PUT", item_path, json_body=payload, expected={200, 204})
+        if response.status_code == 204:
+            return self._request("GET", item_path, expected={200}).json()
         return response.json()
 
     def _request(
@@ -235,6 +237,7 @@ class HubMQTTPublisher:
         self.config = config
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            protocol=mqtt.MQTTv5,
             client_id=config.mqtt_client_id or "",
         )
         if config.mqtt_username:

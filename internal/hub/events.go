@@ -88,7 +88,8 @@ type ProximityEnvelope struct {
 // TrackableMotionEnvelope keeps a motion payload together with its GeoJSON
 // representation when useful for downstream consumers.
 type TrackableMotionEnvelope struct {
-	Motion gen.TrackableMotion `json:"motion"`
+	Motion   gen.TrackableMotion  `json:"motion"`
+	Original *gen.TrackableMotion `json:"-"`
 
 	motionJSON json.RawMessage `json:"-"`
 }
@@ -157,6 +158,7 @@ func (e MetadataChange) ItemJSON() json.RawMessage {
 // Event is the normalized hub event emitted once and then consumed by
 // transport-specific publishers such as MQTT and WebSocket.
 type Event struct {
+	Native      bool         `json:"-"`
 	Kind        EventKind    `json:"kind"`
 	Scope       EventScope   `json:"scope"`
 	EventTime   time.Time    `json:"event_time"`

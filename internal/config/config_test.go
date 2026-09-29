@@ -63,9 +63,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.CollisionsEnabled {
 		t.Fatal("expected collisions to default to disabled")
 	}
-	if cfg.CollisionDefaultRadiusMeters != 0.5 {
-		t.Fatalf("unexpected collision default radius: %v", cfg.CollisionDefaultRadiusMeters)
-	}
+
 	if cfg.KalmanFilterEnabled {
 		t.Fatal("expected kalman filter to default to disabled")
 	}
@@ -192,18 +190,6 @@ func TestPprofRatesMustBeNonNegative(t *testing.T) {
 	_, err = configFromMap(map[string]string{
 		"AUTH_MODE":                "none",
 		"PPROF_BLOCK_PROFILE_RATE": "-1",
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
-func TestCollisionDefaultRadiusMustBePositive(t *testing.T) {
-	t.Parallel()
-
-	_, err := configFromMap(map[string]string{
-		"AUTH_MODE":                       "none",
-		"COLLISION_DEFAULT_RADIUS_METERS": "0",
 	})
 	if err == nil {
 		t.Fatal("expected validation error")

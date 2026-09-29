@@ -76,7 +76,10 @@ class HubRESTClient:
         existing = self._request("GET", item_path, expected={200, 404})
         if existing.status_code == 404:
             return self._request("POST", collection_path, json_body=payload, expected={201}).json()
-        return self._request("PUT", item_path, json_body=payload, expected={200}).json()
+        updated = self._request("PUT", item_path, json_body=payload, expected={200, 204})
+        if updated.status_code == 204:
+            return self._request("GET", item_path, expected={200}).json()
+        return updated.json()
 
     def _request(
         self,

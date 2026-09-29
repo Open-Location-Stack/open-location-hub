@@ -12,6 +12,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
@@ -48,8 +49,6 @@ type Config struct {
 	MetadataReconcileInterval             time.Duration
 	CollisionsEnabled                     bool
 	CollisionStateTTL                     time.Duration
-	CollisionCollidingDebounce            time.Duration
-	CollisionDefaultRadiusMeters          float64
 	KalmanFilterEnabled                   bool
 	KalmanLocationMaxPoints               int
 	KalmanLocationMaxAge                  time.Duration
@@ -59,21 +58,28 @@ type Config struct {
 // Service implements the hub's CRUD and ingest behavior over storage, cache,
 // and publish dependencies.
 type Service struct {
-	logger           *zap.Logger
-	queries          sqlcgen.Querier
-	bus              *EventBus
-	cfg              Config
-	now              func() time.Time
-	crsTransformer   *transform.CRSTransformer
-	transformCache   *transform.Cache
-	metadata         *MetadataCache
-	state            *ProcessingState
-	stats            *RuntimeStats
-	telemetryRuntime *observability.Runtime
-	nativeQueue      derivedLocationSubmitter
-	derivedQueue     derivedLocationSubmitter
-	collisionQueue   collisionWorkSubmitter
-	decisionStage    decisionLocationStage
+	eventTimerInit sync.Once
+	eventTimers    *deadlineScheduler
+	fenceLocks     [64]sync.Mutex
+	collisionMu    sync.Mutex
+
+	logger            *zap.Logger
+	queries           sqlcgen.Querier
+	bus               *EventBus
+	cfg               Config
+	now               func() time.Time
+	crsTransformer    *transform.CRSTransformer
+	transformCache    *transform.Cache
+	metadata          *MetadataCache
+	state             *ProcessingState
+	stats             *RuntimeStats
+	telemetryRuntime  *observability.Runtime
+	nativeQueue       derivedLocationSubmitter
+	derivedQueue      derivedLocationSubmitter
+	collisionQueue    collisionWorkSubmitter
+	decisionStage     decisionLocationStage
+	locatingRuleCache sync.Map
+	selectionLocks    [64]sync.Mutex
 }
 
 // HTTPError represents an API error that should be rendered with a specific
@@ -97,6 +103,7 @@ func (s *Service) Start(ctx context.Context) {
 	}
 	_ = s.telemetry().RegisterRuntimeMetricsSource(s.stats)
 	s.processingState().StartSweeper(ctx, time.Second)
+	go s.eventScheduler().run(ctx)
 	if s.nativeQueue == nil {
 		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
 	}
@@ -221,6 +228,7 @@ type resolvedProximity struct {
 }
 
 type fenceExitPolicy struct {
+	FenceTimeout           time.Duration
 	ExitTolerance          float64
 	ToleranceTimeout       time.Duration
 	ToleranceTimeoutActive bool
@@ -269,6 +277,19 @@ func (s *Service) reconcileMetadata(ctx context.Context) error {
 	for _, change := range changes {
 		if change.Type == metadataTypeZone {
 			s.invalidateZoneTransform(change.ID)
+		}
+		if change.Operation == metadataOperationDelete {
+			switch change.Type {
+			case metadataTypeFence:
+				s.clearFenceRuntime(change.ID)
+			case metadataTypeTrackable:
+				lock := s.trackableSelectionLock(change.ID)
+				lock.Lock()
+				s.clearTrackableRuntime(change.ID)
+				lock.Unlock()
+			case metadataTypeLocationProvider:
+				s.deleteProviderState(ctx, change.ID)
+			}
 		}
 		s.emitMetadataChange(change)
 	}
@@ -433,15 +454,15 @@ func (s *Service) GetZoneCreateFence(ctx context.Context, id openapi_types.UUID)
 		}
 		return fence, nil
 	}
-	if zone.GroundControlPoints != nil && len(*zone.GroundControlPoints) >= 3 {
+	if zone.GroundControlPoints != nil && len(*zone.GroundControlPoints) >= 8 {
 		ring := make([]gen.GeoJsonPosition, 0, len(*zone.GroundControlPoints)+1)
-		for _, gcp := range *zone.GroundControlPoints {
-			local, err := gcp.Local.Coordinates.AsGeoJsonPosition2D()
-			if err != nil {
+		for i := 1; i < len(*zone.GroundControlPoints); i += 2 {
+			local := (*zone.GroundControlPoints)[i]
+			if len(local) != 2 {
 				return gen.Fence{}, badRequest("zone ground_control_points contained invalid local coordinates")
 			}
 			var position gen.GeoJsonPosition
-			if err := position.FromGeoJsonPosition2D(gen.GeoJsonPosition2D{local[0], local[1]}); err != nil {
+			if err := position.FromGeoJsonPosition2D(gen.GeoJsonPosition2D{float64(local[0]), float64(local[1])}); err != nil {
 				return gen.Fence{}, err
 			}
 			ring = append(ring, position)
@@ -511,7 +532,7 @@ func (s *Service) PutZoneTransform(ctx context.Context, id openapi_types.UUID, b
 	return map[string]any{
 		"position": transformed.Position,
 		"crs":      strings.TrimSpace(locationCRS(transformed)),
-		"zone_id":  source,
+		"source":   source,
 	}, nil
 }
 
@@ -622,6 +643,7 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	if cache := s.metadataCache(); cache != nil {
 		cache.DeleteProvider(id)
 	}
+	s.deleteProviderState(ctx, id)
 	s.emitMetadataChange(MetadataChange{
 		ID:        id,
 		Type:      metadataTypeLocationProvider,
@@ -696,11 +718,7 @@ func (s *Service) PutProviderProximities(ctx context.Context, proximities []gen.
 
 // ListProviderFences returns the fences currently containing the provider's latest location.
 func (s *Service) ListProviderFences(ctx context.Context, id string) ([]gen.Fence, error) {
-	location, err := s.GetProviderLocation(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return s.fencesForLocation(ctx, location)
+	return s.ListProviderFencesQuery(ctx, id, false)
 }
 
 // ListTrackables returns all trackables known to the hub.
@@ -810,6 +828,10 @@ func (s *Service) DeleteTrackable(ctx context.Context, id openapi_types.UUID) er
 	if cache := s.metadataCache(); cache != nil {
 		cache.DeleteTrackable(id)
 	}
+	lock := s.trackableSelectionLock(id.String())
+	lock.Lock()
+	s.clearTrackableRuntime(id.String())
+	lock.Unlock()
 	s.emitMetadataChange(MetadataChange{
 		ID:        id.String(),
 		Type:      metadataTypeTrackable,
@@ -1014,6 +1036,7 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 	if cache := s.metadataCache(); cache != nil {
 		cache.DeleteFence(id)
 	}
+	s.clearFenceRuntime(id.String())
 	s.emitMetadataChange(MetadataChange{
 		ID:        id.String(),
 		Type:      metadataTypeFence,
@@ -1025,49 +1048,24 @@ func (s *Service) DeleteFence(ctx context.Context, id openapi_types.UUID) error 
 
 // ListFenceLocations returns active latest locations currently inside a fence.
 func (s *Service) ListFenceLocations(ctx context.Context, id openapi_types.UUID) ([]gen.Location, error) {
-	fence, err := s.GetFence(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	locations := s.processingState().ListLatestLocations()
-	filtered := make([]gen.Location, 0, len(locations))
-	for _, location := range locations {
-		if fenceContainsLocation(fence, location) {
-			filtered = append(filtered, location)
-		}
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return locationTime(filtered[i]).After(locationTime(filtered[j]))
-	})
-	return filtered, nil
+	return s.ListFenceLocationsQuery(ctx, id, false)
 }
 
 // ListFenceProviders returns providers with active latest locations inside a fence.
 func (s *Service) ListFenceProviders(ctx context.Context, id openapi_types.UUID) ([]gen.LocationProvider, error) {
-	locations, err := s.ListFenceLocations(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]struct{}{}
-	providers := make([]gen.LocationProvider, 0, len(locations))
-	for _, location := range locations {
-		if _, ok := seen[location.ProviderId]; ok {
-			continue
-		}
-		provider, ok := s.providerByID(ctx, location.ProviderId)
-		if !ok {
-			continue
-		}
-		seen[location.ProviderId] = struct{}{}
-		providers = append(providers, provider)
-	}
-	return providers, nil
+	return s.ListFenceProvidersQuery(ctx, id, false)
 }
 
 // ProcessLocations validates, stores, and republishes provider location
 // updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
 	for _, location := range locations {
+		location = s.applyLocationDefaults(ctx, location)
+		if locationCRS(location) == "local" {
+			if _, err := s.zoneForLocationSource(ctx, location); err != nil {
+				return err
+			}
+		}
 		resolvedLocation, err := s.resolveLocationTrackables(ctx, location)
 		if err != nil {
 			return err
@@ -1117,7 +1115,7 @@ func (s *Service) resolveLocationTrackables(ctx context.Context, location gen.Lo
 		}
 		matches = trackablesForProvider(trackables, providerID)
 	}
-	if len(matches) != 1 {
+	if len(matches) == 0 {
 		return location, nil
 	}
 
@@ -1125,7 +1123,10 @@ func (s *Service) resolveLocationTrackables(ctx context.Context, location gen.Lo
 	if err != nil {
 		return gen.Location{}, err
 	}
-	trackableIDs := gen.StringIdList{matches[0].Id.String()}
+	trackableIDs := make(gen.StringIdList, 0, len(matches))
+	for _, trackable := range matches {
+		trackableIDs = append(trackableIDs, trackable.Id.String())
+	}
 	out.Trackables = &trackableIDs
 	associated := true
 	out.Associated = &associated
@@ -1149,6 +1150,10 @@ func trackablesForProvider(trackables []gen.Trackable, providerID string) []gen.
 // updates.
 func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
 	for _, proximity := range proximities {
+		if proximity.TimestampGenerated == nil {
+			now := s.now().UTC()
+			proximity.TimestampGenerated = &now
+		}
 		itemCtx := observability.WithIngestTransport(ctx, observability.IngestTransportFromContext(ctx))
 		itemCtx, span := s.telemetry().StartSpan(itemCtx, "hub.ingest.proximity",
 			attribute.String("provider_id", proximity.ProviderId),
@@ -1156,7 +1161,7 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 			attribute.String("source", proximity.Source),
 		)
 		start := time.Now()
-		if strings.TrimSpace(proximity.ProviderId) == "" || strings.TrimSpace(proximity.ProviderType) == "" || strings.TrimSpace(proximity.Source) == "" {
+		if strings.TrimSpace(proximity.ProviderId) == "" || !validTechnology(proximity.ProviderType) || strings.TrimSpace(proximity.Source) == "" {
 			err := badRequest("proximity entries require provider_id, provider_type, and source")
 			span.RecordError(err)
 			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "invalid")
@@ -1173,6 +1178,11 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 		if err != nil {
 			span.RecordError(err)
 			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
+			span.End()
+			return err
+		}
+		location, err = s.resolveLocationTrackables(itemCtx, location)
+		if err != nil {
 			span.End()
 			return err
 		}
@@ -1313,7 +1323,7 @@ func resolveProximity(proximity gen.Proximity, candidate resolvedProximity, curr
 		current.State.LastEmittedAt = now
 		return current, false, nil
 	}
-	if zonesWithinBoundaryGrace(current.Zone, current.Policy, candidate.Zone, candidate.Policy) && now.Sub(state.LastConfirmedAt) <= current.Policy.ExitGraceDuration {
+	if current.Policy.ExitGraceDuration > 0 && zonesWithinBoundaryGrace(current.Zone, current.Policy, candidate.Zone, candidate.Policy) && now.Sub(state.LastConfirmedAt) <= current.Policy.ExitGraceDuration {
 		current.Sticky = true
 		current.State.LastEmittedAt = now
 		return current, false, nil
@@ -1348,10 +1358,11 @@ func resolvedZoneFromCurrent(zone gen.Zone, defaults proximityResolutionPolicy) 
 }
 
 func deriveLocationFromProximity(proximity gen.Proximity, zone gen.Zone, sticky bool) gen.Location {
-	crs := "local"
+	crs := "EPSG:4326"
 	properties := mergeProximityResolutionProperties(proximity.Properties, zone.Id.String(), sticky)
 	return gen.Location{
 		Accuracy:           proximity.Accuracy,
+		Floor:              zone.Floor,
 		Crs:                &crs,
 		Position:           *zone.Position,
 		Properties:         properties,
@@ -1370,34 +1381,15 @@ func (s *Service) recordLocation(ctx context.Context, location gen.Location, ttl
 		return nil
 	}
 	s.telemetry().RecordIngestRecord(ctx, "location", "accepted")
-	s.processingState().SetLatestLocation(latestLocationKey(location.ProviderId, location.Source), location, ttl)
-	if location.Trackables != nil {
-		for _, trackableID := range *location.Trackables {
-			s.processingState().SetTrackableLocation(latestTrackableLocationKey(trackableID), location, ttl)
-		}
+	if !s.processingState().SetLatestLocation(latestLocationKey(location.ProviderId, location.Source), location, ttl) {
+		return nil
 	}
 	if s.nativeQueue != nil {
 		s.nativeQueue.Submit(derivedLocationWork{Context: ctx, Location: location, EnqueuedAt: time.Now()})
 		s.telemetry().RecordProcessingDuration(ctx, "location_record", "location", time.Since(start))
 		return nil
 	}
-	if err := s.publishLocation(ctx, location); err != nil {
-		s.logger.Warn("location event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
-	}
-	motions, err := s.publishTrackableMotions(ctx, location)
-	if err != nil {
-		s.logger.Warn("trackable motion event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
-	}
-	if err := s.publishFenceEvents(ctx, location); err != nil {
-		s.logger.Warn("fence event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
-	}
-	if s.cfg.CollisionsEnabled {
-		if err := s.enqueueCollisionWork(ctx, motions); err != nil {
-			s.logger.Warn("collision event emit failed", zap.Any("context", ctx), zap.Error(err), zap.String("provider_id", location.ProviderId))
-		}
-	}
-	s.telemetry().RecordProcessingDuration(ctx, "location_record", "location", time.Since(start))
-	return nil
+	return s.processNativeLocation(ctx, location)
 }
 
 func (s *Service) processNativeLocation(ctx context.Context, location gen.Location) error {
@@ -1411,16 +1403,13 @@ func (s *Service) processNativeLocation(ctx context.Context, location gen.Locati
 		span.End()
 		return err
 	}
-	if !s.cfg.KalmanFilterEnabled {
-		if _, err := s.publishNativeTrackableMotions(stageCtx, location); err != nil {
-			span.RecordError(err)
-			span.End()
-			return err
-		}
-	}
 	if s.derivedQueue != nil {
 		s.derivedQueue.Submit(derivedLocationWork{Context: stageCtx, Location: location, EnqueuedAt: time.Now()})
+	} else if err := s.processDecisionLocation(stageCtx, location); err != nil {
+		span.End()
+		return err
 	}
+
 	s.telemetry().RecordProcessingDuration(stageCtx, "native_publication", "location", time.Since(start))
 	span.End()
 	return nil
@@ -1452,103 +1441,49 @@ func (s *Service) processDecisionLocationBatch(ctx context.Context, batch []deri
 
 func (s *Service) processDecisionLocationStage(stageCtx context.Context, span oteltrace.Span, location gen.Location) error {
 	start := time.Now()
-	results, err := s.decisionStage.Process(stageCtx, location)
-	if err != nil {
+	// Provider publication is independent of trackable rule selection.
+	if err := s.processDerivedLocation(stageCtx, location, true); err != nil {
 		span.RecordError(err)
-		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
 		return err
 	}
-	if len(results) == 0 {
-		s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-		return nil
-	}
-	var stageErr error
-	for _, result := range results {
-		if err := s.processDerivedLocation(stageCtx, result.Location, result.Emit); err != nil && stageErr == nil {
-			stageErr = err
+	if location.Trackables != nil {
+		for _, id := range *location.Trackables {
+			if err := s.processTrackableCandidate(stageCtx, id, location); err != nil {
+				span.RecordError(err)
+				return err
+			}
 		}
 	}
-	if stageErr != nil {
-		span.RecordError(stageErr)
-	}
 	s.telemetry().RecordProcessingDuration(stageCtx, "decision_stage", "location", time.Since(start))
-	return stageErr
+	return nil
 }
 
+// processDerivedLocation publishes alternate provider projections. Trackable
+// decisions run separately, after selecting a significant provider observation.
 func (s *Service) processDerivedLocation(ctx context.Context, location gen.Location, emit bool) error {
 	if s.bus == nil {
 		return nil
 	}
 	view := newDerivedLocationView(s, location)
-	if err := s.publishFenceEvents(ctx, location); err != nil {
+	if err := s.publishFenceObservation(ctx, location, false); err != nil {
 		return err
 	}
-	if emit && s.cfg.KalmanFilterEnabled {
-		if _, err := s.publishTrackableMotionsForLocation(ctx, location, view.NativeScope()); err != nil {
-			return err
-		}
+	var projected *gen.Location
+	var scope EventScope
+	var ok bool
+	var err error
+	if view.NativeScope() == ScopeLocal {
+		projected, ok, err = view.WGS84(ctx)
+		scope = ScopeEPSG4326
+	} else {
+		projected, ok, err = view.Local(ctx)
+		scope = ScopeLocal
 	}
-	switch view.NativeScope() {
-	case ScopeLocal:
-		wgs84Location, ok, err := view.WGS84(ctx)
-		if err == nil && ok {
-			if err := s.publishFenceEvents(ctx, *wgs84Location); err != nil {
-				return err
-			}
-			if emit {
-				if err := s.publishLocationScope(ctx, *wgs84Location, ScopeEPSG4326); err != nil {
-					return err
-				}
-				wgs84Motions, err := s.publishTrackableMotionsForLocation(ctx, *wgs84Location, ScopeEPSG4326)
-				if err != nil {
-					return err
-				}
-				if s.cfg.CollisionsEnabled {
-					if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
-						return err
-					}
-				}
-			} else if s.cfg.CollisionsEnabled {
-				wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, *wgs84Location)
-				if err != nil {
-					return err
-				}
-				if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
-					return err
-				}
-			}
-		}
-	case ScopeEPSG4326:
-		if s.cfg.CollisionsEnabled {
-			wgs84Motions, err := s.buildTrackableMotionsForLocation(ctx, location)
-			if err != nil {
-				return err
-			}
-			if err := s.enqueueCollisionWork(ctx, wgs84Motions); err != nil {
-				return err
-			}
-		}
-		if emit {
-			localLocation, ok, err := view.Local(ctx)
-			if err == nil && ok {
-				if err := s.publishFenceEvents(ctx, *localLocation); err != nil {
-					return err
-				}
-				if err := s.publishLocationScope(ctx, *localLocation, ScopeLocal); err != nil {
-					return err
-				}
-				if _, err := s.publishTrackableMotionsForLocation(ctx, *localLocation, ScopeLocal); err != nil {
-					return err
-				}
-			}
-		} else {
-			localLocation, ok, err := view.Local(ctx)
-			if err == nil && ok {
-				if err := s.publishFenceEvents(ctx, *localLocation); err != nil {
-					return err
-				}
-			}
-		}
+	if err != nil || !ok {
+		return nil
+	}
+	if emit {
+		return s.publishLocationScope(ctx, *projected, scope)
 	}
 	return nil
 }
@@ -1569,11 +1504,7 @@ func (s *Service) enqueueCollisionWork(ctx context.Context, motions []gen.Tracka
 }
 
 func (s *Service) publishNativeLocation(ctx context.Context, location gen.Location) error {
-	return s.publishLocationScope(ctx, location, nativeLocationScope(location))
-}
-
-func (s *Service) publishNativeTrackableMotions(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
-	return s.publishTrackableMotionsForLocation(ctx, location, nativeLocationScope(location))
+	return s.publishLocationScope(ctx, location, nativeLocationScope(location), true)
 }
 
 func (s *Service) publishLocation(ctx context.Context, location gen.Location) error {
@@ -1611,7 +1542,7 @@ func (s *Service) publishLocation(ctx context.Context, location gen.Location) er
 	return nil
 }
 
-func (s *Service) publishLocationScope(_ context.Context, location gen.Location, scope EventScope) error {
+func (s *Service) publishLocationScope(_ context.Context, location gen.Location, scope EventScope, native ...bool) error {
 	if s.bus == nil {
 		return nil
 	}
@@ -1623,68 +1554,9 @@ func (s *Service) publishLocationScope(_ context.Context, location gen.Location,
 	if err != nil {
 		return err
 	}
+	event.Native = len(native) > 0 && native[0]
 	s.bus.Emit(event)
 	return nil
-}
-
-func (s *Service) publishTrackableMotions(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
-	if s.bus == nil || location.Trackables == nil {
-		return nil, nil
-	}
-	variants, err := s.locationVariants(ctx, location)
-	if err != nil {
-		return nil, err
-	}
-	wgsMotions := make([]gen.TrackableMotion, 0, len(*location.Trackables))
-	events := make([]Event, 0, len(*location.Trackables)*2)
-	for _, id := range *location.Trackables {
-		baseMotion := gen.TrackableMotion{Id: id}
-		if cache := s.metadataCache(); cache != nil {
-			if trackable, ok := cache.TrackableByID(id); ok {
-				baseMotion.Name = trackable.Name
-				baseMotion.Geometry = trackable.Geometry
-				baseMotion.Extrusion = trackable.Extrusion
-				baseMotion.Properties = trackable.Properties
-			}
-		} else if parsed, parseErr := uuid.Parse(id); parseErr == nil {
-			trackable, getErr := s.GetTrackable(ctx, openapi_types.UUID(parsed))
-			if getErr == nil {
-				baseMotion.Name = trackable.Name
-				baseMotion.Geometry = trackable.Geometry
-				baseMotion.Extrusion = trackable.Extrusion
-				baseMotion.Properties = trackable.Properties
-			}
-		}
-		if variants.Local != nil {
-			motion := baseMotion
-			motion.Location = *variants.Local
-			event, err := newEvent(EventTrackableMotion, ScopeLocal, locationTime(motion.Location), motion.Location.ProviderId, id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
-			if err != nil {
-				return nil, err
-			}
-			events = append(events, event)
-		}
-		if variants.WGS84 != nil {
-			motion := baseMotion
-			motion.Location = *variants.WGS84
-			event, err := newEvent(EventTrackableMotion, ScopeEPSG4326, locationTime(motion.Location), motion.Location.ProviderId, id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
-			if err != nil {
-				return nil, err
-			}
-			events = append(events, event)
-			wgsMotions = append(wgsMotions, motion)
-		}
-	}
-	s.bus.EmitBatch(events)
-	return wgsMotions, nil
-}
-
-func (s *Service) publishTrackableMotionsForLocation(ctx context.Context, location gen.Location, scope EventScope) ([]gen.TrackableMotion, error) {
-	motions, err := s.buildTrackableMotionsForLocation(ctx, location)
-	if err != nil {
-		return nil, err
-	}
-	return motions, s.publishTrackableMotionEvents(location.ProviderId, scope, motions)
 }
 
 func (s *Service) buildTrackableMotionsForLocation(ctx context.Context, location gen.Location) ([]gen.TrackableMotion, error) {
@@ -1698,21 +1570,29 @@ func (s *Service) buildTrackableMotionsForLocation(ctx context.Context, location
 			return nil, err
 		}
 		baseMotion.Location = location
+		if trackable, e := s.trackableByID(ctx, id); e == nil && trackable.Radius != nil {
+			baseMotion.Geometry = circularGeometry(location, trackableRadius(trackable))
+		}
 		motions = append(motions, baseMotion)
 	}
 	return motions, nil
 }
 
-func (s *Service) publishTrackableMotionEvents(providerID string, scope EventScope, motions []gen.TrackableMotion) error {
+func (s *Service) publishTrackableMotionEvents(providerID string, scope EventScope, motions []gen.TrackableMotion, originals []gen.TrackableMotion) error {
 	if s.bus == nil {
 		return nil
 	}
 	events := make([]Event, 0, len(motions))
-	for _, motion := range motions {
-		event, err := newEvent(EventTrackableMotion, scope, locationTime(motion.Location), providerID, motion.Id, "", s.cfg.HubID, TrackableMotionEnvelope{Motion: motion})
+	for i, motion := range motions {
+		envelope := TrackableMotionEnvelope{Motion: motion}
+		if i < len(originals) {
+			envelope.Original = &originals[i]
+		}
+		event, err := newEvent(EventTrackableMotion, scope, locationTime(motion.Location), providerID, motion.Id, "", s.cfg.HubID, envelope)
 		if err != nil {
 			return err
 		}
+		event.Native = envelope.Original != nil
 		events = append(events, event)
 	}
 	s.bus.EmitBatch(events)
@@ -1770,7 +1650,9 @@ func (s *Service) locationVariants(ctx context.Context, location gen.Location) (
 		variants := locationPublicationVariants{Local: &localCopy}
 		wgs84Location, err := s.locationToWGS84(ctx, location)
 		if err != nil {
-			s.logger.Warn("location wgs84 transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source))
+			if s.logger != nil {
+				s.logger.Warn("location wgs84 transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source))
+			}
 			return variants, nil
 		}
 		variants.WGS84 = &wgs84Location
@@ -1783,7 +1665,9 @@ func (s *Service) locationVariants(ctx context.Context, location gen.Location) (
 		variants := locationPublicationVariants{WGS84: &wgs84Location}
 		localLocation, err := s.locationToLocal(ctx, wgs84Location)
 		if err != nil {
-			s.logger.Warn("location local transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source), zap.String("crs", rawCRS))
+			if s.logger != nil {
+				s.logger.Warn("location local transform unavailable", zap.Error(err), zap.String("provider_id", location.ProviderId), zap.String("source", location.Source), zap.String("crs", rawCRS))
+			}
 			return variants, nil
 		}
 		variants.Local = &localLocation
@@ -1807,7 +1691,11 @@ func (s *Service) locationToWGS84(ctx context.Context, location gen.Location) (g
 		if err != nil {
 			return gen.Location{}, err
 		}
-		transformer, err := s.transformCache.Get(zone)
+		cache := s.transformCache
+		if cache == nil {
+			cache = transform.NewCache()
+		}
+		transformer, err := cache.Get(zone)
 		if err != nil {
 			return gen.Location{}, err
 		}
@@ -1824,7 +1712,11 @@ func (s *Service) locationToWGS84(ctx context.Context, location gen.Location) (g
 		out.Position = point
 		return out, nil
 	default:
-		point, err := s.crsTransformer.ToWGS84(crs, location.Position)
+		projector := s.crsTransformer
+		if projector == nil {
+			projector = transform.NewCRSTransformer()
+		}
+		point, err := projector.ToWGS84(crs, location.Position)
 		if err != nil {
 			return gen.Location{}, err
 		}
@@ -1844,7 +1736,11 @@ func (s *Service) locationToLocal(ctx context.Context, wgs84Location gen.Locatio
 	if err != nil {
 		return gen.Location{}, err
 	}
-	transformer, err := s.transformCache.Get(zone)
+	cache := s.transformCache
+	if cache == nil {
+		cache = transform.NewCache()
+	}
+	transformer, err := cache.Get(zone)
 	if err != nil {
 		return gen.Location{}, err
 	}
@@ -1891,164 +1787,19 @@ func (s *Service) invalidateZoneTransform(zoneID string) {
 	s.transformCache.Invalidate(zoneID)
 }
 
-func (s *Service) publishFenceEvents(ctx context.Context, location gen.Location) error {
-	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.fence_events",
-		attribute.String("provider_id", location.ProviderId),
-		attribute.String("source", location.Source),
-		attribute.StringSlice("trackable_ids", stringSliceValue(location.Trackables)),
-	)
-	defer span.End()
-	start := time.Now()
-	if s.bus == nil || location.Trackables == nil {
-		return nil
-	}
-	point, err := point2D(location.Position)
-	if err != nil {
-		return nil
-	}
-	provider, hasProvider := s.providerByID(ctx, location.ProviderId)
-	fences, err := s.fenceCandidatesForLocation(ctx, location)
-	if err != nil {
-		return err
-	}
-	locationCandidates := make(map[string]gen.Fence, len(fences))
-	locationContains := make(map[string]fenceContainment, len(fences))
-	for _, fence := range fences {
-		fenceID := fence.Id.String()
-		locationCandidates[fenceID] = fence
-		containment, err := fenceContainmentForPoint(fence, point)
-		if err != nil {
-			continue
-		}
-		locationContains[fenceID] = containment
-	}
-	now := s.processingState().nowUTC()
-	for _, trackableID := range *location.Trackables {
-		trackable, err := s.trackableByID(ctx, trackableID)
-		hasTrackable := err == nil
-		activeFenceIDs := s.processingState().ListInsideFences(trackableID)
-		activeFenceSet := make(map[string]struct{}, len(activeFenceIDs))
-		for _, fenceID := range activeFenceIDs {
-			activeFenceSet[fenceID] = struct{}{}
-		}
-		trackableCandidates := make(map[string]gen.Fence, len(locationCandidates)+len(activeFenceIDs))
-		trackableContains := make(map[string]fenceContainment, len(locationContains)+len(activeFenceIDs))
-		for fenceID, fence := range locationCandidates {
-			trackableCandidates[fenceID] = fence
-			trackableContains[fenceID] = locationContains[fenceID]
-		}
-		for _, fenceID := range activeFenceIDs {
-			if _, ok := trackableCandidates[fenceID]; ok {
-				continue
-			}
-			fence, ok := s.fenceByID(ctx, fenceID)
-			if !ok {
-				s.processingState().ClearInsideFence(trackableID, fenceID)
-				continue
-			}
-			if !fenceMatchesFloor(fence, location) {
-				s.processingState().ClearInsideFence(trackableID, fenceID)
-				continue
-			}
-			trackableCandidates[fenceID] = fence
-			containment, err := fenceContainmentForPoint(fence, point)
-			if err != nil {
-				continue
-			}
-			trackableContains[fenceID] = containment
-		}
-		for fenceID, fence := range trackableCandidates {
-			containment := trackableContains[fenceID]
-			_, wasInside := activeFenceSet[fenceID]
-			policy := resolveFenceExitPolicy(fence, trackable, hasTrackable, provider, hasProvider)
-			switch {
-			case containment.Inside && !wasInside:
-				s.processingState().SetInsideFence(trackableID, fenceID, s.cfg.LocationTTL)
-				event := gen.FenceEvent{
-					EventType:   gen.RegionEntry,
-					FenceId:     fence.Id,
-					Id:          openapi_types.UUID(ids.NewUUID()),
-					ProviderId:  &location.ProviderId,
-					TrackableId: &trackableID,
-					EntryTime:   &now,
-					ForeignId:   fence.ForeignId,
-				}
-				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
-					span.RecordError(err)
-					return err
-				}
-			case containment.Inside && wasInside:
-				s.processingState().SetInsideFence(trackableID, fenceID, s.cfg.LocationTTL)
-			case !containment.Inside && wasInside:
-				membership, ok := s.processingState().FenceMembershipState(trackableID, fenceID)
-				if !ok {
-					continue
-				}
-				if !exitReady(containment, policy, now, &membership) {
-					s.processingState().UpdateFenceMembershipState(trackableID, fenceID, s.cfg.LocationTTL, func(state *expiringFenceMembership) {
-						state.toleranceStartedAt = membership.toleranceStartedAt
-						state.exitPendingSince = membership.exitPendingSince
-					})
-					continue
-				}
-				if membership.exitPendingSince.IsZero() {
-					membership.exitPendingSince = now
-					s.processingState().UpdateFenceMembershipState(trackableID, fenceID, s.cfg.LocationTTL, func(state *expiringFenceMembership) {
-						state.toleranceStartedAt = membership.toleranceStartedAt
-						state.exitPendingSince = membership.exitPendingSince
-					})
-				}
-				if now.Sub(membership.exitPendingSince) < policy.ExitDelay {
-					continue
-				}
-				s.processingState().ClearInsideFence(trackableID, fenceID)
-				event := gen.FenceEvent{
-					EventType:   gen.RegionExit,
-					FenceId:     fence.Id,
-					Id:          openapi_types.UUID(ids.NewUUID()),
-					ProviderId:  &location.ProviderId,
-					TrackableId: &trackableID,
-					ExitTime:    &now,
-					ForeignId:   fence.ForeignId,
-				}
-				if err := s.publishFenceEvent(ctx, fence, event); err != nil {
-					span.RecordError(err)
-					return err
-				}
-			}
-		}
-	}
-	s.telemetry().RecordProcessingDuration(stageCtx, "fence_evaluation", "location", time.Since(start))
-	return nil
-}
-
-func exitReady(containment fenceContainment, policy fenceExitPolicy, now time.Time, membership *expiringFenceMembership) bool {
-	if containment.Inside {
-		membership.toleranceStartedAt = time.Time{}
-		membership.exitPendingSince = time.Time{}
-		return false
-	}
-	if policy.ExitTolerance <= 0 || containment.OutsideDistance > policy.ExitTolerance {
-		membership.toleranceStartedAt = time.Time{}
-		return true
-	}
-	if membership.toleranceStartedAt.IsZero() {
-		membership.toleranceStartedAt = now
-	}
-	if !policy.ToleranceTimeoutActive {
-		membership.exitPendingSince = time.Time{}
-		return false
-	}
-	if now.Sub(membership.toleranceStartedAt) >= policy.ToleranceTimeout {
-		return true
-	}
-	membership.exitPendingSince = time.Time{}
-	return false
-}
-
 func (s *Service) fenceCandidatesForLocation(ctx context.Context, location gen.Location) ([]gen.Fence, error) {
 	if cache := s.metadataCache(); cache != nil {
-		return cache.FenceCandidates(location)
+		radius := 0.0
+		for _, id := range stringSliceValue(location.Trackables) {
+			if trackable, ok := cache.TrackableByID(id); ok {
+				radius = math.Max(radius, trackableRadius(trackable))
+			}
+		}
+		snapshot := cache.current()
+		if locationCRS(location) == "EPSG:4326" && snapshot.worldFenceIndexes != nil {
+			snapshot.fenceIndexes = snapshot.worldFenceIndexes
+		}
+		return snapshot.fenceCandidatesWithRadius(location, radius)
 	}
 	return s.ListFences(ctx)
 }
@@ -2065,24 +1816,37 @@ func (s *Service) providerByID(ctx context.Context, id string) (gen.LocationProv
 }
 
 func resolveFenceExitPolicy(fence gen.Fence, trackable gen.Trackable, hasTrackable bool, provider gen.LocationProvider, hasProvider bool) fenceExitPolicy {
-	policy := fenceExitPolicy{}
+	policy := fenceExitPolicy{FenceTimeout: -1, ToleranceTimeoutActive: true}
+	if duration, ok, infinite := decodePositiveOrMinusOneDuration(fence.Timeout); ok {
+		if infinite {
+			policy.FenceTimeout = -1
+		} else {
+			policy.FenceTimeout = duration
+		}
+	}
 	applyFencePolicyOverride(&policy, fence.ExitTolerance, fence.ToleranceTimeout, fence.ExitDelay)
+	if hasTrackable {
+		applyFencePolicyOverride(&policy, trackable.ExitTolerance, trackable.ToleranceTimeout, trackable.ExitDelay)
+	}
 	if hasProvider {
 		applyFencePolicyOverride(&policy, provider.ExitTolerance, provider.ToleranceTimeout, provider.ExitDelay)
 	}
-	if hasTrackable {
-		applyFencePolicyOverride(&policy, trackable.ExitTolerance, trackable.ToleranceTimeout, trackable.ExitDelay)
+	// Section 8.2.1.4: a tolerance region with an unset/zero tolerance
+	// timeout inherits the fence timeout. An explicit -1 stays infinite.
+	if policy.ExitTolerance > 0 && policy.ToleranceTimeout == 0 {
+		policy.ToleranceTimeout = policy.FenceTimeout
+		policy.ToleranceTimeoutActive = policy.FenceTimeout >= 0
 	}
 	return policy
 }
 
 func applyFencePolicyOverride(policy *fenceExitPolicy, exitTolerance *gen.PositiveNumber, toleranceTimeout *gen.PositiveOrMinusOne, exitDelay *gen.PositiveOrMinusOne) {
-	if exitTolerance != nil && *exitTolerance > 0 {
+	if exitTolerance != nil && *exitTolerance >= 0 {
 		policy.ExitTolerance = float64(*exitTolerance)
 	}
 	if timeout, ok, disabled := decodePositiveOrMinusOneDuration(toleranceTimeout); ok {
 		if disabled {
-			policy.ToleranceTimeout = 0
+			policy.ToleranceTimeout = -1
 			policy.ToleranceTimeoutActive = false
 		} else {
 			policy.ToleranceTimeout = timeout
@@ -2091,7 +1855,7 @@ func applyFencePolicyOverride(policy *fenceExitPolicy, exitTolerance *gen.Positi
 	}
 	if delay, ok, disabled := decodePositiveOrMinusOneDuration(exitDelay); ok {
 		if disabled {
-			policy.ExitDelay = 0
+			policy.ExitDelay = -1
 		} else {
 			policy.ExitDelay = delay
 		}
@@ -2106,10 +1870,17 @@ func decodePositiveOrMinusOneDuration(value *gen.PositiveOrMinusOne) (time.Durat
 		return 0, true, true
 	}
 	positive, err := value.AsPositiveNumber()
-	if err != nil || positive <= 0 {
+	if err != nil || positive < 0 {
 		return 0, false, false
 	}
-	return time.Duration(float64(positive) * float64(time.Millisecond)), true, false
+	milliseconds := float64(positive)
+	if math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) {
+		return 0, false, false
+	}
+	if milliseconds >= float64(math.MaxInt64)/float64(time.Millisecond) {
+		return time.Duration(math.MaxInt64), true, false
+	}
+	return time.Duration(milliseconds * float64(time.Millisecond)), true, false
 }
 
 func (s *Service) fenceByID(ctx context.Context, fenceID string) (gen.Fence, bool) {
@@ -2142,115 +1913,6 @@ func (s *Service) publishFenceEvent(_ context.Context, fence gen.Fence, event ge
 	return nil
 }
 
-func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.TrackableMotion) error {
-	stageCtx, span := s.telemetry().StartSpan(ctx, "hub.process.collision_events")
-	defer span.End()
-	start := time.Now()
-	if s.bus == nil || !s.cfg.CollisionsEnabled || len(motions) == 0 {
-		return nil
-	}
-	activeMotions := s.processingState().ListActiveMotions()
-	indexedActiveMotions := make([]indexedCollisionMotion, 0, len(activeMotions))
-	for _, motion := range activeMotions {
-		point, err := point2D(motion.Location.Position)
-		if err != nil {
-			continue
-		}
-		indexed, ok := newIndexedCollisionMotion(motion, point)
-		if !ok {
-			continue
-		}
-		indexedActiveMotions = append(indexedActiveMotions, indexed)
-	}
-	activeMotionIndex := newCollisionSpatialIndex(indexedActiveMotions)
-	trackablesByID := make(map[string]gen.Trackable, len(activeMotions)+len(motions))
-	getTrackable := func(id string) (gen.Trackable, bool) {
-		if trackable, ok := trackablesByID[id]; ok {
-			return trackable, true
-		}
-		trackable, err := s.trackableByID(ctx, id)
-		if err != nil {
-			return gen.Trackable{}, false
-		}
-		trackablesByID[id] = trackable
-		return trackable, true
-	}
-	maxActiveRadiusMeters := s.cfg.CollisionDefaultRadiusMeters
-	for _, motion := range indexedActiveMotions {
-		trackable, ok := getTrackable(motion.motion.Id)
-		if !ok {
-			continue
-		}
-		radius := effectiveRadiusMeters(trackable, s.cfg.CollisionDefaultRadiusMeters)
-		if radius > maxActiveRadiusMeters {
-			maxActiveRadiusMeters = radius
-		}
-	}
-	for _, motion := range motions {
-		s.processingState().SetMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
-		leftTrackable, ok := getTrackable(motion.Id)
-		if !ok {
-			continue
-		}
-		leftPoint, err := point2D(motion.Location.Position)
-		if err != nil {
-			continue
-		}
-		searchDistanceMeters := effectiveRadiusMeters(leftTrackable, s.cfg.CollisionDefaultRadiusMeters) + maxActiveRadiusMeters
-		for _, candidate := range activeMotionIndex.Nearby(motion.Location, leftPoint, searchDistanceMeters) {
-			otherID := candidate.motion.Id
-			if otherID == motion.Id {
-				continue
-			}
-			pairKey := collisionPairKey(motion.Id, otherID)
-			otherMotion := candidate.motion
-			otherPoint := candidate.point
-			otherTrackable, ok := getTrackable(otherID)
-			if !ok {
-				continue
-			}
-			if !motionsMayCollide(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable, s.cfg.CollisionDefaultRadiusMeters) {
-				s.processingState().DeleteCollisionState(pairKey)
-				continue
-			}
-			event, active, err := s.evaluateCollision(motion, leftPoint, leftTrackable, otherMotion, otherPoint, otherTrackable)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			if !active {
-				if event != nil {
-					busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
-					if err != nil {
-						span.RecordError(err)
-						return err
-					}
-					s.bus.Emit(busEvent)
-				}
-				s.processingState().DeleteCollisionState(pairKey)
-				continue
-			}
-			if event == nil {
-				continue
-			}
-			s.processingState().SetCollisionState(pairKey, activeCollisionState{
-				Active:      true,
-				StartTime:   timeValue(event.StartTime),
-				LastSeen:    timeValue(event.CollisionTime),
-				LastEmitted: timeValue(event.CollisionTime),
-			}, s.cfg.CollisionStateTTL)
-			busEvent, err := newEvent(EventCollisionEvent, ScopeEPSG4326, timeValue(event.CollisionTime), motion.Location.ProviderId, motion.Id, "", s.cfg.HubID, CollisionEnvelope{Event: *event})
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			s.bus.Emit(busEvent)
-		}
-	}
-	s.telemetry().RecordProcessingDuration(stageCtx, "collision_evaluation", "location", time.Since(start))
-	return nil
-}
-
 func (s *Service) trackableByID(ctx context.Context, id string) (gen.Trackable, error) {
 	if cache := s.metadataCache(); cache != nil {
 		if trackable, ok := cache.TrackableByID(id); ok {
@@ -2265,107 +1927,19 @@ func (s *Service) trackableByID(ctx context.Context, id string) (gen.Trackable, 
 }
 
 type activeCollisionState struct {
-	Active      bool      `json:"active"`
-	StartTime   time.Time `json:"start_time"`
-	LastSeen    time.Time `json:"last_seen"`
-	LastEmitted time.Time `json:"last_emitted"`
+	timers         exitTimers
+	leftMotion     gen.TrackableMotion
+	rightMotion    gen.TrackableMotion
+	leftTrackable  gen.Trackable
+	rightTrackable gen.Trackable
+	distance       float64
+	Active         bool      `json:"active"`
+	StartTime      time.Time `json:"start_time"`
+	LastSeen       time.Time `json:"last_seen"`
+	LastEmitted    time.Time `json:"last_emitted"`
 }
 
-type collisionSpatialCell struct {
-	space string
-	x     int
-	y     int
-}
-
-type indexedCollisionMotion struct {
-	motion gen.TrackableMotion
-	point  [2]float64
-	x      float64
-	y      float64
-	space  string
-}
-
-type collisionSpatialIndex struct {
-	cells map[collisionSpatialCell][]indexedCollisionMotion
-}
-
-func newCollisionSpatialIndex(motions []indexedCollisionMotion) collisionSpatialIndex {
-	index := collisionSpatialIndex{cells: make(map[collisionSpatialCell][]indexedCollisionMotion, len(motions))}
-	for _, motion := range motions {
-		cell := collisionSpatialCell{
-			space: motion.space,
-			x:     collisionSpatialCellIndex(motion.x),
-			y:     collisionSpatialCellIndex(motion.y),
-		}
-		index.cells[cell] = append(index.cells[cell], motion)
-	}
-	return index
-}
-
-func (i collisionSpatialIndex) Nearby(location gen.Location, point [2]float64, searchDistanceMeters float64) []indexedCollisionMotion {
-	space, x, y, paddingFactor, ok := collisionSpatialPoint(location, point)
-	if !ok {
-		return nil
-	}
-	radiusCells := int(math.Ceil((searchDistanceMeters * paddingFactor) / collisionSpatialCellSizeMeters))
-	if radiusCells < 1 {
-		radiusCells = 1
-	}
-	candidates := make([]indexedCollisionMotion, 0)
-	baseX := collisionSpatialCellIndex(x)
-	baseY := collisionSpatialCellIndex(y)
-	for dx := -radiusCells; dx <= radiusCells; dx++ {
-		for dy := -radiusCells; dy <= radiusCells; dy++ {
-			cell := collisionSpatialCell{space: space, x: baseX + dx, y: baseY + dy}
-			candidates = append(candidates, i.cells[cell]...)
-		}
-	}
-	return candidates
-}
-
-func newIndexedCollisionMotion(motion gen.TrackableMotion, point [2]float64) (indexedCollisionMotion, bool) {
-	space, x, y, _, ok := collisionSpatialPoint(motion.Location, point)
-	if !ok {
-		return indexedCollisionMotion{}, false
-	}
-	return indexedCollisionMotion{
-		motion: motion,
-		point:  point,
-		x:      x,
-		y:      y,
-		space:  space,
-	}, true
-}
-
-func (s *Service) evaluateCollision(leftMotion gen.TrackableMotion, leftPoint [2]float64, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightPoint [2]float64, rightTrackable gen.Trackable) (*gen.CollisionEvent, bool, error) {
-	colliding, area, distance := motionsCollide(leftMotion, leftTrackable, rightMotion, rightTrackable, leftPoint, rightPoint, s.cfg.CollisionDefaultRadiusMeters)
-	key := collisionPairKey(leftMotion.Id, rightMotion.Id)
-	var state activeCollisionState
-	if existing, ok := s.processingState().GetCollisionState(key); ok {
-		state = existing
-	}
-	if !colliding {
-		if !state.Active {
-			return nil, false, nil
-		}
-		now := s.now().UTC()
-		event := collisionEventForPair(gen.CollisionEnd, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
-		event.EndTime = &now
-		return &event, false, nil
-	}
-	now := s.now().UTC()
-	if !state.Active {
-		event := collisionEventForPair(gen.CollisionStart, now, now, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
-		return &event, true, nil
-	}
-	if s.cfg.CollisionCollidingDebounce > 0 && !state.LastEmitted.IsZero() && now.Sub(state.LastEmitted) < s.cfg.CollisionCollidingDebounce {
-		return nil, true, nil
-	}
-	event := collisionEventForPair(gen.Colliding, now, state.StartTime, leftMotion, leftTrackable, rightMotion, rightTrackable, area, distance, s.cfg.CollisionDefaultRadiusMeters)
-	return &event, true, nil
-}
-
-func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float32, defaultRadiusMeters float64) gen.CollisionEvent {
+func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float64, defaultRadiusMeters float64) gen.CollisionEvent {
 	event := gen.CollisionEvent{
 		Id:            openapi_types.UUID(ids.NewUUID()),
 		CollisionType: kind,
@@ -2395,28 +1969,25 @@ func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable, de
 		geometry = trackable.Geometry
 	}
 	if geometry == nil {
-		geometry = pointSquarePolygon(motion.Location, effectiveRadiusMeters(trackable, defaultRadiusMeters))
+		geometry = circularGeometry(motion.Location, trackableRadius(trackable))
 	}
 	return gen.Collision{
 		Id:         openapi_types.UUID(id),
-		ObjectType: string(trackable.Type),
+		ObjectType: gen.CollisionObjectTypeTrackable,
 		Position:   motion.Location.Position,
 		Geometry:   *geometry,
+		Floor:      motion.Location.Floor,
 	}
 }
 
-func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, leftPoint, rightPoint [2]float64, defaultRadiusMeters float64) (bool, *gen.CollisionEvent_CollisionArea, float32) {
+func motionsCollide(leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, leftPoint, rightPoint [2]float64, defaultRadiusMeters float64) (bool, *gen.CollisionEvent_CollisionArea, float64) {
 	distanceSquared := collisionDistanceSquaredMeters(leftMotion.Location, rightMotion.Location, leftPoint, rightPoint)
 	distanceMeters := math.Sqrt(distanceSquared)
-	distance := float32(distanceMeters)
-	if leftMotion.Geometry != nil && rightMotion.Geometry != nil && polygonsOverlap(*leftMotion.Geometry, *rightMotion.Geometry) {
-		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
-		return true, &area, distance
-	}
+	distance := float64(distanceMeters)
 	radius := effectiveRadiusMeters(leftTrackable, defaultRadiusMeters) + effectiveRadiusMeters(rightTrackable, defaultRadiusMeters)
-	if distanceSquared <= radius*radius {
-		area := collisionAreaPoint(midpoint(leftPoint, rightPoint))
-		return true, &area, distance
+	if distanceSquared <= radius*radius && locationHeightGap(leftMotion.Location, leftTrackable.Extrusion, rightMotion.Location, rightTrackable.Extrusion) == 0 {
+		area := circularIntersection(leftMotion.Location, rightMotion.Location, trackableRadius(leftTrackable), trackableRadius(rightTrackable))
+		return true, area, distance
 	}
 	return false, nil, distance
 }
@@ -2468,11 +2039,11 @@ func proximityTime(proximity gen.Proximity) time.Time {
 }
 
 func fenceEventTime(event gen.FenceEvent) time.Time {
-	if event.EntryTime != nil {
-		return *event.EntryTime
-	}
 	if event.ExitTime != nil {
 		return *event.ExitTime
+	}
+	if event.EntryTime != nil {
+		return *event.EntryTime
 	}
 	return time.Time{}
 }
@@ -2498,7 +2069,7 @@ func fenceGeoJSONFeatureCollection(fence gen.Fence, event gen.FenceEvent) (GeoJS
 		Features: []GeoJSONFeature{{
 			Type:       "Feature",
 			Geometry:   region,
-			Properties: fenceEventProperties(event),
+			Properties: fenceGeoJSONProperties(fence, event),
 		}},
 	}, nil
 }
@@ -2572,59 +2143,18 @@ func fenceRegionGeometry(region gen.Fence_Region) (any, error) {
 	return nil, badRequest("unsupported fence region geometry")
 }
 
-func midpoint(left, right [2]float64) [2]float64 {
-	return [2]float64{(left[0] + right[0]) / 2, (left[1] + right[1]) / 2}
-}
-
 func collisionAreaPoint(point [2]float64) gen.CollisionEvent_CollisionArea {
 	area := gen.CollisionEvent_CollisionArea{}
 	geo := gen.Point{Type: "Point"}
-	_ = geo.Coordinates.FromGeoJsonPosition2D([]float32{float32(point[0]), float32(point[1])})
+	_ = geo.Coordinates.FromGeoJsonPosition2D([]float64{float64(point[0]), float64(point[1])})
 	_ = area.FromPoint(geo)
 	return area
 }
 
 const defaultCollisionRadiusMeters = 0.5
-const collisionSpatialCellSizeMeters = 100.0
-const collisionSpatialWGS84PaddingFactor = 2.0
 
-func effectiveRadiusMeters(trackable gen.Trackable, defaultRadiusMeters float64) float64 {
-	if trackable.Radius != nil && *trackable.Radius > 0 {
-		return float64(*trackable.Radius)
-	}
-	if defaultRadiusMeters > 0 {
-		return defaultRadiusMeters
-	}
-	return defaultCollisionRadiusMeters
-}
-
-func collisionSpatialCellIndex(value float64) int {
-	return int(math.Floor(value / collisionSpatialCellSizeMeters))
-}
-
-func collisionSpatialPoint(location gen.Location, point [2]float64) (space string, x, y, paddingFactor float64, ok bool) {
-	crs := strings.TrimSpace(locationCRS(location))
-	if crs == "" {
-		crs = "local"
-	}
-	if crs == "EPSG:4326" {
-		projectedX, projectedY, valid := wgs84PointToWebMercator(point)
-		return crs, projectedX, projectedY, collisionSpatialWGS84PaddingFactor, valid
-	}
-	return crs, point[0], point[1], 1, true
-}
-
-func wgs84PointToWebMercator(point [2]float64) (float64, float64, bool) {
-	lon := point[0]
-	lat := point[1]
-	if lon < -180 || lon > 180 || lat < -90 || lat > 90 {
-		return 0, 0, false
-	}
-	lat = math.Max(math.Min(lat, 85.05112878), -85.05112878)
-	x := 6378137.0 * degreesToRadians(lon)
-	latRad := degreesToRadians(lat)
-	y := 6378137.0 * math.Log(math.Tan(math.Pi/4+latRad/2))
-	return x, y, true
+func effectiveRadiusMeters(trackable gen.Trackable, _ float64) float64 {
+	return trackableRadius(trackable)
 }
 
 func pointSquarePolygon(location gen.Location, radiusMeters float64) *gen.Polygon {
@@ -2648,7 +2178,7 @@ func squarePolygon(center [2]float64, crs string, radiusMeters float64) *gen.Pol
 	}
 	for _, p := range points {
 		pos := gen.GeoJsonPosition{}
-		_ = pos.FromGeoJsonPosition2D([]float32{float32(p[0]), float32(p[1])})
+		_ = pos.FromGeoJsonPosition2D([]float64{float64(p[0]), float64(p[1])})
 		ring = append(ring, pos)
 	}
 	polygon.Coordinates = [][]gen.GeoJsonPosition{ring}
@@ -2668,7 +2198,7 @@ func collisionAxisDistancesMeters(leftLocation, rightLocation gen.Location, left
 		// thresholds the hub currently evaluates, but it is not intended for
 		// long-distance navigation or great-circle measurements.
 		latRad := degreesToRadians((leftPoint[1] + rightPoint[1]) / 2)
-		return metersPerLongitudeDegreeAtLatitude(latRad) * math.Abs(leftPoint[0]-rightPoint[0]), metersPerLatitudeDegree * math.Abs(leftPoint[1]-rightPoint[1])
+		return metersPerLongitudeDegreeAtLatitude(latRad) * math.Abs(math.Remainder(leftPoint[0]-rightPoint[0], 360)), metersPerLatitudeDegree * math.Abs(leftPoint[1]-rightPoint[1])
 	}
 	return math.Abs(leftPoint[0] - rightPoint[0]), math.Abs(leftPoint[1] - rightPoint[1])
 }
@@ -2700,18 +2230,6 @@ func metersPerLongitudeDegreeAtLatitude(latitudeRadians float64) float64 {
 
 func degreesToRadians(value float64) float64 {
 	return value * math.Pi / 180
-}
-
-func polygonsOverlap(left, right gen.Polygon) bool {
-	leftBounds, err := polygonBounds(left)
-	if err != nil {
-		return false
-	}
-	rightBounds, err := polygonBounds(right)
-	if err != nil {
-		return false
-	}
-	return !(leftBounds.maxX < rightBounds.minX || rightBounds.maxX < leftBounds.minX || leftBounds.maxY < rightBounds.minY || rightBounds.maxY < leftBounds.minY)
 }
 
 type bounds struct {
@@ -2758,15 +2276,25 @@ func normalizeZone(body json.RawMessage, forcedID uuid.UUID) (gen.Zone, []byte, 
 		return gen.Zone{}, nil, badRequest("invalid zone payload")
 	}
 	t, _ := doc["type"].(string)
-	if strings.TrimSpace(t) == "" {
-		return gen.Zone{}, nil, badRequest("zone type is required")
+	if t != "uwb" && t != "wifi" && t != "rfid" && t != "ibeacon" {
+		return gen.Zone{}, nil, badRequest("zone type must be uwb, wifi, rfid, or ibeacon")
 	}
 	incomplete, _ := doc["incomplete_configuration"].(bool)
-	if (t == "rfid" || t == "ibeacon") && doc["position"] == nil {
-		return gen.Zone{}, nil, badRequest("zone position is required for rfid and ibeacon zones")
+	_, hasPosition := doc["position"]
+	_, hasGCPs := doc["ground_control_points"]
+	if incomplete && (hasPosition || hasGCPs) {
+		return gen.Zone{}, nil, badRequest("incomplete zones must omit position and ground_control_points")
 	}
-	if t != "rfid" && t != "ibeacon" && !incomplete && doc["ground_control_points"] == nil {
-		return gen.Zone{}, nil, badRequest("ground_control_points are required unless incomplete_configuration=true")
+	if !incomplete && (t == "rfid" || t == "ibeacon") {
+		if doc["position"] == nil {
+			return gen.Zone{}, nil, badRequest("complete proximity zones require a WGS84 position")
+		}
+		if hasGCPs {
+			return gen.Zone{}, nil, badRequest("proximity zones must omit ground_control_points")
+		}
+	}
+	if !incomplete && t != "rfid" && t != "ibeacon" && doc["ground_control_points"] == nil {
+		return gen.Zone{}, nil, badRequest("complete zones require ground_control_points")
 	}
 	if err := validateZoneProperties(doc["properties"]); err != nil {
 		return gen.Zone{}, nil, err
@@ -2785,6 +2313,19 @@ func normalizeZone(body json.RawMessage, forcedID uuid.UUID) (gen.Zone, []byte, 
 	zone, err := decodePayload[gen.Zone](payload)
 	if err != nil {
 		return gen.Zone{}, nil, badRequest("invalid zone payload")
+	}
+	if zone.Position != nil {
+		if err := validatePoint(*zone.Position, true); err != nil {
+			return gen.Zone{}, nil, err
+		}
+	}
+	if err := nonnegative("radius", zone.Radius); err != nil {
+		return gen.Zone{}, nil, err
+	}
+	if !incomplete && t != "rfid" && t != "ibeacon" {
+		if _, err := transform.NewLocalTransformer(zone); err != nil {
+			return gen.Zone{}, nil, badRequest(err.Error())
+		}
 	}
 	return zone, payload, nil
 }
@@ -2815,6 +2356,35 @@ func normalizeFence(body json.RawMessage, forcedID uuid.UUID) (gen.Fence, []byte
 	if err != nil {
 		return gen.Fence{}, nil, badRequest("invalid fence payload")
 	}
+	if err := validateLocationCRS(fence.Crs); err != nil {
+		return gen.Fence{}, nil, err
+	}
+	if err := validateElevation(fence.ElevationRef); err != nil {
+		return gen.Fence{}, nil, err
+	}
+	if err := nonnegative("radius", fence.Radius); err != nil {
+		return gen.Fence{}, nil, err
+	}
+	if err := nonnegative("extrusion", fence.Extrusion); err != nil {
+		return gen.Fence{}, nil, err
+	}
+	if err := validateExitSettings(fence.ExitTolerance, fence.Timeout, fence.ToleranceTimeout, fence.ExitDelay); err != nil {
+		return gen.Fence{}, nil, err
+	}
+	geographic := fence.Crs == nil || *fence.Crs == "" || *fence.Crs == "EPSG:4326"
+	if p, e := fence.Region.AsPoint(); e == nil && p.Type == "Point" {
+		if err := validatePoint(p, geographic); err != nil {
+			return gen.Fence{}, nil, err
+		}
+	} else {
+		polygon, e := fence.Region.AsPolygon()
+		if e != nil {
+			return gen.Fence{}, nil, badRequest("invalid fence region")
+		}
+		if err := validatePolygon(polygon, geographic); err != nil {
+			return gen.Fence{}, nil, err
+		}
+	}
 	return fence, payload, nil
 }
 
@@ -2837,12 +2407,21 @@ func normalizeProvider(body gen.LocationProviderWrite, forcedID string) (gen.Loc
 	if strings.TrimSpace(body.Id) == "" || strings.TrimSpace(body.Type) == "" {
 		return gen.LocationProvider{}, nil, badRequest("provider id and type are required")
 	}
+	if !validTechnology(body.Type) {
+		return gen.LocationProvider{}, nil, badRequest("unsupported provider technology")
+	}
+	if err := validateExitSettings(body.ExitTolerance, body.FenceTimeout, body.ToleranceTimeout, body.ExitDelay); err != nil {
+		return gen.LocationProvider{}, nil, err
+	}
 	provider := gen.LocationProvider(body)
 	payload, err := json.Marshal(provider)
 	return provider, payload, err
 }
 
 func normalizeTrackable(body gen.TrackableWrite, forcedID uuid.UUID) (gen.Trackable, []byte, error) {
+	if _, err := compileLocatingRules(body.LocatingRules); err != nil {
+		return gen.Trackable{}, nil, badRequest(err.Error())
+	}
 	id := forcedID
 	if id == uuid.Nil {
 		if body.Id != nil {
@@ -2851,8 +2430,22 @@ func normalizeTrackable(body gen.TrackableWrite, forcedID uuid.UUID) (gen.Tracka
 			id = ids.NewUUID()
 		}
 	}
-	if strings.TrimSpace(string(body.Type)) == "" {
-		return gen.Trackable{}, nil, badRequest("trackable type is required")
+	if body.Type != gen.TrackableWriteTypeOmlox && body.Type != gen.TrackableWriteTypeVirtual {
+		return gen.Trackable{}, nil, badRequest("trackable type must be omlox or virtual")
+	}
+	if err := nonnegative("radius", body.Radius); err != nil {
+		return gen.Trackable{}, nil, err
+	}
+	if err := nonnegative("extrusion", body.Extrusion); err != nil {
+		return gen.Trackable{}, nil, err
+	}
+	if err := validateExitSettings(body.ExitTolerance, body.FenceTimeout, body.ToleranceTimeout, body.ExitDelay); err != nil {
+		return gen.Trackable{}, nil, err
+	}
+	if body.Geometry != nil {
+		if err := validatePolygon(*body.Geometry, false); err != nil {
+			return gen.Trackable{}, nil, err
+		}
 	}
 	trackable := gen.Trackable{
 		ExitDelay:         body.ExitDelay,
@@ -2877,12 +2470,20 @@ func validateLocation(location gen.Location) error {
 	if strings.TrimSpace(location.ProviderId) == "" || strings.TrimSpace(location.ProviderType) == "" || strings.TrimSpace(location.Source) == "" {
 		return badRequest("location entries require provider_id, provider_type, and source")
 	}
-	if location.Position.Type != "Point" {
-		return badRequest("location position must be a GeoJSON Point")
+	if !validTechnology(location.ProviderType) {
+		return badRequest("unsupported location provider_type")
 	}
-	_, err := point2D(location.Position)
-	if err != nil {
-		return badRequest("location position must include 2D or 3D coordinates")
+	if err := validatePoint(location.Position, locationCRS(location) == "EPSG:4326"); err != nil {
+		return err
+	}
+	if err := validateElevation(location.ElevationRef); err != nil {
+		return err
+	}
+	if err := nonnegative("accuracy", location.Accuracy); err != nil {
+		return err
+	}
+	if err := nonnegative("speed", location.Speed); err != nil {
+		return err
 	}
 	if err := validateLocationCRS(location.Crs); err != nil {
 		return err
@@ -2890,21 +2491,7 @@ func validateLocation(location gen.Location) error {
 	return nil
 }
 
-func validateLocationCRS(crs *string) error {
-	if crs == nil {
-		return nil
-	}
-	value := strings.TrimSpace(*crs)
-	switch value {
-	case "", "local":
-		return nil
-	default:
-		if strings.HasPrefix(value, "EPSG:") && len(value) > len("EPSG:") {
-			return nil
-		}
-		return badRequest("location crs must be local or an EPSG code")
-	}
-}
+func validateLocationCRS(crs *string) error { return validateSupportedCRS(crs) }
 
 func locationCRS(location gen.Location) string {
 	if location.Crs == nil {
@@ -2997,52 +2584,6 @@ func locationAssociatedWithTrackable(location gen.Location, trackableID string) 
 	return false
 }
 
-func (s *Service) deleteProviderState(ctx context.Context, providerID string) bool {
-	removed := false
-	for _, location := range s.processingState().ListLatestLocations() {
-		if location.ProviderId != providerID {
-			continue
-		}
-		removed = true
-		s.processingState().DeleteLatestLocation(latestLocationKey(location.ProviderId, location.Source))
-		for _, trackableID := range stringSliceValue(location.Trackables) {
-			s.processingState().DeleteTrackableLocation(latestTrackableLocationKey(trackableID))
-			s.processingState().DeleteMotion(trackableID)
-			for _, fenceID := range s.processingState().ListInsideFences(trackableID) {
-				s.processingState().ClearInsideFence(trackableID, fenceID)
-			}
-		}
-	}
-	return removed
-}
-
-func (s *Service) fencesForLocation(ctx context.Context, location gen.Location) ([]gen.Fence, error) {
-	fences, err := s.fenceCandidatesForLocation(ctx, location)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]gen.Fence, 0, len(fences))
-	for _, fence := range fences {
-		if !fenceContainsLocation(fence, location) {
-			continue
-		}
-		out = append(out, fence)
-	}
-	return out, nil
-}
-
-func fenceContainsLocation(fence gen.Fence, location gen.Location) bool {
-	if !fenceMatchesFloor(fence, location) {
-		return false
-	}
-	point, err := point2D(location.Position)
-	if err != nil {
-		return false
-	}
-	inside, err := fenceContainsPoint(fence, point)
-	return err == nil && inside
-}
-
 func proximityResolutionStateKey(providerType, providerID string) string {
 	return fmt.Sprintf("hub:proximity:%s:%s", providerType, providerID)
 }
@@ -3054,19 +2595,19 @@ func dedupLocationKey(location gen.Location) string {
 	hashString(hasher, location.Source)
 	hashOptionalString(hasher, location.Crs)
 	hashOptionalBool(hasher, location.Associated)
-	hashOptionalFloat32(hasher, location.Accuracy)
-	hashOptionalFloat32(hasher, location.Course)
+	hashOptionalFloat64(hasher, location.Accuracy)
+	hashOptionalFloat64(hasher, location.Course)
 	hashOptionalString(hasher, enumPtrString(location.ElevationRef))
-	hashOptionalFloat32(hasher, location.Floor)
-	hashOptionalFloat32(hasher, location.HeadingAccuracy)
-	hashOptionalFloat32(hasher, location.MagneticHeading)
+	hashOptionalFloat64(hasher, location.Floor)
+	hashOptionalFloat64(hasher, location.HeadingAccuracy)
+	hashOptionalFloat64(hasher, location.MagneticHeading)
 	hashPoint(hasher, location.Position)
 	hashExtensionProperties(hasher, location.Properties)
-	hashOptionalFloat32(hasher, location.Speed)
+	hashOptionalFloat64(hasher, location.Speed)
 	hashOptionalTime(hasher, location.TimestampGenerated)
 	hashOptionalTime(hasher, location.TimestampSent)
 	hashOptionalStringSlice(hasher, location.Trackables)
-	hashOptionalFloat32(hasher, location.TrueHeading)
+	hashOptionalFloat64(hasher, location.TrueHeading)
 	return dedupKey(hasher.Sum(nil))
 }
 
@@ -3102,10 +2643,10 @@ func hashOptionalBool(h hash.Hash, value *bool) {
 	}
 }
 
-func hashOptionalFloat32(h hash.Hash, value *float32) {
+func hashOptionalFloat64(h hash.Hash, value *float64) {
 	hashBool(h, value != nil)
 	if value != nil {
-		hashUint32(h, math.Float32bits(*value))
+		hashUint64(h, math.Float64bits(*value))
 	}
 }
 
@@ -3136,21 +2677,21 @@ func hashPoint(h hash.Hash, point gen.Point) {
 	}
 	coords2d, err := point.Coordinates.AsGeoJsonPosition2D()
 	if err == nil {
-		hashFloat32Slice(h, coords2d)
+		hashFloat64Slice(h, coords2d)
 		return
 	}
 	coords3d, err := point.Coordinates.AsGeoJsonPosition3D()
 	if err == nil {
-		hashFloat32Slice(h, coords3d)
+		hashFloat64Slice(h, coords3d)
 		return
 	}
 	hashBytes(h, nil)
 }
 
-func hashFloat32Slice(h hash.Hash, values []float32) {
+func hashFloat64Slice(h hash.Hash, values []float64) {
 	hashLength(h, len(values))
 	for _, value := range values {
-		hashUint32(h, math.Float32bits(value))
+		hashUint64(h, math.Float64bits(value))
 	}
 }
 
@@ -3330,12 +2871,19 @@ func fenceContainmentForPoint(fence gen.Fence, point [2]float64) (fenceContainme
 		return fenceContainment{}, errors.New("empty polygon")
 	}
 	inside := pointInRing(point, polygon.Coordinates[0])
-	if inside {
-		return fenceContainment{Inside: true}, nil
+	distance := math.Inf(1)
+	for i, ring := range polygon.Coordinates {
+		if i > 0 && pointInRing(point, ring) {
+			inside = false
+		}
+		d, err := pointToRingDistance(point, ring)
+		if err != nil {
+			return fenceContainment{}, err
+		}
+		distance = math.Min(distance, d)
 	}
-	distance, err := pointToRingDistance(point, polygon.Coordinates[0])
-	if err != nil {
-		return fenceContainment{}, err
+	if inside || distance <= 1e-8 {
+		return fenceContainment{Inside: true}, nil
 	}
 	return fenceContainment{OutsideDistance: distance}, nil
 }
@@ -3528,8 +3076,8 @@ func validateProximityResolutionPolicy(policy proximityResolutionPolicy) (proxim
 	if policy.EntryConfidenceMin < 0 {
 		return proximityResolutionPolicy{}, badRequest("proximity resolution entry_confidence_min must be >= 0")
 	}
-	if policy.ExitGraceDuration <= 0 {
-		return proximityResolutionPolicy{}, badRequest("proximity resolution exit_grace_duration must be > 0")
+	if policy.ExitGraceDuration < 0 {
+		return proximityResolutionPolicy{}, badRequest("proximity resolution exit_grace_duration must be >= 0")
 	}
 	if policy.BoundaryGrace < 0 {
 		return proximityResolutionPolicy{}, badRequest("proximity resolution boundary_grace_distance must be >= 0")
@@ -3682,4 +3230,19 @@ func mergeProximityResolutionProperties(props *gen.ExtensionProperties, resolved
 	out["resolution_policy_version"] = "v1"
 	out["sticky"] = sticky
 	return &out
+}
+
+func fenceGeoJSONProperties(fence gen.Fence, event gen.FenceEvent) map[string]any {
+	raw, _ := json.Marshal(fence)
+	props := map[string]any{}
+	_ = json.Unmarshal(raw, &props)
+	delete(props, "region")
+	// Keep the fence identity and attributes and add the event's entry/exit context.
+	for key, value := range fenceEventProperties(event) {
+		if key != "id" && key != "properties" {
+			props[key] = value
+		}
+	}
+	props["event_id"] = event.Id
+	return props
 }

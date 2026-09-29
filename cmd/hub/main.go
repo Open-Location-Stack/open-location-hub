@@ -205,8 +205,6 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		MetadataReconcileInterval:             cfg.MetadataReconcileInterval,
 		CollisionsEnabled:                     cfg.CollisionsEnabled,
 		CollisionStateTTL:                     cfg.CollisionStateTTL,
-		CollisionCollidingDebounce:            cfg.CollisionCollidingDebounce,
-		CollisionDefaultRadiusMeters:          cfg.CollisionDefaultRadiusMeters,
 		KalmanFilterEnabled:                   cfg.KalmanFilterEnabled,
 		KalmanLocationMaxPoints:               cfg.KalmanLocationMaxPoints,
 		KalmanLocationMaxAge:                  cfg.KalmanLocationMaxAge,

@@ -44,13 +44,16 @@ Published via WebSocket topic `fence_events`.
 
 ## Current Repository Behavior
 
-- Fence entry is emitted as soon as an accepted location is inside the fence geometry.
-- Fence exit is evaluated on each accepted location update for the trackable.
-- `exit_tolerance` creates an outer grace band beyond the fence boundary before an exit is considered final.
-- `tolerance_timeout` limits how long the hub keeps a trackable inside while it remains only within that tolerance band.
-- `exit_delay` adds an additional debounce after the hub has decided the trackable is truly outside.
-- Positive values are interpreted as milliseconds for `tolerance_timeout` and `exit_delay`.
-- Positive values are applied in override order from fence to current location provider to trackable.
-- Disabling negative values on `tolerance_timeout` and `exit_delay` clear that behavior back to the conservative default instead of inheriting a broader delay or hold.
-- Omitted or `null` values do not add grace behavior on their own; if no positive value survives the override chain, the effective default remains immediate exit.
-- Exit timing is event-driven rather than timer-driven: the hub finalizes delayed exits when a subsequent location update confirms the elapsed timeout or delay.
+- Provider observations and selected trackable observations maintain independent fence membership and emit their respective events.
+- Trackable entry includes the circular extent defined by `radius`; even a single touching point counts as inside. Providers are evaluated as points. Polygon holes are excluded.
+- Radius and exit tolerance are meters, including fences in EPSG:4326. Geographic comparisons use a local planar approximation; the spatial index expands its query by the trackable radius.
+- Table 13 controls fence, tolerance, and outside deadlines. The earliest deadline emits `region_exit` even when no further position arrives. Returning inside cancels the exit timers and refreshes the fence timeout.
+- Zero is immediate and `-1` is infinite. An absent fence `timeout` is infinite. With a nonzero exit tolerance, an unset or zero `tolerance_timeout` inherits the fence timeout, as required by section 8.2.1.4.
+- Each parameter uses the current provider's value first, then the trackable's, then the fence's. The fence's own `timeout` initializes the fence deadline, following section 10.1 despite the less precise object-field descriptions of `fence_timeout`.
+- Fence membership is not silently removed by the location cache TTL. One indexed deadline per membership avoids accumulating obsolete timer callbacks.
+- Different explicit floor values suppress fence events and clear previous membership. Missing floor matches all floors, following section 8.4.
+- Events copy fence properties and foreign ID. Exit events retain both the entry time and scheduled exit time; the event envelope timestamp uses the exit time.
+- Local and projected fence definitions are transformed into a shared geographic index when metadata changes. Each observation is evaluated once; switching source zones can release membership in the previous zone.
+- `subdivide=true` on create/update splits polygon edges to at most ten meters before transformation, preserving metadata and interpolating height. Ten meters and the 100000-vertex limit are implementation choices; the upstream parameter does not prescribe a distance. Point regions are unchanged.
+- `spatial_query=false` returns logical membership maintained by timers. `true` recomputes geometric containment from retained observations, including CRS, radius, floor, and height where available.
+- Deleting a fence or trackable cancels its pending timers. Administrative deletion does not emit a fabricated location or exit event.

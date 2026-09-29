@@ -57,11 +57,11 @@ Repository relevance:
 
 ### Locating rule extension
 
-A reference implementation documents a locating rule extension around trackables and provider selection.
+The published Hub 2.0.0 specification defines locating rules in chapter 12. They are implemented for trackable provider selection; the vendor documentation is supplementary context.
 
 Repository relevance:
 - deterministic provider arbitration
-- user-configurable tracking behavior beyond the minimum OMLOX baseline
+- user-configurable tracking behavior using the standard rule syntax
 
 ### Adapter endpoints and integration surfaces
 

@@ -39,7 +39,6 @@ func TestDexBackedAuthorization(t *testing.T) {
 	createResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/zones", adminToken, map[string]any{
 		"type":                     "uwb",
 		"incomplete_configuration": true,
-		"ground_control_points":    []map[string]any{},
 		"name":                     zoneName,
 	})
 	assertStatus(t, createResp, http.StatusCreated)
@@ -52,7 +51,7 @@ func TestDexBackedAuthorization(t *testing.T) {
 		t.Fatal("expected created zone id")
 	}
 
-	listResp := request(t, http.MethodGet, appBaseURL+"/v2/zones", adminToken)
+	listResp := request(t, http.MethodGet, appBaseURL+"/v2/zones/summary", adminToken)
 	assertStatus(t, listResp, http.StatusOK)
 	var zones []map[string]any
 	decodeResponse(t, listResp, &zones)
@@ -95,7 +94,7 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 		time.Sleep(500 * time.Millisecond)
 	}
 	ensurePostgresDatabase(t, ctx, pg, "openrtls")
-	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql"} {
+	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql", "00003_zone_foreign_id_unique.sql"} {
 		content, err := os.ReadFile(repoPath(t, filepath.Join("migrations", name)))
 		if err != nil {
 			t.Fatalf("read migration %s failed: %v", name, err)

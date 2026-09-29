@@ -89,7 +89,8 @@ const (
 )
 
 type availabilityEntry struct {
-	Source methodSource
+	Source    methodSource
+	ExpiresAt time.Time
 }
 
 type pendingRequest struct {
@@ -176,11 +177,16 @@ func (b *Bridge) AvailableMethods(ctx context.Context) (gen.RpcAvailableMethods,
 	out := make(gen.RpcAvailableMethods, len(b.available))
 	for method, handlers := range b.available {
 		entry := gen.RpcAvailableMethodsEntry{HandlerId: make([]string, 0, len(handlers))}
-		for handlerID := range handlers {
+		for handlerID, available := range handlers {
+			if !available.live() {
+				continue
+			}
 			entry.HandlerId = append(entry.HandlerId, handlerID)
 		}
 		slices.Sort(entry.HandlerId)
-		out[method] = entry
+		if len(entry.HandlerId) > 0 {
+			out[method] = entry
+		}
 	}
 	return out, nil
 }
@@ -464,7 +470,7 @@ func (b *Bridge) publish(ctx context.Context, topic string, payload any, retaine
 	return b.mqtt.PublishJSON(ctx, topic, payload, retained)
 }
 
-func (b *Bridge) handleAvailable(_ context.Context, topic string, payload []byte) error {
+func (b *Bridge) handleAvailable(ctx context.Context, topic string, payload []byte) error {
 	parts := strings.Split(strings.Trim(topic, "/"), "/")
 	if len(parts) < 5 {
 		return nil
@@ -472,7 +478,11 @@ func (b *Bridge) handleAvailable(_ context.Context, topic string, payload []byte
 	method := parts[len(parts)-1]
 	if len(payload) == 0 {
 		b.mu.Lock()
-		delete(b.available, method)
+		for id, entry := range b.available[method] {
+			if entry.Source == methodSourceExternal {
+				delete(b.available[method], id)
+			}
+		}
 		b.mu.Unlock()
 		return nil
 	}
@@ -506,11 +516,18 @@ func (b *Bridge) handleAvailable(_ context.Context, topic string, payload []byte
 	}
 
 	if len(handlerIDs) == 0 {
-		handlerIDs[method] = struct{}{}
+		return nil
 	}
 	b.mu.Lock()
 	for handlerID := range handlerIDs {
 		b.ensureAvailableLocked(method, handlerID, methodSourceExternal)
+		if expiry, ok := mqtt.MessageExpiry(ctx); ok {
+			entry := b.available[method][handlerID]
+			if entry.Source == methodSourceExternal {
+				entry.ExpiresAt = time.Now().Add(expiry)
+				b.available[method][handlerID] = entry
+			}
+		}
 	}
 	b.mu.Unlock()
 	return nil
@@ -634,7 +651,7 @@ func (b *Bridge) hasExternalMethod(method string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for handlerID, entry := range b.available[method] {
-		if entry.Source == methodSourceExternal && handlerID != b.cfg.HandlerID {
+		if entry.live() && entry.Source == methodSourceExternal && handlerID != b.cfg.HandlerID {
 			return true
 		}
 	}
@@ -645,14 +662,21 @@ func (b *Bridge) hasExternalHandler(method, handlerID string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	entry, ok := b.available[method][handlerID]
-	return ok && entry.Source == methodSourceExternal
+	return ok && entry.live() && entry.Source == methodSourceExternal
 }
 
 func (b *Bridge) ensureAvailableLocked(method, handlerID string, source methodSource) {
 	if b.available[method] == nil {
 		b.available[method] = map[string]availabilityEntry{}
 	}
-	b.available[method][handlerID] = availabilityEntry{Source: source}
+	if existing, ok := b.available[method][handlerID]; ok && existing.Source == methodSourceLocal {
+		return
+	}
+	entry := availabilityEntry{Source: source}
+	if source == methodSourceExternal {
+		entry.ExpiresAt = time.Now().Add(120 * time.Second)
+	}
+	b.available[method][handlerID] = entry
 }
 
 type methodHandlerFunc func(context.Context, gen.JsonRpcRequest) (map[string]any, error)
@@ -745,4 +769,8 @@ func responseIsError(payload []byte) bool {
 	}
 	_, ok := probe["error"]
 	return ok
+}
+
+func (e availabilityEntry) live() bool {
+	return e.Source == methodSourceLocal || e.ExpiresAt.IsZero() || time.Now().Before(e.ExpiresAt)
 }

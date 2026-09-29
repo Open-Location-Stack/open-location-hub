@@ -122,3 +122,38 @@ The integration suite now also includes shared-hub scenario coverage for high-tr
 - GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly.
 - direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
 - Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](../docs/auth.md).
+
+## OMLOX 0.2 alignment checks
+
+`just test-unit` runs Go package tests without starting integration containers. The
+locating-rule tests cover the published UWB/GPS priority and age example, typed
+expression validation, out-of-order timestamps, independent provider publication,
+and motion reads with collisions disabled. The complete release gate remains
+`just bootstrap`, `just generate`, and `just check`; a unit-only pass is insufficient.
+
+Keep the sibling CLI contract synchronized and test its actual HTTP methods,
+query parameters, and 204 handling. Run the plugfest adapter's Node tests after
+changing normalization or CLI forwarding. Record live DeepHub/ZIGPOS outcomes
+separately from local mocks/replays in the integration compatibility note.
+
+## Fence and collision behavior
+
+Unit coverage exercises all nine table-13/table-14 transitions, infinite and zero
+timeouts, timer replacement/cancellation, and autonomous fence exits. Geometry
+checks cover meter-based geographic radii, polygon holes, boundary tangency, and
+trackable radius expansion of spatial candidates. Collision checks cover first-mover
+ordering, large jumps ending active pairs, every-update continuation events, provider
+overrides, timeout maxima, return-to-intersection cancellation, floor/height separation,
+and retaining active membership independently of observation cache TTL.
+
+Live DeepHub and ZIGPOS hubs are unavailable. Their live interoperability tests are
+explicitly skipped for the 0.2 validation; use adapter tests and available recordings, and
+report those results as local evidence only.
+
+
+The 0.2 regression suite also covers the JSON/OpenAPI contract changes, GCP arrays,
+source-zone mapping, field defaults, requested projection, GeoJSON unions, and
+cross-connection WebSocket subscription IDs. A local MQTT 5 client reads a retained
+RPC announcement from Mosquitto and asserts its remaining expiry is at most 120
+seconds. CLI HTTP tests and the seven plugfest Node tests provide offline adapter
+coverage; they do not connect to vendor hubs.

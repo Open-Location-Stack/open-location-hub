@@ -23,7 +23,7 @@ Key fields from section 6.7.9:
 
 ## Operations
 
-### `POST /v2/providers/locations`
+### `PUT /v2/providers/locations`
 Advertise/push location updates (`Location` objects) to the hub.
 
 Current repository behavior for location ingestion:
@@ -32,13 +32,13 @@ Current repository behavior for location ingestion:
 - named projected CRS conversion uses the runtime projection engine
 - the hub publishes only the derived topic variants it can produce safely and suppresses unavailable variants instead of aliasing bad coordinates
 
-### `POST /v2/providers/proximities`
+### `PUT /v2/providers/proximities`
 Advertise proximity updates (`Proximity` objects), which the hub converts into `Location` processing flow.
 
 Current repository behavior for proximity ingestion:
 - the hub resolves the referenced source to a proximity-capable zone by `zone.id` or `zone.foreign_id`
 - the hub may keep the currently resolved zone briefly to reduce flapping between nearby zones
-- the derived `Location` uses the resolved zone position in local coordinates
+- the derived `Location` uses the resolved zone position in EPSG:4326 and inherits its floor
 - georeferenced zones also emit derived WGS84 publication for the resulting location
 - per-zone tuning comes from `Zone.properties.proximity_resolution`
 

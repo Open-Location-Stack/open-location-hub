@@ -130,6 +130,11 @@ func (s *kalmanDecisionStage) normalizeTrackable(location gen.Location, trackabl
 		state = kalmanTrackState{}
 	}
 	state.CRS = crs
+	// A rule can select an older retained observation or another local source.
+	// Restart the filter rather than mixing different coordinate frames or times.
+	if state.LastDecision != nil && (state.LastDecision.Location.ProviderId != location.ProviderId || state.LastDecision.Location.Source != location.Source || !decisionAt.After(state.LastDecision.At)) {
+		state = kalmanTrackState{CRS: crs}
+	}
 	if state.LastDecision != nil && !state.LastDecision.At.IsZero() && decisionAt.Sub(state.LastDecision.At) > s.maxAge {
 		state = kalmanTrackState{CRS: state.CRS}
 	}
@@ -162,8 +167,8 @@ func (s *kalmanDecisionStage) normalizeTrackable(location gen.Location, trackabl
 
 	if state.LastDecision != nil && !state.LastDecision.At.IsZero() && decisionAt.After(state.LastDecision.At) {
 		if course, speed, ok := derivedHorizontalMotion(*state.LastDecision, out, decisionAt); ok {
-			out.Course = float32Value(float32(course))
-			out.Speed = float32Value(float32(speed))
+			out.Course = float64Value(float64(course))
+			out.Speed = float64Value(float64(speed))
 		}
 		if verticalSpeed, ok := derivedVerticalSpeed(*state.LastDecision, normalizedZ, decisionAt); ok {
 			out.Properties = mergeKalmanProperties(out.Properties, verticalSpeed)
@@ -282,12 +287,12 @@ func kalmanPosition(base gen.Point, x, y float64, vertical axisKalmanState, hasV
 	point := gen.Point{Type: base.Type}
 	if hasVertical && vertical.Initialized {
 		z := vertical.Estimate
-		if err := point.Coordinates.FromGeoJsonPosition3D([]float32{float32(x), float32(y), float32(z)}); err != nil {
+		if err := point.Coordinates.FromGeoJsonPosition3D([]float64{float64(x), float64(y), float64(z)}); err != nil {
 			return gen.Point{}, nil, err
 		}
 		return point, &z, nil
 	}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{float64(x), float64(y)}); err != nil {
 		return gen.Point{}, nil, err
 	}
 	return point, nil, nil
@@ -381,6 +386,6 @@ func mergeKalmanProperties(props *gen.ExtensionProperties, verticalSpeed *float6
 	return &out
 }
 
-func float32Value(value float32) *float32 {
+func float64Value(value float64) *float64 {
 	return &value
 }

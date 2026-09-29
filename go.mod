@@ -6,6 +6,7 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/dhconnelly/rtreego v1.2.0
+	github.com/eclipse/paho.golang v0.23.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1

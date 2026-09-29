@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -15,6 +16,21 @@ import (
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for CollisionObjectType.
+const (
+	CollisionObjectTypeTrackable CollisionObjectType = "trackable"
+)
+
+// Valid indicates whether the value is a known member of the CollisionObjectType enum.
+func (e CollisionObjectType) Valid() bool {
+	switch e {
+	case CollisionObjectTypeTrackable:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for CollisionEventCollisionType.
 const (
@@ -85,6 +101,36 @@ func (e FenceWriteElevationRef) Valid() bool {
 	case FenceWriteElevationRefFloor:
 		return true
 	case FenceWriteElevationRefWgs84:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GeoJSONFeatureCollectionFeaturesType.
+const (
+	Feature GeoJSONFeatureCollectionFeaturesType = "Feature"
+)
+
+// Valid indicates whether the value is a known member of the GeoJSONFeatureCollectionFeaturesType enum.
+func (e GeoJSONFeatureCollectionFeaturesType) Valid() bool {
+	switch e {
+	case Feature:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GeoJSONFeatureCollectionType.
+const (
+	FeatureCollection GeoJSONFeatureCollectionType = "FeatureCollection"
+)
+
+// Valid indicates whether the value is a known member of the GeoJSONFeatureCollectionType enum.
+func (e GeoJSONFeatureCollectionType) Valid() bool {
+	switch e {
+	case FeatureCollection:
 		return true
 	default:
 		return false
@@ -235,6 +281,24 @@ func (e PositiveOrMinusOne0) Valid() bool {
 	}
 }
 
+// Defines values for SimpleTransformCrs.
+const (
+	EPSG4326 SimpleTransformCrs = "EPSG:4326"
+	Local    SimpleTransformCrs = "local"
+)
+
+// Valid indicates whether the value is a known member of the SimpleTransformCrs enum.
+func (e SimpleTransformCrs) Valid() bool {
+	switch e {
+	case EPSG4326:
+		return true
+	case Local:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TrackableType.
 const (
 	TrackableTypeOmlox   TrackableType = "omlox"
@@ -273,23 +337,26 @@ func (e TrackableWriteType) Valid() bool {
 
 // Collision Collision participant snapshot used in emitted collision events.
 type Collision struct {
-	Floor *float32 `json:"floor,omitempty"`
+	Floor *float64 `json:"floor,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
 	Geometry Polygon `json:"geometry"`
 
 	// Id Hub-generated collision event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
-	Id         openapi_types.UUID `json:"id"`
-	ObjectType string             `json:"object_type"`
+	Id         openapi_types.UUID  `json:"id"`
+	ObjectType CollisionObjectType `json:"object_type"`
 
 	// Position GeoJSON point geometry.
 	Position Point `json:"position"`
 }
 
+// CollisionObjectType defines model for Collision.ObjectType.
+type CollisionObjectType string
+
 // CollisionEvent Collision event model emitted when collision processing is enabled.
 type CollisionEvent struct {
 	// CenterDistance Approximate center-to-center separation in meters at evaluation time.
-	CenterDistance *float32                      `json:"center_distance,omitempty"`
+	CenterDistance *float64                      `json:"center_distance,omitempty"`
 	CollisionArea  *CollisionEvent_CollisionArea `json:"collision_area,omitempty"`
 	CollisionTime  *time.Time                    `json:"collision_time,omitempty"`
 	CollisionType  CollisionEventCollisionType   `json:"collision_type"`
@@ -331,15 +398,17 @@ type Fence struct {
 	Crs          *string            `json:"crs,omitempty"`
 	ElevationRef *FenceElevationRef `json:"elevation_ref,omitempty"`
 
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32        `json:"extrusion,omitempty"`
+
+	// Extrusion Height in meters. Zero represents a plane; omitted values use the floor or unbounded height.
+	Extrusion *float64 `json:"extrusion,omitempty"`
 
 	// Floor Optional floor number or level indicator.
-	Floor     *float32 `json:"floor,omitempty"`
+	Floor     *float64 `json:"floor,omitempty"`
 	ForeignId *string  `json:"foreign_id,omitempty"`
 
 	// Id Hub-generated fence identifiers are UUIDv7 when the hub creates them.
@@ -350,15 +419,15 @@ type Fence struct {
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
 	// Radius Radius in meters when `region` is a point.
-	Radius *float32 `json:"radius,omitempty"`
+	Radius *float64 `json:"radius,omitempty"`
 
 	// Region Fence geometry expressed as either a polygon or a point-plus-radius.
 	Region Fence_Region `json:"region"`
 
-	// Timeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// Timeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	Timeout *PositiveOrMinusOne `json:"timeout,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 
 	// ZoneId Required when `crs` is `local`.
@@ -402,14 +471,16 @@ type FenceWrite struct {
 	Crs          *string                 `json:"crs,omitempty"`
 	ElevationRef *FenceWriteElevationRef `json:"elevation_ref,omitempty"`
 
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32        `json:"extrusion,omitempty"`
-	Floor         *float32        `json:"floor,omitempty"`
-	ForeignId     *string         `json:"foreign_id,omitempty"`
+
+	// Extrusion Height in meters. Zero represents a plane; omitted values use the floor or unbounded height.
+	Extrusion *float64 `json:"extrusion,omitempty"`
+	Floor     *float64 `json:"floor,omitempty"`
+	ForeignId *string  `json:"foreign_id,omitempty"`
 
 	// Id If omitted on create, the hub generates a time-sortable UUIDv7.
 	Id   *openapi_types.UUID `json:"id,omitempty"`
@@ -417,15 +488,15 @@ type FenceWrite struct {
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
-	Radius     *float32             `json:"radius,omitempty"`
+	Radius     *float64             `json:"radius,omitempty"`
 
 	// Region Fence geometry expressed as either a polygon or a point-plus-radius.
 	Region FenceWrite_Region `json:"region"`
 
-	// Timeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// Timeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	Timeout *PositiveOrMinusOne `json:"timeout,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 
 	// ZoneId Required when `crs` is `local`.
@@ -440,27 +511,40 @@ type FenceWrite_Region struct {
 	union json.RawMessage
 }
 
+// GeoJSONFeatureCollection OMLOX GeoJSON wrapper, returned when geojson=true.
+type GeoJSONFeatureCollection struct {
+	Features []struct {
+		Geometry   GeoJSONFeatureCollection_Features_Geometry `json:"geometry"`
+		Properties map[string]interface{}                     `json:"properties"`
+		Type       GeoJSONFeatureCollectionFeaturesType       `json:"type"`
+	} `json:"features"`
+	Type GeoJSONFeatureCollectionType `json:"type"`
+}
+
+// GeoJSONFeatureCollection_Features_Geometry defines model for GeoJSONFeatureCollection.Features.Geometry.
+type GeoJSONFeatureCollection_Features_Geometry struct {
+	union json.RawMessage
+}
+
+// GeoJSONFeatureCollectionFeaturesType defines model for GeoJSONFeatureCollection.Features.Type.
+type GeoJSONFeatureCollectionFeaturesType string
+
+// GeoJSONFeatureCollectionType defines model for GeoJSONFeatureCollection.Type.
+type GeoJSONFeatureCollectionType string
+
 // GeoJsonPosition GeoJSON coordinate tuple used by `Point`, `LineString`, and `Polygon`.
 type GeoJsonPosition struct {
 	union json.RawMessage
 }
 
 // GeoJsonPosition2D GeoJSON 2D coordinate tuple in `[x, y]` order.
-type GeoJsonPosition2D = []float32
+type GeoJsonPosition2D = []float64
 
 // GeoJsonPosition3D GeoJSON 3D coordinate tuple in `[x, y, z]` order.
-type GeoJsonPosition3D = []float32
+type GeoJsonPosition3D = []float64
 
-// GroundControlPoint Mapping between a WGS84 coordinate and the corresponding local zone
-// coordinate. Use multiple control points to define the local-to-global
-// transform for a zone.
-type GroundControlPoint struct {
-	// Local GeoJSON point geometry.
-	Local Point `json:"local"`
-
-	// Wgs84 GeoJSON point geometry.
-	Wgs84 Point `json:"wgs84"`
-}
+// GroundControlPoint One coordinate pair in ground_control_points. Even indexes are WGS84 longitude/latitude; the following odd index is the corresponding local x/y.
+type GroundControlPoint = []float64
 
 // JsonRpcErrorObject Standard JSON-RPC error object.
 type JsonRpcErrorObject struct {
@@ -484,7 +568,7 @@ type JsonRpcErrorResponseId0 = string
 type JsonRpcErrorResponseId1 = int
 
 // JsonRpcErrorResponseId2 defines model for JsonRpcErrorResponse.Id.2.
-type JsonRpcErrorResponseId2 = float32
+type JsonRpcErrorResponseId2 = float64
 
 // JsonRpcErrorResponse_Id defines model for JsonRpcErrorResponse.Id.
 type JsonRpcErrorResponse_Id struct {
@@ -516,7 +600,7 @@ type JsonRpcRequestId0 = string
 type JsonRpcRequestId1 = int
 
 // JsonRpcRequestId2 defines model for JsonRpcRequest.Id.2.
-type JsonRpcRequestId2 = float32
+type JsonRpcRequestId2 = float64
 
 // JsonRpcRequest_Id Request identifier. Omit together with `_caller_id` to send a notification.
 type JsonRpcRequest_Id struct {
@@ -541,7 +625,7 @@ type JsonRpcRequest_Params struct {
 	UnderscoreHandlerId *string `json:"_handler_id,omitempty"`
 
 	// UnderscoreTimeout Maximum time in milliseconds to wait for responses when the request expects a result.
-	UnderscoreTimeout    *float32               `json:"_timeout,omitempty"`
+	UnderscoreTimeout    *float64               `json:"_timeout,omitempty"`
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
@@ -559,7 +643,7 @@ type JsonRpcSuccessResponseId0 = string
 type JsonRpcSuccessResponseId1 = int
 
 // JsonRpcSuccessResponseId2 defines model for JsonRpcSuccessResponse.Id.2.
-type JsonRpcSuccessResponseId2 = float32
+type JsonRpcSuccessResponseId2 = float64
 
 // JsonRpcSuccessResponse_Id defines model for JsonRpcSuccessResponse.Id.
 type JsonRpcSuccessResponse_Id struct {
@@ -580,23 +664,23 @@ type LineStringType string
 
 // LocatingRule Trackable locating rule used to prioritize candidate locations from providers.
 type LocatingRule struct {
-	// Expression Rule expression. Supported properties include `accuracy`, `provider_id`, `type`, `source`, `floor`, `speed`, and `timestamp_diff`.
+	// Expression Boolean expression using comparisons, AND, parentheses, and literals. Supported properties are accuracy, name (provider name), provider_id, type (provider technology), source, floor, speed, and timestamp_diff (generated-time age in milliseconds). Missing comparison operands do not match; omitted floor is zero. Nesting is limited to 64 groups.
 	Expression string `json:"expression"`
 
-	// Priority Lower values indicate higher precedence.
-	Priority float32 `json:"priority"`
+	// Priority Higher positive values take precedence. Unmatched locations have priority zero; ties use the newest timestamp_generated.
+	Priority float64 `json:"priority"`
 }
 
 // Location Provider location observation accepted by ingest and reused in derived outputs.
 type Location struct {
 	// Accuracy Estimated positional accuracy in meters.
-	Accuracy *float32 `json:"accuracy,omitempty"`
+	Accuracy *float64 `json:"accuracy,omitempty"`
 
 	// Associated Indicates whether the location has already been associated with a trackable.
 	Associated *bool `json:"associated,omitempty"`
 
 	// Course Travel course in degrees. Derived hub outputs may also populate this from normalized track movement.
-	Course *float32 `json:"course,omitempty"`
+	Course *float64 `json:"course,omitempty"`
 
 	// Crs Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current implementation.
 	Crs *string `json:"crs,omitempty"`
@@ -605,13 +689,13 @@ type Location struct {
 	ElevationRef *LocationElevationRef `json:"elevation_ref,omitempty"`
 
 	// Floor Optional floor number or level indicator.
-	Floor *float32 `json:"floor,omitempty"`
+	Floor *float64 `json:"floor,omitempty"`
 
 	// HeadingAccuracy Estimated heading accuracy in degrees.
-	HeadingAccuracy *float32 `json:"heading_accuracy,omitempty"`
+	HeadingAccuracy *float64 `json:"heading_accuracy,omitempty"`
 
 	// MagneticHeading Heading in degrees relative to magnetic north.
-	MagneticHeading *float32 `json:"magnetic_heading,omitempty"`
+	MagneticHeading *float64 `json:"magnetic_heading,omitempty"`
 
 	// Position GeoJSON point geometry.
 	Position Point `json:"position"`
@@ -629,7 +713,7 @@ type Location struct {
 	Source string `json:"source"`
 
 	// Speed Estimated speed in meters per second. Derived hub outputs may also populate this from normalized track movement.
-	Speed *float32 `json:"speed,omitempty"`
+	Speed *float64 `json:"speed,omitempty"`
 
 	// TimestampGenerated Timestamp when the provider generated the observation.
 	TimestampGenerated *time.Time `json:"timestamp_generated,omitempty"`
@@ -641,7 +725,7 @@ type Location struct {
 	Trackables *StringIdList `json:"trackables,omitempty"`
 
 	// TrueHeading Heading in degrees relative to true north.
-	TrueHeading *float32 `json:"true_heading,omitempty"`
+	TrueHeading *float64 `json:"true_heading,omitempty"`
 }
 
 // LocationElevationRef Reference system for altitude-like values carried in the geometry.
@@ -649,13 +733,13 @@ type LocationElevationRef string
 
 // LocationProvider Stored location-provider resource returned by the REST API.
 type LocationProvider struct {
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
 
-	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// FenceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
 	Id           string              `json:"id"`
 	Name         *string             `json:"name,omitempty"`
@@ -663,23 +747,23 @@ type LocationProvider struct {
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
-	// Sensors Provider-specific sensor metadata preserved by the hub.
-	Sensors *ExtensionProperties `json:"sensors,omitempty"`
+	// Sensors Application-defined JSON sensor data, including objects, arrays, scalars, and null.
+	Sensors *SensorData `json:"sensors,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 	Type             string              `json:"type"`
 }
 
 // LocationProviderWrite Mutable fields used to create or replace a location-provider resource.
 type LocationProviderWrite struct {
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
 
-	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// FenceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
 	Id           string              `json:"id"`
 	Name         *string             `json:"name,omitempty"`
@@ -687,10 +771,10 @@ type LocationProviderWrite struct {
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
-	// Sensors Provider-specific sensor metadata preserved by the hub.
-	Sensors *ExtensionProperties `json:"sensors,omitempty"`
+	// Sensors Application-defined JSON sensor data, including objects, arrays, scalars, and null.
+	Sensors *SensorData `json:"sensors,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 	Type             string              `json:"type"`
 }
@@ -716,21 +800,21 @@ type Polygon struct {
 // PolygonType defines model for Polygon.Type.
 type PolygonType string
 
-// PositiveNumber Positive numeric value greater than zero.
-type PositiveNumber = float32
+// PositiveNumber Finite nonnegative numeric value. Zero is allowed.
+type PositiveNumber = float64
 
-// PositiveOrMinusOne Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+// PositiveOrMinusOne Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 type PositiveOrMinusOne struct {
 	union json.RawMessage
 }
 
 // PositiveOrMinusOne0 defines model for PositiveOrMinusOne.0.
-type PositiveOrMinusOne0 float32
+type PositiveOrMinusOne0 float64
 
 // Proximity Provider proximity observation used for zone-based position derivation.
 type Proximity struct {
 	// Accuracy Estimated confidence or accuracy value supplied by the provider.
-	Accuracy *float32 `json:"accuracy,omitempty"`
+	Accuracy *float64 `json:"accuracy,omitempty"`
 
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
@@ -751,15 +835,6 @@ type Proximity struct {
 	TimestampSent *time.Time `json:"timestamp_sent,omitempty"`
 }
 
-// ResourceSummary Compact collection summary.
-type ResourceSummary struct {
-	// Count Number of resources currently known to the hub.
-	Count int `json:"count"`
-
-	// Type Resource collection represented by the summary.
-	Type string `json:"type"`
-}
-
 // RpcAvailableMethods Mapping of JSON-RPC method name to currently reachable handler IDs known to the hub.
 type RpcAvailableMethods map[string]RpcAvailableMethodsEntry
 
@@ -768,19 +843,39 @@ type RpcAvailableMethodsEntry struct {
 	HandlerId []string `json:"handler_id"`
 }
 
+// SensorData Application-defined JSON sensor data, including objects, arrays, scalars, and null.
+type SensorData = json.RawMessage
+
+// SimpleTransform Position transformed between local zone coordinates and WGS84.
+type SimpleTransform struct {
+	// Crs Coordinate reference system of the supplied position.
+	Crs *SimpleTransformCrs `json:"crs,omitempty"`
+
+	// Position GeoJSON point geometry.
+	Position Point `json:"position"`
+
+	// Source Zone identifier used for the transformation.
+	Source *string `json:"source,omitempty"`
+}
+
+// SimpleTransformCrs Coordinate reference system of the supplied position.
+type SimpleTransformCrs string
+
 // StringIdList List of opaque string identifiers.
 type StringIdList = []string
 
 // Trackable Stored trackable resource returned by the REST API.
 type Trackable struct {
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32        `json:"extrusion,omitempty"`
 
-	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// Extrusion Height in meters. Zero represents a plane; omitted values use the floor or unbounded height.
+	Extrusion *float64 `json:"extrusion,omitempty"`
+
+	// FenceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
@@ -799,11 +894,11 @@ type Trackable struct {
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
-	// Radius Collision and fallback-geometry radius in meters. When present, this
-	// overrides the runtime default collision radius for this trackable.
-	Radius *float32 `json:"radius,omitempty"`
+	// Radius Circular extent in meters used for fence and collision decisions.
+	// Defaults to zero. When set, motion geometry approximates this circle.
+	Radius *float64 `json:"radius,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 	Type             TrackableType       `json:"type"`
 }
@@ -813,7 +908,7 @@ type TrackableType string
 
 // TrackableMotion Derived trackable motion payload published by the hub.
 type TrackableMotion struct {
-	Extrusion *float32 `json:"extrusion,omitempty"`
+	Extrusion *float64 `json:"extrusion,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
 	Geometry *Polygon `json:"geometry,omitempty"`
@@ -829,14 +924,16 @@ type TrackableMotion struct {
 
 // TrackableWrite Mutable fields used to create or replace a trackable resource.
 type TrackableWrite struct {
-	// ExitDelay Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ExitDelay Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ExitDelay *PositiveOrMinusOne `json:"exit_delay,omitempty"`
 
-	// ExitTolerance Positive numeric value greater than zero.
+	// ExitTolerance Finite nonnegative numeric value. Zero is allowed.
 	ExitTolerance *PositiveNumber `json:"exit_tolerance,omitempty"`
-	Extrusion     *float32        `json:"extrusion,omitempty"`
 
-	// FenceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// Extrusion Height in meters. Zero represents a plane; omitted values use the floor or unbounded height.
+	Extrusion *float64 `json:"extrusion,omitempty"`
+
+	// FenceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	FenceTimeout *PositiveOrMinusOne `json:"fence_timeout,omitempty"`
 
 	// Geometry GeoJSON polygon geometry. The first and last point of each ring are expected to be equal.
@@ -855,11 +952,11 @@ type TrackableWrite struct {
 	// Properties Free-form extension object preserved as-is by the hub.
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
-	// Radius Collision and fallback-geometry radius in meters. When present, this
-	// overrides the runtime default collision radius for this trackable.
-	Radius *float32 `json:"radius,omitempty"`
+	// Radius Circular extent in meters used for fence and collision decisions.
+	// Defaults to zero. When set, motion geometry approximates this circle.
+	Radius *float64 `json:"radius,omitempty"`
 
-	// ToleranceTimeout Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+	// ToleranceTimeout Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
 	ToleranceTimeout *PositiveOrMinusOne `json:"tolerance_timeout,omitempty"`
 	Type             TrackableWriteType  `json:"type"`
 }
@@ -879,12 +976,12 @@ type Zone struct {
 	Description *string `json:"description,omitempty"`
 
 	// Floor Optional floor number or level indicator.
-	Floor *float32 `json:"floor,omitempty"`
+	Floor *float64 `json:"floor,omitempty"`
 
 	// ForeignId External identifier from an upstream system.
 	ForeignId *string `json:"foreign_id,omitempty"`
 
-	// GroundControlPoints Local-to-WGS84 reference pairs used for georeferencing local coordinates.
+	// GroundControlPoints Alternating WGS84 [longitude, latitude] and local [x, y] coordinate pairs. Complete non-proximity zones require at least four mappings (eight arrays). Proximity and incomplete zones must omit this field.
 	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
 
 	// Id Hub-assigned or client-supplied UUID. Hub-generated values are UUIDv7 so they remain time-sortable.
@@ -906,7 +1003,7 @@ type Zone struct {
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
 	// Radius Radius in meters when the zone is modeled as a point with extent.
-	Radius *float32 `json:"radius,omitempty"`
+	Radius *float64 `json:"radius,omitempty"`
 
 	// Site Optional site identifier.
 	Site *string `json:"site,omitempty"`
@@ -915,7 +1012,7 @@ type Zone struct {
 	Type string `json:"type"`
 
 	// Wgs84Height Optional zone altitude in meters relative to WGS84.
-	Wgs84Height *float32 `json:"wgs84_height,omitempty"`
+	Wgs84Height *float64 `json:"wgs84_height,omitempty"`
 }
 
 // ZoneWrite Mutable fields used to create or replace a zone resource.
@@ -923,12 +1020,12 @@ type ZoneWrite struct {
 	Address     *string  `json:"address,omitempty"`
 	Building    *string  `json:"building,omitempty"`
 	Description *string  `json:"description,omitempty"`
-	Floor       *float32 `json:"floor,omitempty"`
+	Floor       *float64 `json:"floor,omitempty"`
 
 	// ForeignId External identifier from an upstream system.
 	ForeignId *string `json:"foreign_id,omitempty"`
 
-	// GroundControlPoints Local-to-WGS84 reference pairs required for fully configured non-proximity zones.
+	// GroundControlPoints Alternating WGS84 [longitude, latitude] and local [x, y] coordinate pairs. Complete non-proximity zones require at least four mappings (eight arrays). Proximity and incomplete zones must omit this field.
 	GroundControlPoints *[]GroundControlPoint `json:"ground_control_points,omitempty"`
 
 	// Id If omitted on create, the hub generates a time-sortable UUIDv7.
@@ -946,12 +1043,12 @@ type ZoneWrite struct {
 	Properties *ExtensionProperties `json:"properties,omitempty"`
 
 	// Radius Radius in meters when the zone is modeled as a point with extent.
-	Radius *float32 `json:"radius,omitempty"`
+	Radius *float64 `json:"radius,omitempty"`
 	Site   *string  `json:"site,omitempty"`
 
 	// Type OMLOX positioning technology or zone type such as `uwb`, `wifi`, `rfid`, or `ibeacon`.
 	Type        string   `json:"type"`
-	Wgs84Height *float32 `json:"wgs84_height,omitempty"`
+	Wgs84Height *float64 `json:"wgs84_height,omitempty"`
 }
 
 // FenceId defines model for FenceId.
@@ -959,6 +1056,27 @@ type FenceId = openapi_types.UUID
 
 // ProviderId defines model for ProviderId.
 type ProviderId = string
+
+// QueryCrs defines model for QueryCrs.
+type QueryCrs = string
+
+// QueryForceLocationUpdate defines model for QueryForceLocationUpdate.
+type QueryForceLocationUpdate = bool
+
+// QueryForeignId defines model for QueryForeignId.
+type QueryForeignId = string
+
+// QueryGeojson defines model for QueryGeojson.
+type QueryGeojson = bool
+
+// QuerySpatialQuery defines model for QuerySpatialQuery.
+type QuerySpatialQuery = bool
+
+// QuerySubdivide defines model for QuerySubdivide.
+type QuerySubdivide = bool
+
+// QueryZoneId defines model for QueryZoneId.
+type QueryZoneId = string
 
 // TrackableId defines model for TrackableId.
 type TrackableId = openapi_types.UUID
@@ -978,28 +1096,269 @@ type NotFound = ErrorResponse
 // Unauthorized Standard error envelope returned by the REST API.
 type Unauthorized = ErrorResponse
 
-// PostProviderLocationsJSONBody defines parameters for PostProviderLocations.
-type PostProviderLocationsJSONBody = []Location
+// CreateFenceParams defines parameters for CreateFence.
+type CreateFenceParams struct {
+	// Subdivide Densify polygon edges to at most 10 meters before coordinate transformation. Requests requiring more than 100000 vertices are rejected. Point regions are unchanged.
+	Subdivide *QuerySubdivide `form:"subdivide,omitempty" json:"subdivide,omitempty"`
+}
+
+// GetFencesSummaryParams defines parameters for GetFencesSummary.
+type GetFencesSummaryParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetFencesSummary200JSONResponseBody_Item defines parameters for GetFencesSummary.
+type GetFencesSummary200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
+
+// GetFenceParams defines parameters for GetFence.
+type GetFenceParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetFence200JSONResponseBody defines parameters for GetFence.
+type GetFence200JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// UpdateFenceParams defines parameters for UpdateFence.
+type UpdateFenceParams struct {
+	// Subdivide Densify polygon edges to at most 10 meters before coordinate transformation. Requests requiring more than 100000 vertices are rejected. Point regions are unchanged.
+	Subdivide *QuerySubdivide `form:"subdivide,omitempty" json:"subdivide,omitempty"`
+}
+
+// GetFenceLocationsParams defines parameters for GetFenceLocations.
+type GetFenceLocationsParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetFenceLocations200JSONResponseBody_Item defines parameters for GetFenceLocations.
+type GetFenceLocations200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
+
+// GetFenceMotionsParams defines parameters for GetFenceMotions.
+type GetFenceMotionsParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetFenceMotions200JSONResponseBody_Item defines parameters for GetFenceMotions.
+type GetFenceMotions200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
+
+// GetFenceProvidersParams defines parameters for GetFenceProviders.
+type GetFenceProvidersParams struct {
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetFenceTrackablesParams defines parameters for GetFenceTrackables.
+type GetFenceTrackablesParams struct {
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetProviderLocationsParams defines parameters for GetProviderLocations.
+type GetProviderLocationsParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetProviderLocations200JSONResponseBody_Item defines parameters for GetProviderLocations.
+type GetProviderLocations200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
 
 // PutProviderLocationsJSONBody defines parameters for PutProviderLocations.
 type PutProviderLocationsJSONBody = []Location
 
-// PostProviderProximitiesJSONBody defines parameters for PostProviderProximities.
-type PostProviderProximitiesJSONBody = []Proximity
-
 // PutProviderProximitiesJSONBody defines parameters for PutProviderProximities.
 type PutProviderProximitiesJSONBody = []Proximity
 
-// PutProviderSensorsJSONBody defines parameters for PutProviderSensors.
-type PutProviderSensorsJSONBody map[string]interface{}
+// GetProviderFencesParams defines parameters for GetProviderFences.
+type GetProviderFencesParams struct {
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetProviderLocationParams defines parameters for GetProviderLocation.
+type GetProviderLocationParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetProviderLocation200JSONResponseBody defines parameters for GetProviderLocation.
+type GetProviderLocation200JSONResponseBody struct {
+	union json.RawMessage
+}
 
 // PutRPC200JSONResponseBody defines parameters for PutRPC.
 type PutRPC200JSONResponseBody struct {
 	union json.RawMessage
 }
 
-// PutZoneTransformJSONBody defines parameters for PutZoneTransform.
-type PutZoneTransformJSONBody map[string]interface{}
+// CreateTrackableParams defines parameters for CreateTrackable.
+type CreateTrackableParams struct {
+	// ForceLocationUpdate Re-evaluate stored provider locations after saving the trackable. Emit events only when the resulting state changes.
+	ForceLocationUpdate *QueryForceLocationUpdate `form:"force_location_update,omitempty" json:"force_location_update,omitempty"`
+
+	// Subdivide Densify polygon edges to at most 10 meters before coordinate transformation. Requests requiring more than 100000 vertices are rejected. Point regions are unchanged.
+	Subdivide *QuerySubdivide `form:"subdivide,omitempty" json:"subdivide,omitempty"`
+}
+
+// GetTrackableMotionsParams defines parameters for GetTrackableMotions.
+type GetTrackableMotionsParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetTrackableMotions200JSONResponseBody_Item defines parameters for GetTrackableMotions.
+type GetTrackableMotions200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
+
+// UpdateTrackableParams defines parameters for UpdateTrackable.
+type UpdateTrackableParams struct {
+	// ForceLocationUpdate Re-evaluate stored provider locations after saving the trackable. Emit events only when the resulting state changes.
+	ForceLocationUpdate *QueryForceLocationUpdate `form:"force_location_update,omitempty" json:"force_location_update,omitempty"`
+
+	// Subdivide Densify polygon edges to at most 10 meters before coordinate transformation. Requests requiring more than 100000 vertices are rejected. Point regions are unchanged.
+	Subdivide *QuerySubdivide `form:"subdivide,omitempty" json:"subdivide,omitempty"`
+}
+
+// GetTrackableFencesParams defines parameters for GetTrackableFences.
+type GetTrackableFencesParams struct {
+	// SpatialQuery Use current geometric containment instead of membership maintained by fence timers.
+	SpatialQuery *QuerySpatialQuery `form:"spatial_query,omitempty" json:"spatial_query,omitempty"`
+}
+
+// GetTrackableLocationParams defines parameters for GetTrackableLocation.
+type GetTrackableLocationParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetTrackableLocation200JSONResponseBody defines parameters for GetTrackableLocation.
+type GetTrackableLocation200JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// GetTrackableLocationsParams defines parameters for GetTrackableLocations.
+type GetTrackableLocationsParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetTrackableLocations200JSONResponseBody_Item defines parameters for GetTrackableLocations.
+type GetTrackableLocations200JSONResponseBody_Item struct {
+	union json.RawMessage
+}
+
+// GetTrackableMotionParams defines parameters for GetTrackableMotion.
+type GetTrackableMotionParams struct {
+	// Crs Output coordinate reference system. Defaults to EPSG:4326; local returns original coordinates unless zone_id selects another zone.
+	Crs *QueryCrs `form:"crs,omitempty" json:"crs,omitempty"`
+
+	// ZoneId Target zone for local coordinate projection. Used with crs=local.
+	ZoneId *QueryZoneId `form:"zone_id,omitempty" json:"zone_id,omitempty"`
+
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// GetTrackableMotion200JSONResponseBody defines parameters for GetTrackableMotion.
+type GetTrackableMotion200JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// ListZonesParams defines parameters for ListZones.
+type ListZonesParams struct {
+	// ForeignId Return only zones with this external identifier.
+	ForeignId *QueryForeignId `form:"foreign_id,omitempty" json:"foreign_id,omitempty"`
+}
+
+// GetZonesSummaryParams defines parameters for GetZonesSummary.
+type GetZonesSummaryParams struct {
+	// ForeignId Return only zones with this external identifier.
+	ForeignId *QueryForeignId `form:"foreign_id,omitempty" json:"foreign_id,omitempty"`
+}
+
+// PutZoneTransformParams defines parameters for PutZoneTransform.
+type PutZoneTransformParams struct {
+	// Geojson Return GeoJSON features instead of resource envelopes.
+	Geojson *QueryGeojson `form:"geojson,omitempty" json:"geojson,omitempty"`
+}
+
+// PutZoneTransform200JSONResponseBody defines parameters for PutZoneTransform.
+type PutZoneTransform200JSONResponseBody struct {
+	union json.RawMessage
+}
 
 // CreateFenceJSONRequestBody defines body for CreateFence for application/json ContentType.
 type CreateFenceJSONRequestBody = FenceWrite
@@ -1010,14 +1369,8 @@ type UpdateFenceJSONRequestBody = FenceWrite
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
 type CreateProviderJSONRequestBody = LocationProviderWrite
 
-// PostProviderLocationsJSONRequestBody defines body for PostProviderLocations for application/json ContentType.
-type PostProviderLocationsJSONRequestBody = PostProviderLocationsJSONBody
-
 // PutProviderLocationsJSONRequestBody defines body for PutProviderLocations for application/json ContentType.
 type PutProviderLocationsJSONRequestBody = PutProviderLocationsJSONBody
-
-// PostProviderProximitiesJSONRequestBody defines body for PostProviderProximities for application/json ContentType.
-type PostProviderProximitiesJSONRequestBody = PostProviderProximitiesJSONBody
 
 // PutProviderProximitiesJSONRequestBody defines body for PutProviderProximities for application/json ContentType.
 type PutProviderProximitiesJSONRequestBody = PutProviderProximitiesJSONBody
@@ -1032,7 +1385,7 @@ type PutProviderLocationJSONRequestBody = Location
 type PutProviderProximityJSONRequestBody = Proximity
 
 // PutProviderSensorsJSONRequestBody defines body for PutProviderSensors for application/json ContentType.
-type PutProviderSensorsJSONRequestBody PutProviderSensorsJSONBody
+type PutProviderSensorsJSONRequestBody = SensorData
 
 // PutRPCJSONRequestBody defines body for PutRPC for application/json ContentType.
 type PutRPCJSONRequestBody = JsonRpcRequest
@@ -1050,7 +1403,7 @@ type CreateZoneJSONRequestBody = ZoneWrite
 type UpdateZoneJSONRequestBody = ZoneWrite
 
 // PutZoneTransformJSONRequestBody defines body for PutZoneTransform for application/json ContentType.
-type PutZoneTransformJSONRequestBody PutZoneTransformJSONBody
+type PutZoneTransformJSONRequestBody = SimpleTransform
 
 // Getter for additional properties for JsonRpcRequest_Params. Returns the specified
 // element and whether it was found
@@ -1347,6 +1700,94 @@ func (t FenceWrite_Region) MarshalJSON() ([]byte, error) {
 }
 
 func (t *FenceWrite_Region) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsPoint returns the union data inside the GeoJSONFeatureCollection_Features_Geometry as a Point
+func (t GeoJSONFeatureCollection_Features_Geometry) AsPoint() (Point, error) {
+	var body Point
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPoint overwrites any union data inside the GeoJSONFeatureCollection_Features_Geometry as the provided Point
+func (t *GeoJSONFeatureCollection_Features_Geometry) FromPoint(v Point) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePoint performs a merge with any union data inside the GeoJSONFeatureCollection_Features_Geometry, using the provided Point
+func (t *GeoJSONFeatureCollection_Features_Geometry) MergePoint(v Point) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsPolygon returns the union data inside the GeoJSONFeatureCollection_Features_Geometry as a Polygon
+func (t GeoJSONFeatureCollection_Features_Geometry) AsPolygon() (Polygon, error) {
+	var body Polygon
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPolygon overwrites any union data inside the GeoJSONFeatureCollection_Features_Geometry as the provided Polygon
+func (t *GeoJSONFeatureCollection_Features_Geometry) FromPolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePolygon performs a merge with any union data inside the GeoJSONFeatureCollection_Features_Geometry, using the provided Polygon
+func (t *GeoJSONFeatureCollection_Features_Geometry) MergePolygon(v Polygon) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLineString returns the union data inside the GeoJSONFeatureCollection_Features_Geometry as a LineString
+func (t GeoJSONFeatureCollection_Features_Geometry) AsLineString() (LineString, error) {
+	var body LineString
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLineString overwrites any union data inside the GeoJSONFeatureCollection_Features_Geometry as the provided LineString
+func (t *GeoJSONFeatureCollection_Features_Geometry) FromLineString(v LineString) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLineString performs a merge with any union data inside the GeoJSONFeatureCollection_Features_Geometry, using the provided LineString
+func (t *GeoJSONFeatureCollection_Features_Geometry) MergeLineString(v LineString) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GeoJSONFeatureCollection_Features_Geometry) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GeoJSONFeatureCollection_Features_Geometry) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -1739,6 +2180,378 @@ func (t *PositiveOrMinusOne) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsFence returns the union data inside the GetFencesSummary200JSONResponseBody_Item as a Fence
+func (t GetFencesSummary200JSONResponseBody_Item) AsFence() (Fence, error) {
+	var body Fence
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFence overwrites any union data inside the GetFencesSummary200JSONResponseBody_Item as the provided Fence
+func (t *GetFencesSummary200JSONResponseBody_Item) FromFence(v Fence) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFence performs a merge with any union data inside the GetFencesSummary200JSONResponseBody_Item, using the provided Fence
+func (t *GetFencesSummary200JSONResponseBody_Item) MergeFence(v Fence) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetFencesSummary200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetFencesSummary200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetFencesSummary200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetFencesSummary200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetFencesSummary200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetFencesSummary200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetFencesSummary200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetFencesSummary200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsFence returns the union data inside the GetFence200JSONResponseBody as a Fence
+func (t GetFence200JSONResponseBody) AsFence() (Fence, error) {
+	var body Fence
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFence overwrites any union data inside the GetFence200JSONResponseBody as the provided Fence
+func (t *GetFence200JSONResponseBody) FromFence(v Fence) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFence performs a merge with any union data inside the GetFence200JSONResponseBody, using the provided Fence
+func (t *GetFence200JSONResponseBody) MergeFence(v Fence) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetFence200JSONResponseBody as a GeoJSONFeatureCollection
+func (t GetFence200JSONResponseBody) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetFence200JSONResponseBody as the provided GeoJSONFeatureCollection
+func (t *GetFence200JSONResponseBody) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetFence200JSONResponseBody, using the provided GeoJSONFeatureCollection
+func (t *GetFence200JSONResponseBody) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetFence200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetFence200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsLocation returns the union data inside the GetFenceLocations200JSONResponseBody_Item as a Location
+func (t GetFenceLocations200JSONResponseBody_Item) AsLocation() (Location, error) {
+	var body Location
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocation overwrites any union data inside the GetFenceLocations200JSONResponseBody_Item as the provided Location
+func (t *GetFenceLocations200JSONResponseBody_Item) FromLocation(v Location) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocation performs a merge with any union data inside the GetFenceLocations200JSONResponseBody_Item, using the provided Location
+func (t *GetFenceLocations200JSONResponseBody_Item) MergeLocation(v Location) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetFenceLocations200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetFenceLocations200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetFenceLocations200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetFenceLocations200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetFenceLocations200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetFenceLocations200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetFenceLocations200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetFenceLocations200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrackableMotion returns the union data inside the GetFenceMotions200JSONResponseBody_Item as a TrackableMotion
+func (t GetFenceMotions200JSONResponseBody_Item) AsTrackableMotion() (TrackableMotion, error) {
+	var body TrackableMotion
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrackableMotion overwrites any union data inside the GetFenceMotions200JSONResponseBody_Item as the provided TrackableMotion
+func (t *GetFenceMotions200JSONResponseBody_Item) FromTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrackableMotion performs a merge with any union data inside the GetFenceMotions200JSONResponseBody_Item, using the provided TrackableMotion
+func (t *GetFenceMotions200JSONResponseBody_Item) MergeTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetFenceMotions200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetFenceMotions200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetFenceMotions200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetFenceMotions200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetFenceMotions200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetFenceMotions200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetFenceMotions200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetFenceMotions200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsLocation returns the union data inside the GetProviderLocations200JSONResponseBody_Item as a Location
+func (t GetProviderLocations200JSONResponseBody_Item) AsLocation() (Location, error) {
+	var body Location
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocation overwrites any union data inside the GetProviderLocations200JSONResponseBody_Item as the provided Location
+func (t *GetProviderLocations200JSONResponseBody_Item) FromLocation(v Location) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocation performs a merge with any union data inside the GetProviderLocations200JSONResponseBody_Item, using the provided Location
+func (t *GetProviderLocations200JSONResponseBody_Item) MergeLocation(v Location) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetProviderLocations200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetProviderLocations200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetProviderLocations200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetProviderLocations200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetProviderLocations200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetProviderLocations200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetProviderLocations200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetProviderLocations200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsLocation returns the union data inside the GetProviderLocation200JSONResponseBody as a Location
+func (t GetProviderLocation200JSONResponseBody) AsLocation() (Location, error) {
+	var body Location
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocation overwrites any union data inside the GetProviderLocation200JSONResponseBody as the provided Location
+func (t *GetProviderLocation200JSONResponseBody) FromLocation(v Location) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocation performs a merge with any union data inside the GetProviderLocation200JSONResponseBody, using the provided Location
+func (t *GetProviderLocation200JSONResponseBody) MergeLocation(v Location) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetProviderLocation200JSONResponseBody as a GeoJSONFeatureCollection
+func (t GetProviderLocation200JSONResponseBody) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetProviderLocation200JSONResponseBody as the provided GeoJSONFeatureCollection
+func (t *GetProviderLocation200JSONResponseBody) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetProviderLocation200JSONResponseBody, using the provided GeoJSONFeatureCollection
+func (t *GetProviderLocation200JSONResponseBody) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetProviderLocation200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetProviderLocation200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // AsJsonRpcSuccessResponse returns the union data inside the PutRPC200JSONResponseBody as a JsonRpcSuccessResponse
 func (t PutRPC200JSONResponseBody) AsJsonRpcSuccessResponse() (JsonRpcSuccessResponse, error) {
 	var body JsonRpcSuccessResponse
@@ -1801,6 +2614,316 @@ func (t *PutRPC200JSONResponseBody) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsTrackableMotion returns the union data inside the GetTrackableMotions200JSONResponseBody_Item as a TrackableMotion
+func (t GetTrackableMotions200JSONResponseBody_Item) AsTrackableMotion() (TrackableMotion, error) {
+	var body TrackableMotion
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrackableMotion overwrites any union data inside the GetTrackableMotions200JSONResponseBody_Item as the provided TrackableMotion
+func (t *GetTrackableMotions200JSONResponseBody_Item) FromTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrackableMotion performs a merge with any union data inside the GetTrackableMotions200JSONResponseBody_Item, using the provided TrackableMotion
+func (t *GetTrackableMotions200JSONResponseBody_Item) MergeTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetTrackableMotions200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetTrackableMotions200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetTrackableMotions200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetTrackableMotions200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetTrackableMotions200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetTrackableMotions200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetTrackableMotions200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetTrackableMotions200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsLocation returns the union data inside the GetTrackableLocation200JSONResponseBody as a Location
+func (t GetTrackableLocation200JSONResponseBody) AsLocation() (Location, error) {
+	var body Location
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocation overwrites any union data inside the GetTrackableLocation200JSONResponseBody as the provided Location
+func (t *GetTrackableLocation200JSONResponseBody) FromLocation(v Location) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocation performs a merge with any union data inside the GetTrackableLocation200JSONResponseBody, using the provided Location
+func (t *GetTrackableLocation200JSONResponseBody) MergeLocation(v Location) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetTrackableLocation200JSONResponseBody as a GeoJSONFeatureCollection
+func (t GetTrackableLocation200JSONResponseBody) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetTrackableLocation200JSONResponseBody as the provided GeoJSONFeatureCollection
+func (t *GetTrackableLocation200JSONResponseBody) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetTrackableLocation200JSONResponseBody, using the provided GeoJSONFeatureCollection
+func (t *GetTrackableLocation200JSONResponseBody) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetTrackableLocation200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetTrackableLocation200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsLocation returns the union data inside the GetTrackableLocations200JSONResponseBody_Item as a Location
+func (t GetTrackableLocations200JSONResponseBody_Item) AsLocation() (Location, error) {
+	var body Location
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocation overwrites any union data inside the GetTrackableLocations200JSONResponseBody_Item as the provided Location
+func (t *GetTrackableLocations200JSONResponseBody_Item) FromLocation(v Location) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocation performs a merge with any union data inside the GetTrackableLocations200JSONResponseBody_Item, using the provided Location
+func (t *GetTrackableLocations200JSONResponseBody_Item) MergeLocation(v Location) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetTrackableLocations200JSONResponseBody_Item as a GeoJSONFeatureCollection
+func (t GetTrackableLocations200JSONResponseBody_Item) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetTrackableLocations200JSONResponseBody_Item as the provided GeoJSONFeatureCollection
+func (t *GetTrackableLocations200JSONResponseBody_Item) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetTrackableLocations200JSONResponseBody_Item, using the provided GeoJSONFeatureCollection
+func (t *GetTrackableLocations200JSONResponseBody_Item) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetTrackableLocations200JSONResponseBody_Item) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetTrackableLocations200JSONResponseBody_Item) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTrackableMotion returns the union data inside the GetTrackableMotion200JSONResponseBody as a TrackableMotion
+func (t GetTrackableMotion200JSONResponseBody) AsTrackableMotion() (TrackableMotion, error) {
+	var body TrackableMotion
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTrackableMotion overwrites any union data inside the GetTrackableMotion200JSONResponseBody as the provided TrackableMotion
+func (t *GetTrackableMotion200JSONResponseBody) FromTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTrackableMotion performs a merge with any union data inside the GetTrackableMotion200JSONResponseBody, using the provided TrackableMotion
+func (t *GetTrackableMotion200JSONResponseBody) MergeTrackableMotion(v TrackableMotion) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the GetTrackableMotion200JSONResponseBody as a GeoJSONFeatureCollection
+func (t GetTrackableMotion200JSONResponseBody) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the GetTrackableMotion200JSONResponseBody as the provided GeoJSONFeatureCollection
+func (t *GetTrackableMotion200JSONResponseBody) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the GetTrackableMotion200JSONResponseBody, using the provided GeoJSONFeatureCollection
+func (t *GetTrackableMotion200JSONResponseBody) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t GetTrackableMotion200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *GetTrackableMotion200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsSimpleTransform returns the union data inside the PutZoneTransform200JSONResponseBody as a SimpleTransform
+func (t PutZoneTransform200JSONResponseBody) AsSimpleTransform() (SimpleTransform, error) {
+	var body SimpleTransform
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSimpleTransform overwrites any union data inside the PutZoneTransform200JSONResponseBody as the provided SimpleTransform
+func (t *PutZoneTransform200JSONResponseBody) FromSimpleTransform(v SimpleTransform) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSimpleTransform performs a merge with any union data inside the PutZoneTransform200JSONResponseBody, using the provided SimpleTransform
+func (t *PutZoneTransform200JSONResponseBody) MergeSimpleTransform(v SimpleTransform) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsGeoJSONFeatureCollection returns the union data inside the PutZoneTransform200JSONResponseBody as a GeoJSONFeatureCollection
+func (t PutZoneTransform200JSONResponseBody) AsGeoJSONFeatureCollection() (GeoJSONFeatureCollection, error) {
+	var body GeoJSONFeatureCollection
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromGeoJSONFeatureCollection overwrites any union data inside the PutZoneTransform200JSONResponseBody as the provided GeoJSONFeatureCollection
+func (t *PutZoneTransform200JSONResponseBody) FromGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeGeoJSONFeatureCollection performs a merge with any union data inside the PutZoneTransform200JSONResponseBody, using the provided GeoJSONFeatureCollection
+func (t *PutZoneTransform200JSONResponseBody) MergeGeoJSONFeatureCollection(v GeoJSONFeatureCollection) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t PutZoneTransform200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *PutZoneTransform200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// DeleteFences Delete all fences
@@ -1811,25 +2934,31 @@ type ServerInterface interface {
 	ListFences(w http.ResponseWriter, r *http.Request)
 	// CreateFence Create a fence
 	// (POST /v2/fences)
-	CreateFence(w http.ResponseWriter, r *http.Request)
-	// GetFencesSummary Get fence summary
+	CreateFence(w http.ResponseWriter, r *http.Request, params CreateFenceParams)
+	// GetFencesSummary List complete fences
 	// (GET /v2/fences/summary)
-	GetFencesSummary(w http.ResponseWriter, r *http.Request)
+	GetFencesSummary(w http.ResponseWriter, r *http.Request, params GetFencesSummaryParams)
 	// DeleteFence Delete a fence
 	// (DELETE /v2/fences/{fenceId})
 	DeleteFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
 	// GetFence Get a fence
 	// (GET /v2/fences/{fenceId})
-	GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceParams)
 	// UpdateFence Update a fence
 	// (PUT /v2/fences/{fenceId})
-	UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params UpdateFenceParams)
 	// GetFenceLocations Get fence locations
 	// (GET /v2/fences/{fenceId}/locations)
-	GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceLocationsParams)
+	// GetFenceMotions List motions inside the fence
+	// (GET /v2/fences/{fenceId}/motions)
+	GetFenceMotions(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceMotionsParams)
 	// GetFenceProviders Get fence providers
 	// (GET /v2/fences/{fenceId}/providers)
-	GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId)
+	GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceProvidersParams)
+	// GetFenceTrackables List trackables inside the fence
+	// (GET /v2/fences/{fenceId}/trackables)
+	GetFenceTrackables(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceTrackablesParams)
 	// DeleteProviders Delete all providers
 	// (DELETE /v2/providers)
 	DeleteProviders(w http.ResponseWriter, r *http.Request)
@@ -1844,20 +2973,14 @@ type ServerInterface interface {
 	DeleteProviderLocations(w http.ResponseWriter, r *http.Request)
 	// GetProviderLocations Get provider locations
 	// (GET /v2/providers/locations)
-	GetProviderLocations(w http.ResponseWriter, r *http.Request)
-	// PostProviderLocations Ingest locations
-	// (POST /v2/providers/locations)
-	PostProviderLocations(w http.ResponseWriter, r *http.Request)
+	GetProviderLocations(w http.ResponseWriter, r *http.Request, params GetProviderLocationsParams)
 	// PutProviderLocations Replace provider locations
 	// (PUT /v2/providers/locations)
 	PutProviderLocations(w http.ResponseWriter, r *http.Request)
-	// PostProviderProximities Ingest proximities
-	// (POST /v2/providers/proximities)
-	PostProviderProximities(w http.ResponseWriter, r *http.Request)
 	// PutProviderProximities Replace provider proximities
 	// (PUT /v2/providers/proximities)
 	PutProviderProximities(w http.ResponseWriter, r *http.Request)
-	// GetProvidersSummary Get provider summary
+	// GetProvidersSummary List complete providers
 	// (GET /v2/providers/summary)
 	GetProvidersSummary(w http.ResponseWriter, r *http.Request)
 	// DeleteProvider Delete a provider
@@ -1871,13 +2994,13 @@ type ServerInterface interface {
 	UpdateProvider(w http.ResponseWriter, r *http.Request, providerId ProviderId)
 	// GetProviderFences Get provider fences
 	// (GET /v2/providers/{providerId}/fences)
-	GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderFencesParams)
 	// DeleteProviderLocation Delete provider location
 	// (DELETE /v2/providers/{providerId}/location)
 	DeleteProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
 	// GetProviderLocation Get provider location
 	// (GET /v2/providers/{providerId}/location)
-	GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderLocationParams)
 	// PutProviderLocation Update provider location
 	// (PUT /v2/providers/{providerId}/location)
 	PutProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId)
@@ -1890,6 +3013,9 @@ type ServerInterface interface {
 	// PutProviderSensors Update provider sensors
 	// (PUT /v2/providers/{providerId}/sensors)
 	PutProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId)
+	// GetProviderTrackables List associated trackables
+	// (GET /v2/providers/{providerId}/trackables)
+	GetProviderTrackables(w http.ResponseWriter, r *http.Request, providerId ProviderId)
 	// PutRPC Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(w http.ResponseWriter, r *http.Request)
@@ -1904,11 +3030,11 @@ type ServerInterface interface {
 	ListTrackables(w http.ResponseWriter, r *http.Request)
 	// CreateTrackable Create a trackable
 	// (POST /v2/trackables)
-	CreateTrackable(w http.ResponseWriter, r *http.Request)
+	CreateTrackable(w http.ResponseWriter, r *http.Request, params CreateTrackableParams)
 	// GetTrackableMotions List trackable motions
 	// (GET /v2/trackables/motions)
-	GetTrackableMotions(w http.ResponseWriter, r *http.Request)
-	// GetTrackablesSummary Get trackable summary
+	GetTrackableMotions(w http.ResponseWriter, r *http.Request, params GetTrackableMotionsParams)
+	// GetTrackablesSummary List complete trackables
 	// (GET /v2/trackables/summary)
 	GetTrackablesSummary(w http.ResponseWriter, r *http.Request)
 	// DeleteTrackable Delete a trackable
@@ -1919,19 +3045,19 @@ type ServerInterface interface {
 	GetTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
 	// UpdateTrackable Update a trackable
 	// (PUT /v2/trackables/{trackableId})
-	UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params UpdateTrackableParams)
 	// GetTrackableFences Get trackable fences
 	// (GET /v2/trackables/{trackableId}/fences)
-	GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableFencesParams)
 	// GetTrackableLocation Get trackable location
 	// (GET /v2/trackables/{trackableId}/location)
-	GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationParams)
 	// GetTrackableLocations Get trackable locations
 	// (GET /v2/trackables/{trackableId}/locations)
-	GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationsParams)
 	// GetTrackableMotion Get trackable motion
 	// (GET /v2/trackables/{trackableId}/motion)
-	GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
+	GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableMotionParams)
 	// GetTrackableProviders Get trackable providers
 	// (GET /v2/trackables/{trackableId}/providers)
 	GetTrackableProviders(w http.ResponseWriter, r *http.Request, trackableId TrackableId)
@@ -1943,13 +3069,13 @@ type ServerInterface interface {
 	DeleteZones(w http.ResponseWriter, r *http.Request)
 	// ListZones List zones
 	// (GET /v2/zones)
-	ListZones(w http.ResponseWriter, r *http.Request)
+	ListZones(w http.ResponseWriter, r *http.Request, params ListZonesParams)
 	// CreateZone Create a zone
 	// (POST /v2/zones)
 	CreateZone(w http.ResponseWriter, r *http.Request)
-	// GetZonesSummary Get zone summary
+	// GetZonesSummary List complete zones
 	// (GET /v2/zones/summary)
-	GetZonesSummary(w http.ResponseWriter, r *http.Request)
+	GetZonesSummary(w http.ResponseWriter, r *http.Request, params GetZonesSummaryParams)
 	// DeleteZone Delete a zone
 	// (DELETE /v2/zones/{zoneId})
 	DeleteZone(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
@@ -1964,7 +3090,7 @@ type ServerInterface interface {
 	GetZoneCreateFence(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
 	// PutZoneTransform Update zone transform
 	// (PUT /v2/zones/{zoneId}/transform)
-	PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId)
+	PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId, params PutZoneTransformParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -1985,13 +3111,13 @@ func (_ Unimplemented) ListFences(w http.ResponseWriter, r *http.Request) {
 
 // CreateFence Create a fence
 // (POST /v2/fences)
-func (_ Unimplemented) CreateFence(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) CreateFence(w http.ResponseWriter, r *http.Request, params CreateFenceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// GetFencesSummary Get fence summary
+// GetFencesSummary List complete fences
 // (GET /v2/fences/summary)
-func (_ Unimplemented) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetFencesSummary(w http.ResponseWriter, r *http.Request, params GetFencesSummaryParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2003,25 +3129,37 @@ func (_ Unimplemented) DeleteFence(w http.ResponseWriter, r *http.Request, fence
 
 // GetFence Get a fence
 // (GET /v2/fences/{fenceId})
-func (_ Unimplemented) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (_ Unimplemented) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // UpdateFence Update a fence
 // (PUT /v2/fences/{fenceId})
-func (_ Unimplemented) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (_ Unimplemented) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params UpdateFenceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetFenceLocations Get fence locations
 // (GET /v2/fences/{fenceId}/locations)
-func (_ Unimplemented) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (_ Unimplemented) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceLocationsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFenceMotions List motions inside the fence
+// (GET /v2/fences/{fenceId}/motions)
+func (_ Unimplemented) GetFenceMotions(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceMotionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetFenceProviders Get fence providers
 // (GET /v2/fences/{fenceId}/providers)
-func (_ Unimplemented) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (_ Unimplemented) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceProvidersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFenceTrackables List trackables inside the fence
+// (GET /v2/fences/{fenceId}/trackables)
+func (_ Unimplemented) GetFenceTrackables(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceTrackablesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2051,13 +3189,7 @@ func (_ Unimplemented) DeleteProviderLocations(w http.ResponseWriter, r *http.Re
 
 // GetProviderLocations Get provider locations
 // (GET /v2/providers/locations)
-func (_ Unimplemented) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// PostProviderLocations Ingest locations
-// (POST /v2/providers/locations)
-func (_ Unimplemented) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetProviderLocations(w http.ResponseWriter, r *http.Request, params GetProviderLocationsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2067,19 +3199,13 @@ func (_ Unimplemented) PutProviderLocations(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// PostProviderProximities Ingest proximities
-// (POST /v2/providers/proximities)
-func (_ Unimplemented) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // PutProviderProximities Replace provider proximities
 // (PUT /v2/providers/proximities)
 func (_ Unimplemented) PutProviderProximities(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// GetProvidersSummary Get provider summary
+// GetProvidersSummary List complete providers
 // (GET /v2/providers/summary)
 func (_ Unimplemented) GetProvidersSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2105,7 +3231,7 @@ func (_ Unimplemented) UpdateProvider(w http.ResponseWriter, r *http.Request, pr
 
 // GetProviderFences Get provider fences
 // (GET /v2/providers/{providerId}/fences)
-func (_ Unimplemented) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+func (_ Unimplemented) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderFencesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2117,7 +3243,7 @@ func (_ Unimplemented) DeleteProviderLocation(w http.ResponseWriter, r *http.Req
 
 // GetProviderLocation Get provider location
 // (GET /v2/providers/{providerId}/location)
-func (_ Unimplemented) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+func (_ Unimplemented) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderLocationParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2142,6 +3268,12 @@ func (_ Unimplemented) GetProviderSensors(w http.ResponseWriter, r *http.Request
 // PutProviderSensors Update provider sensors
 // (PUT /v2/providers/{providerId}/sensors)
 func (_ Unimplemented) PutProviderSensors(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetProviderTrackables List associated trackables
+// (GET /v2/providers/{providerId}/trackables)
+func (_ Unimplemented) GetProviderTrackables(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2171,17 +3303,17 @@ func (_ Unimplemented) ListTrackables(w http.ResponseWriter, r *http.Request) {
 
 // CreateTrackable Create a trackable
 // (POST /v2/trackables)
-func (_ Unimplemented) CreateTrackable(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) CreateTrackable(w http.ResponseWriter, r *http.Request, params CreateTrackableParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetTrackableMotions List trackable motions
 // (GET /v2/trackables/motions)
-func (_ Unimplemented) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetTrackableMotions(w http.ResponseWriter, r *http.Request, params GetTrackableMotionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// GetTrackablesSummary Get trackable summary
+// GetTrackablesSummary List complete trackables
 // (GET /v2/trackables/summary)
 func (_ Unimplemented) GetTrackablesSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2201,31 +3333,31 @@ func (_ Unimplemented) GetTrackable(w http.ResponseWriter, r *http.Request, trac
 
 // UpdateTrackable Update a trackable
 // (PUT /v2/trackables/{trackableId})
-func (_ Unimplemented) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (_ Unimplemented) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params UpdateTrackableParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetTrackableFences Get trackable fences
 // (GET /v2/trackables/{trackableId}/fences)
-func (_ Unimplemented) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (_ Unimplemented) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableFencesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetTrackableLocation Get trackable location
 // (GET /v2/trackables/{trackableId}/location)
-func (_ Unimplemented) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (_ Unimplemented) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetTrackableLocations Get trackable locations
 // (GET /v2/trackables/{trackableId}/locations)
-func (_ Unimplemented) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (_ Unimplemented) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetTrackableMotion Get trackable motion
 // (GET /v2/trackables/{trackableId}/motion)
-func (_ Unimplemented) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (_ Unimplemented) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableMotionParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2249,7 +3381,7 @@ func (_ Unimplemented) DeleteZones(w http.ResponseWriter, r *http.Request) {
 
 // ListZones List zones
 // (GET /v2/zones)
-func (_ Unimplemented) ListZones(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListZones(w http.ResponseWriter, r *http.Request, params ListZonesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2259,9 +3391,9 @@ func (_ Unimplemented) CreateZone(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// GetZonesSummary Get zone summary
+// GetZonesSummary List complete zones
 // (GET /v2/zones/summary)
-func (_ Unimplemented) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetZonesSummary(w http.ResponseWriter, r *http.Request, params GetZonesSummaryParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2291,7 +3423,7 @@ func (_ Unimplemented) GetZoneCreateFence(w http.ResponseWriter, r *http.Request
 
 // PutZoneTransform Update zone transform
 // (PUT /v2/zones/{zoneId}/transform)
-func (_ Unimplemented) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+func (_ Unimplemented) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId, params PutZoneTransformParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2335,8 +3467,27 @@ func (siw *ServerInterfaceWrapper) ListFences(w http.ResponseWriter, r *http.Req
 // CreateFence operation middleware
 func (siw *ServerInterfaceWrapper) CreateFence(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateFenceParams
+
+	// ------------- Optional query parameter "subdivide" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subdivide", r.URL.Query(), &params.Subdivide, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subdivide"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdivide", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateFence(w, r)
+		siw.Handler.CreateFence(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2349,8 +3500,53 @@ func (siw *ServerInterfaceWrapper) CreateFence(w http.ResponseWriter, r *http.Re
 // GetFencesSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFencesSummaryParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFencesSummary(w, r)
+		siw.Handler.GetFencesSummary(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2401,8 +3597,50 @@ func (siw *ServerInterfaceWrapper) GetFence(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFenceParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFence(w, r, fenceId)
+		siw.Handler.GetFence(w, r, fenceId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2427,8 +3665,24 @@ func (siw *ServerInterfaceWrapper) UpdateFence(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateFenceParams
+
+	// ------------- Optional query parameter "subdivide" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subdivide", r.URL.Query(), &params.Subdivide, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subdivide"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdivide", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateFence(w, r, fenceId)
+		siw.Handler.UpdateFence(w, r, fenceId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2453,8 +3707,144 @@ func (siw *ServerInterfaceWrapper) GetFenceLocations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFenceLocationsParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFenceLocations(w, r, fenceId)
+		siw.Handler.GetFenceLocations(w, r, fenceId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFenceMotions operation middleware
+func (siw *ServerInterfaceWrapper) GetFenceMotions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFenceMotionsParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFenceMotions(w, r, fenceId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2479,8 +3869,66 @@ func (siw *ServerInterfaceWrapper) GetFenceProviders(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFenceProvidersParams
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFenceProviders(w, r, fenceId)
+		siw.Handler.GetFenceProviders(w, r, fenceId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFenceTrackables operation middleware
+func (siw *ServerInterfaceWrapper) GetFenceTrackables(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "fenceId" -------------
+	var fenceId FenceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fenceId", chi.URLParam(r, "fenceId"), &fenceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fenceId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFenceTrackablesParams
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFenceTrackables(w, r, fenceId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2549,22 +3997,53 @@ func (siw *ServerInterfaceWrapper) DeleteProviderLocations(w http.ResponseWriter
 // GetProviderLocations operation middleware
 func (siw *ServerInterfaceWrapper) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
 
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProviderLocations(w, r)
-	}))
+	var err error
+	_ = err
 
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProviderLocationsParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
 	}
 
-	handler.ServeHTTP(w, r)
-}
+	// ------------- Optional query parameter "zone_id" -------------
 
-// PostProviderLocations operation middleware
-func (siw *ServerInterfaceWrapper) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostProviderLocations(w, r)
+		siw.Handler.GetProviderLocations(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2579,20 +4058,6 @@ func (siw *ServerInterfaceWrapper) PutProviderLocations(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutProviderLocations(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PostProviderProximities operation middleware
-func (siw *ServerInterfaceWrapper) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostProviderProximities(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2723,8 +4188,24 @@ func (siw *ServerInterfaceWrapper) GetProviderFences(w http.ResponseWriter, r *h
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProviderFencesParams
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProviderFences(w, r, providerId)
+		siw.Handler.GetProviderFences(w, r, providerId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2775,8 +4256,50 @@ func (siw *ServerInterfaceWrapper) GetProviderLocation(w http.ResponseWriter, r 
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProviderLocationParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProviderLocation(w, r, providerId)
+		siw.Handler.GetProviderLocation(w, r, providerId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2890,6 +4413,32 @@ func (siw *ServerInterfaceWrapper) PutProviderSensors(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetProviderTrackables operation middleware
+func (siw *ServerInterfaceWrapper) GetProviderTrackables(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "providerId" -------------
+	var providerId ProviderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "providerId", chi.URLParam(r, "providerId"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providerId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProviderTrackables(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutRPC operation middleware
 func (siw *ServerInterfaceWrapper) PutRPC(w http.ResponseWriter, r *http.Request) {
 
@@ -2949,8 +4498,40 @@ func (siw *ServerInterfaceWrapper) ListTrackables(w http.ResponseWriter, r *http
 // CreateTrackable operation middleware
 func (siw *ServerInterfaceWrapper) CreateTrackable(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateTrackableParams
+
+	// ------------- Optional query parameter "force_location_update" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force_location_update", r.URL.Query(), &params.ForceLocationUpdate, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "force_location_update"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force_location_update", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "subdivide" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subdivide", r.URL.Query(), &params.Subdivide, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subdivide"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdivide", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateTrackable(w, r)
+		siw.Handler.CreateTrackable(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2963,8 +4544,53 @@ func (siw *ServerInterfaceWrapper) CreateTrackable(w http.ResponseWriter, r *htt
 // GetTrackableMotions operation middleware
 func (siw *ServerInterfaceWrapper) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTrackableMotionsParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrackableMotions(w, r)
+		siw.Handler.GetTrackableMotions(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3055,8 +4681,37 @@ func (siw *ServerInterfaceWrapper) UpdateTrackable(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateTrackableParams
+
+	// ------------- Optional query parameter "force_location_update" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force_location_update", r.URL.Query(), &params.ForceLocationUpdate, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "force_location_update"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force_location_update", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "subdivide" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "subdivide", r.URL.Query(), &params.Subdivide, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "subdivide"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdivide", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateTrackable(w, r, trackableId)
+		siw.Handler.UpdateTrackable(w, r, trackableId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3081,8 +4736,24 @@ func (siw *ServerInterfaceWrapper) GetTrackableFences(w http.ResponseWriter, r *
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTrackableFencesParams
+
+	// ------------- Optional query parameter "spatial_query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "spatial_query", r.URL.Query(), &params.SpatialQuery, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "spatial_query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "spatial_query", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrackableFences(w, r, trackableId)
+		siw.Handler.GetTrackableFences(w, r, trackableId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3107,8 +4778,50 @@ func (siw *ServerInterfaceWrapper) GetTrackableLocation(w http.ResponseWriter, r
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTrackableLocationParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrackableLocation(w, r, trackableId)
+		siw.Handler.GetTrackableLocation(w, r, trackableId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3133,8 +4846,50 @@ func (siw *ServerInterfaceWrapper) GetTrackableLocations(w http.ResponseWriter, 
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTrackableLocationsParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrackableLocations(w, r, trackableId)
+		siw.Handler.GetTrackableLocations(w, r, trackableId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3159,8 +4914,50 @@ func (siw *ServerInterfaceWrapper) GetTrackableMotion(w http.ResponseWriter, r *
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTrackableMotionParams
+
+	// ------------- Optional query parameter "crs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "crs", r.URL.Query(), &params.Crs, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "crs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "crs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "zone_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "zone_id", r.URL.Query(), &params.ZoneId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "zone_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "zone_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrackableMotion(w, r, trackableId)
+		siw.Handler.GetTrackableMotion(w, r, trackableId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3239,8 +5036,27 @@ func (siw *ServerInterfaceWrapper) DeleteZones(w http.ResponseWriter, r *http.Re
 // ListZones operation middleware
 func (siw *ServerInterfaceWrapper) ListZones(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListZonesParams
+
+	// ------------- Optional query parameter "foreign_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "foreign_id", r.URL.Query(), &params.ForeignId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "foreign_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "foreign_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListZones(w, r)
+		siw.Handler.ListZones(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3267,8 +5083,27 @@ func (siw *ServerInterfaceWrapper) CreateZone(w http.ResponseWriter, r *http.Req
 // GetZonesSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetZonesSummaryParams
+
+	// ------------- Optional query parameter "foreign_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "foreign_id", r.URL.Query(), &params.ForeignId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "foreign_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "foreign_id", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetZonesSummary(w, r)
+		siw.Handler.GetZonesSummary(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3397,8 +5232,24 @@ func (siw *ServerInterfaceWrapper) PutZoneTransform(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutZoneTransformParams
+
+	// ------------- Optional query parameter "geojson" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "geojson", r.URL.Query(), &params.Geojson, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "geojson"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "geojson", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PutZoneTransform(w, r, zoneId)
+		siw.Handler.PutZoneTransform(w, r, zoneId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3639,13 +5490,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/v2/providers/locations", wrapper.GetProviderLocations)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v2/providers/locations", wrapper.PostProviderLocations)
-	})
-	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/providers/locations", wrapper.PutProviderLocations)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v2/providers/proximities", wrapper.PostProviderProximities)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/providers/proximities", wrapper.PutProviderProximities)
@@ -3682,6 +5527,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/v2/rpc", wrapper.PutRPC)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/providers/{providerId}/trackables", wrapper.GetProviderTrackables)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/fences/{fenceId}/trackables", wrapper.GetFenceTrackables)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v2/fences/{fenceId}/motions", wrapper.GetFenceMotions)
 	})
 
 	return r
@@ -3745,7 +5599,7 @@ type ListFencesResponseObject interface {
 	VisitListFencesResponse(w http.ResponseWriter) error
 }
 
-type ListFences200JSONResponse []Fence
+type ListFences200JSONResponse []openapi_types.UUID
 
 func (response ListFences200JSONResponse) VisitListFencesResponse(w http.ResponseWriter) error {
 
@@ -3788,7 +5642,8 @@ func (response ListFences403JSONResponse) VisitListFencesResponse(w http.Respons
 }
 
 type CreateFenceRequestObject struct {
-	Body *CreateFenceJSONRequestBody
+	Params CreateFenceParams
+	Body   *CreateFenceJSONRequestBody
 }
 
 type CreateFenceResponseObject interface {
@@ -3852,13 +5707,14 @@ func (response CreateFence403JSONResponse) VisitCreateFenceResponse(w http.Respo
 }
 
 type GetFencesSummaryRequestObject struct {
+	Params GetFencesSummaryParams
 }
 
 type GetFencesSummaryResponseObject interface {
 	VisitGetFencesSummaryResponse(w http.ResponseWriter) error
 }
 
-type GetFencesSummary200JSONResponse ResourceSummary
+type GetFencesSummary200JSONResponse []GetFencesSummary200JSONResponseBody_Item
 
 func (response GetFencesSummary200JSONResponse) VisitGetFencesSummaryResponse(w http.ResponseWriter) error {
 
@@ -3960,18 +5816,19 @@ func (response DeleteFence404JSONResponse) VisitDeleteFenceResponse(w http.Respo
 
 type GetFenceRequestObject struct {
 	FenceId FenceId `json:"fenceId"`
+	Params  GetFenceParams
 }
 
 type GetFenceResponseObject interface {
 	VisitGetFenceResponse(w http.ResponseWriter) error
 }
 
-type GetFence200JSONResponse Fence
+type GetFence200JSONResponse = GetFence200JSONResponseBody
 
 func (response GetFence200JSONResponse) VisitGetFenceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.union); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -4024,6 +5881,7 @@ func (response GetFence404JSONResponse) VisitGetFenceResponse(w http.ResponseWri
 
 type UpdateFenceRequestObject struct {
 	FenceId FenceId `json:"fenceId"`
+	Params  UpdateFenceParams
 	Body    *UpdateFenceJSONRequestBody
 }
 
@@ -4031,18 +5889,12 @@ type UpdateFenceResponseObject interface {
 	VisitUpdateFenceResponse(w http.ResponseWriter) error
 }
 
-type UpdateFence200JSONResponse Fence
+type UpdateFence204Response struct {
+}
 
-func (response UpdateFence200JSONResponse) VisitUpdateFenceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
+func (response UpdateFence204Response) VisitUpdateFenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type UpdateFence400JSONResponse struct{ BadRequestJSONResponse }
@@ -4103,13 +5955,14 @@ func (response UpdateFence404JSONResponse) VisitUpdateFenceResponse(w http.Respo
 
 type GetFenceLocationsRequestObject struct {
 	FenceId FenceId `json:"fenceId"`
+	Params  GetFenceLocationsParams
 }
 
 type GetFenceLocationsResponseObject interface {
 	VisitGetFenceLocationsResponse(w http.ResponseWriter) error
 }
 
-type GetFenceLocations200JSONResponse []Location
+type GetFenceLocations200JSONResponse []GetFenceLocations200JSONResponseBody_Item
 
 func (response GetFenceLocations200JSONResponse) VisitGetFenceLocationsResponse(w http.ResponseWriter) error {
 
@@ -4165,8 +6018,46 @@ func (response GetFenceLocations404JSONResponse) VisitGetFenceLocationsResponse(
 	return err
 }
 
+type GetFenceMotionsRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+	Params  GetFenceMotionsParams
+}
+
+type GetFenceMotionsResponseObject interface {
+	VisitGetFenceMotionsResponse(w http.ResponseWriter) error
+}
+
+type GetFenceMotions200JSONResponse []GetFenceMotions200JSONResponseBody_Item
+
+func (response GetFenceMotions200JSONResponse) VisitGetFenceMotionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceMotions404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFenceMotions404JSONResponse) VisitGetFenceMotionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFenceProvidersRequestObject struct {
 	FenceId FenceId `json:"fenceId"`
+	Params  GetFenceProvidersParams
 }
 
 type GetFenceProvidersResponseObject interface {
@@ -4229,6 +6120,43 @@ func (response GetFenceProviders404JSONResponse) VisitGetFenceProvidersResponse(
 	return err
 }
 
+type GetFenceTrackablesRequestObject struct {
+	FenceId FenceId `json:"fenceId"`
+	Params  GetFenceTrackablesParams
+}
+
+type GetFenceTrackablesResponseObject interface {
+	VisitGetFenceTrackablesResponse(w http.ResponseWriter) error
+}
+
+type GetFenceTrackables200JSONResponse []Trackable
+
+func (response GetFenceTrackables200JSONResponse) VisitGetFenceTrackablesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFenceTrackables404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFenceTrackables404JSONResponse) VisitGetFenceTrackablesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProvidersRequestObject struct {
 }
 
@@ -4279,7 +6207,7 @@ type ListProvidersResponseObject interface {
 	VisitListProvidersResponse(w http.ResponseWriter) error
 }
 
-type ListProviders200JSONResponse []LocationProvider
+type ListProviders200JSONResponse []string
 
 func (response ListProviders200JSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
 
@@ -4429,13 +6357,14 @@ func (response DeleteProviderLocations403JSONResponse) VisitDeleteProviderLocati
 }
 
 type GetProviderLocationsRequestObject struct {
+	Params GetProviderLocationsParams
 }
 
 type GetProviderLocationsResponseObject interface {
 	VisitGetProviderLocationsResponse(w http.ResponseWriter) error
 }
 
-type GetProviderLocations200JSONResponse []Location
+type GetProviderLocations200JSONResponse []GetProviderLocations200JSONResponseBody_Item
 
 func (response GetProviderLocations200JSONResponse) VisitGetProviderLocationsResponse(w http.ResponseWriter) error {
 
@@ -4477,64 +6406,6 @@ func (response GetProviderLocations403JSONResponse) VisitGetProviderLocationsRes
 	return err
 }
 
-type PostProviderLocationsRequestObject struct {
-	Body *PostProviderLocationsJSONRequestBody
-}
-
-type PostProviderLocationsResponseObject interface {
-	VisitPostProviderLocationsResponse(w http.ResponseWriter) error
-}
-
-type PostProviderLocations202Response struct {
-}
-
-func (response PostProviderLocations202Response) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
-	return nil
-}
-
-type PostProviderLocations400JSONResponse struct{ BadRequestJSONResponse }
-
-func (response PostProviderLocations400JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostProviderLocations401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response PostProviderLocations401JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostProviderLocations403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response PostProviderLocations403JSONResponse) VisitPostProviderLocationsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type PutProviderLocationsRequestObject struct {
 	Body *PutProviderLocationsJSONRequestBody
 }
@@ -4543,11 +6414,11 @@ type PutProviderLocationsResponseObject interface {
 	VisitPutProviderLocationsResponse(w http.ResponseWriter) error
 }
 
-type PutProviderLocations202Response struct {
+type PutProviderLocations204Response struct {
 }
 
-func (response PutProviderLocations202Response) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
+func (response PutProviderLocations204Response) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
 	return nil
 }
 
@@ -4593,64 +6464,6 @@ func (response PutProviderLocations403JSONResponse) VisitPutProviderLocationsRes
 	return err
 }
 
-type PostProviderProximitiesRequestObject struct {
-	Body *PostProviderProximitiesJSONRequestBody
-}
-
-type PostProviderProximitiesResponseObject interface {
-	VisitPostProviderProximitiesResponse(w http.ResponseWriter) error
-}
-
-type PostProviderProximities202Response struct {
-}
-
-func (response PostProviderProximities202Response) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
-	return nil
-}
-
-type PostProviderProximities400JSONResponse struct{ BadRequestJSONResponse }
-
-func (response PostProviderProximities400JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostProviderProximities401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response PostProviderProximities401JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostProviderProximities403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response PostProviderProximities403JSONResponse) VisitPostProviderProximitiesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type PutProviderProximitiesRequestObject struct {
 	Body *PutProviderProximitiesJSONRequestBody
 }
@@ -4659,11 +6472,11 @@ type PutProviderProximitiesResponseObject interface {
 	VisitPutProviderProximitiesResponse(w http.ResponseWriter) error
 }
 
-type PutProviderProximities202Response struct {
+type PutProviderProximities204Response struct {
 }
 
-func (response PutProviderProximities202Response) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
+func (response PutProviderProximities204Response) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
 	return nil
 }
 
@@ -4716,7 +6529,7 @@ type GetProvidersSummaryResponseObject interface {
 	VisitGetProvidersSummaryResponse(w http.ResponseWriter) error
 }
 
-type GetProvidersSummary200JSONResponse ResourceSummary
+type GetProvidersSummary200JSONResponse []LocationProvider
 
 func (response GetProvidersSummary200JSONResponse) VisitGetProvidersSummaryResponse(w http.ResponseWriter) error {
 
@@ -4889,18 +6702,12 @@ type UpdateProviderResponseObject interface {
 	VisitUpdateProviderResponse(w http.ResponseWriter) error
 }
 
-type UpdateProvider200JSONResponse LocationProvider
+type UpdateProvider204Response struct {
+}
 
-func (response UpdateProvider200JSONResponse) VisitUpdateProviderResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
+func (response UpdateProvider204Response) VisitUpdateProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type UpdateProvider400JSONResponse struct{ BadRequestJSONResponse }
@@ -4961,6 +6768,7 @@ func (response UpdateProvider404JSONResponse) VisitUpdateProviderResponse(w http
 
 type GetProviderFencesRequestObject struct {
 	ProviderId ProviderId `json:"providerId"`
+	Params     GetProviderFencesParams
 }
 
 type GetProviderFencesResponseObject interface {
@@ -5083,18 +6891,19 @@ func (response DeleteProviderLocation404JSONResponse) VisitDeleteProviderLocatio
 
 type GetProviderLocationRequestObject struct {
 	ProviderId ProviderId `json:"providerId"`
+	Params     GetProviderLocationParams
 }
 
 type GetProviderLocationResponseObject interface {
 	VisitGetProviderLocationResponse(w http.ResponseWriter) error
 }
 
-type GetProviderLocation200JSONResponse Location
+type GetProviderLocation200JSONResponse = GetProviderLocation200JSONResponseBody
 
 func (response GetProviderLocation200JSONResponse) VisitGetProviderLocationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.union); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -5154,11 +6963,11 @@ type PutProviderLocationResponseObject interface {
 	VisitPutProviderLocationResponse(w http.ResponseWriter) error
 }
 
-type PutProviderLocation202Response struct {
+type PutProviderLocation204Response struct {
 }
 
-func (response PutProviderLocation202Response) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
+func (response PutProviderLocation204Response) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
 	return nil
 }
 
@@ -5227,11 +7036,11 @@ type PutProviderProximityResponseObject interface {
 	VisitPutProviderProximityResponse(w http.ResponseWriter) error
 }
 
-type PutProviderProximity202Response struct {
+type PutProviderProximity204Response struct {
 }
 
-func (response PutProviderProximity202Response) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
-	w.WriteHeader(202)
+func (response PutProviderProximity204Response) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
 	return nil
 }
 
@@ -5299,7 +7108,7 @@ type GetProviderSensorsResponseObject interface {
 	VisitGetProviderSensorsResponse(w http.ResponseWriter) error
 }
 
-type GetProviderSensors200JSONResponse ExtensionProperties
+type GetProviderSensors200JSONResponse SensorData
 
 func (response GetProviderSensors200JSONResponse) VisitGetProviderSensorsResponse(w http.ResponseWriter) error {
 
@@ -5364,18 +7173,12 @@ type PutProviderSensorsResponseObject interface {
 	VisitPutProviderSensorsResponse(w http.ResponseWriter) error
 }
 
-type PutProviderSensors200JSONResponse LocationProvider
+type PutProviderSensors204Response struct {
+}
 
-func (response PutProviderSensors200JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
+func (response PutProviderSensors204Response) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type PutProviderSensors400JSONResponse struct{ BadRequestJSONResponse }
@@ -5423,6 +7226,42 @@ func (response PutProviderSensors403JSONResponse) VisitPutProviderSensorsRespons
 type PutProviderSensors404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response PutProviderSensors404JSONResponse) VisitPutProviderSensorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderTrackablesRequestObject struct {
+	ProviderId ProviderId `json:"providerId"`
+}
+
+type GetProviderTrackablesResponseObject interface {
+	VisitGetProviderTrackablesResponse(w http.ResponseWriter) error
+}
+
+type GetProviderTrackables200JSONResponse []Trackable
+
+func (response GetProviderTrackables200JSONResponse) VisitGetProviderTrackablesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProviderTrackables404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProviderTrackables404JSONResponse) VisitGetProviderTrackablesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5605,7 +7444,7 @@ type ListTrackablesResponseObject interface {
 	VisitListTrackablesResponse(w http.ResponseWriter) error
 }
 
-type ListTrackables200JSONResponse []Trackable
+type ListTrackables200JSONResponse []openapi_types.UUID
 
 func (response ListTrackables200JSONResponse) VisitListTrackablesResponse(w http.ResponseWriter) error {
 
@@ -5648,7 +7487,8 @@ func (response ListTrackables403JSONResponse) VisitListTrackablesResponse(w http
 }
 
 type CreateTrackableRequestObject struct {
-	Body *CreateTrackableJSONRequestBody
+	Params CreateTrackableParams
+	Body   *CreateTrackableJSONRequestBody
 }
 
 type CreateTrackableResponseObject interface {
@@ -5712,13 +7552,14 @@ func (response CreateTrackable403JSONResponse) VisitCreateTrackableResponse(w ht
 }
 
 type GetTrackableMotionsRequestObject struct {
+	Params GetTrackableMotionsParams
 }
 
 type GetTrackableMotionsResponseObject interface {
 	VisitGetTrackableMotionsResponse(w http.ResponseWriter) error
 }
 
-type GetTrackableMotions200JSONResponse []TrackableMotion
+type GetTrackableMotions200JSONResponse []GetTrackableMotions200JSONResponseBody_Item
 
 func (response GetTrackableMotions200JSONResponse) VisitGetTrackableMotionsResponse(w http.ResponseWriter) error {
 
@@ -5767,7 +7608,7 @@ type GetTrackablesSummaryResponseObject interface {
 	VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error
 }
 
-type GetTrackablesSummary200JSONResponse ResourceSummary
+type GetTrackablesSummary200JSONResponse []Trackable
 
 func (response GetTrackablesSummary200JSONResponse) VisitGetTrackablesSummaryResponse(w http.ResponseWriter) error {
 
@@ -5933,6 +7774,7 @@ func (response GetTrackable404JSONResponse) VisitGetTrackableResponse(w http.Res
 
 type UpdateTrackableRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
+	Params      UpdateTrackableParams
 	Body        *UpdateTrackableJSONRequestBody
 }
 
@@ -6012,6 +7854,7 @@ func (response UpdateTrackable404JSONResponse) VisitUpdateTrackableResponse(w ht
 
 type GetTrackableFencesRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
+	Params      GetTrackableFencesParams
 }
 
 type GetTrackableFencesResponseObject interface {
@@ -6076,18 +7919,19 @@ func (response GetTrackableFences404JSONResponse) VisitGetTrackableFencesRespons
 
 type GetTrackableLocationRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
+	Params      GetTrackableLocationParams
 }
 
 type GetTrackableLocationResponseObject interface {
 	VisitGetTrackableLocationResponse(w http.ResponseWriter) error
 }
 
-type GetTrackableLocation200JSONResponse Location
+type GetTrackableLocation200JSONResponse = GetTrackableLocation200JSONResponseBody
 
 func (response GetTrackableLocation200JSONResponse) VisitGetTrackableLocationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.union); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -6140,13 +7984,14 @@ func (response GetTrackableLocation404JSONResponse) VisitGetTrackableLocationRes
 
 type GetTrackableLocationsRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
+	Params      GetTrackableLocationsParams
 }
 
 type GetTrackableLocationsResponseObject interface {
 	VisitGetTrackableLocationsResponse(w http.ResponseWriter) error
 }
 
-type GetTrackableLocations200JSONResponse []Location
+type GetTrackableLocations200JSONResponse []GetTrackableLocations200JSONResponseBody_Item
 
 func (response GetTrackableLocations200JSONResponse) VisitGetTrackableLocationsResponse(w http.ResponseWriter) error {
 
@@ -6204,18 +8049,19 @@ func (response GetTrackableLocations404JSONResponse) VisitGetTrackableLocationsR
 
 type GetTrackableMotionRequestObject struct {
 	TrackableId TrackableId `json:"trackableId"`
+	Params      GetTrackableMotionParams
 }
 
 type GetTrackableMotionResponseObject interface {
 	VisitGetTrackableMotionResponse(w http.ResponseWriter) error
 }
 
-type GetTrackableMotion200JSONResponse TrackableMotion
+type GetTrackableMotion200JSONResponse = GetTrackableMotion200JSONResponseBody
 
 func (response GetTrackableMotion200JSONResponse) VisitGetTrackableMotionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.union); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -6338,7 +8184,7 @@ type GetTrackableSensorsResponseObject interface {
 	VisitGetTrackableSensorsResponse(w http.ResponseWriter) error
 }
 
-type GetTrackableSensors200JSONResponse map[string]ExtensionProperties
+type GetTrackableSensors200JSONResponse SensorData
 
 func (response GetTrackableSensors200JSONResponse) VisitGetTrackableSensorsResponse(w http.ResponseWriter) error {
 
@@ -6438,13 +8284,14 @@ func (response DeleteZones403JSONResponse) VisitDeleteZonesResponse(w http.Respo
 }
 
 type ListZonesRequestObject struct {
+	Params ListZonesParams
 }
 
 type ListZonesResponseObject interface {
 	VisitListZonesResponse(w http.ResponseWriter) error
 }
 
-type ListZones200JSONResponse []Zone
+type ListZones200JSONResponse []openapi_types.UUID
 
 func (response ListZones200JSONResponse) VisitListZonesResponse(w http.ResponseWriter) error {
 
@@ -6551,13 +8398,14 @@ func (response CreateZone403JSONResponse) VisitCreateZoneResponse(w http.Respons
 }
 
 type GetZonesSummaryRequestObject struct {
+	Params GetZonesSummaryParams
 }
 
 type GetZonesSummaryResponseObject interface {
 	VisitGetZonesSummaryResponse(w http.ResponseWriter) error
 }
 
-type GetZonesSummary200JSONResponse ResourceSummary
+type GetZonesSummary200JSONResponse []Zone
 
 func (response GetZonesSummary200JSONResponse) VisitGetZonesSummaryResponse(w http.ResponseWriter) error {
 
@@ -6730,18 +8578,12 @@ type UpdateZoneResponseObject interface {
 	VisitUpdateZoneResponse(w http.ResponseWriter) error
 }
 
-type UpdateZone200JSONResponse Zone
+type UpdateZone204Response struct {
+}
 
-func (response UpdateZone200JSONResponse) VisitUpdateZoneResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
+func (response UpdateZone204Response) VisitUpdateZoneResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type UpdateZone400JSONResponse struct{ BadRequestJSONResponse }
@@ -6880,6 +8722,7 @@ func (response GetZoneCreateFence404JSONResponse) VisitGetZoneCreateFenceRespons
 
 type PutZoneTransformRequestObject struct {
 	ZoneId ZoneId `json:"zoneId"`
+	Params PutZoneTransformParams
 	Body   *PutZoneTransformJSONRequestBody
 }
 
@@ -6887,18 +8730,12 @@ type PutZoneTransformResponseObject interface {
 	VisitPutZoneTransformResponse(w http.ResponseWriter) error
 }
 
-type PutZoneTransform200JSONResponse struct {
-	Crs string `json:"crs"`
-
-	// Position GeoJSON point geometry.
-	Position Point              `json:"position"`
-	ZoneId   openapi_types.UUID `json:"zone_id"`
-}
+type PutZoneTransform200JSONResponse = PutZoneTransform200JSONResponseBody
 
 func (response PutZoneTransform200JSONResponse) VisitPutZoneTransformResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.union); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -6974,7 +8811,7 @@ type StrictServerInterface interface {
 	// CreateFence Create a fence
 	// (POST /v2/fences)
 	CreateFence(ctx context.Context, request CreateFenceRequestObject) (CreateFenceResponseObject, error)
-	// GetFencesSummary Get fence summary
+	// GetFencesSummary List complete fences
 	// (GET /v2/fences/summary)
 	GetFencesSummary(ctx context.Context, request GetFencesSummaryRequestObject) (GetFencesSummaryResponseObject, error)
 	// DeleteFence Delete a fence
@@ -6989,9 +8826,15 @@ type StrictServerInterface interface {
 	// GetFenceLocations Get fence locations
 	// (GET /v2/fences/{fenceId}/locations)
 	GetFenceLocations(ctx context.Context, request GetFenceLocationsRequestObject) (GetFenceLocationsResponseObject, error)
+	// GetFenceMotions List motions inside the fence
+	// (GET /v2/fences/{fenceId}/motions)
+	GetFenceMotions(ctx context.Context, request GetFenceMotionsRequestObject) (GetFenceMotionsResponseObject, error)
 	// GetFenceProviders Get fence providers
 	// (GET /v2/fences/{fenceId}/providers)
 	GetFenceProviders(ctx context.Context, request GetFenceProvidersRequestObject) (GetFenceProvidersResponseObject, error)
+	// GetFenceTrackables List trackables inside the fence
+	// (GET /v2/fences/{fenceId}/trackables)
+	GetFenceTrackables(ctx context.Context, request GetFenceTrackablesRequestObject) (GetFenceTrackablesResponseObject, error)
 	// DeleteProviders Delete all providers
 	// (DELETE /v2/providers)
 	DeleteProviders(ctx context.Context, request DeleteProvidersRequestObject) (DeleteProvidersResponseObject, error)
@@ -7007,19 +8850,13 @@ type StrictServerInterface interface {
 	// GetProviderLocations Get provider locations
 	// (GET /v2/providers/locations)
 	GetProviderLocations(ctx context.Context, request GetProviderLocationsRequestObject) (GetProviderLocationsResponseObject, error)
-	// PostProviderLocations Ingest locations
-	// (POST /v2/providers/locations)
-	PostProviderLocations(ctx context.Context, request PostProviderLocationsRequestObject) (PostProviderLocationsResponseObject, error)
 	// PutProviderLocations Replace provider locations
 	// (PUT /v2/providers/locations)
 	PutProviderLocations(ctx context.Context, request PutProviderLocationsRequestObject) (PutProviderLocationsResponseObject, error)
-	// PostProviderProximities Ingest proximities
-	// (POST /v2/providers/proximities)
-	PostProviderProximities(ctx context.Context, request PostProviderProximitiesRequestObject) (PostProviderProximitiesResponseObject, error)
 	// PutProviderProximities Replace provider proximities
 	// (PUT /v2/providers/proximities)
 	PutProviderProximities(ctx context.Context, request PutProviderProximitiesRequestObject) (PutProviderProximitiesResponseObject, error)
-	// GetProvidersSummary Get provider summary
+	// GetProvidersSummary List complete providers
 	// (GET /v2/providers/summary)
 	GetProvidersSummary(ctx context.Context, request GetProvidersSummaryRequestObject) (GetProvidersSummaryResponseObject, error)
 	// DeleteProvider Delete a provider
@@ -7052,6 +8889,9 @@ type StrictServerInterface interface {
 	// PutProviderSensors Update provider sensors
 	// (PUT /v2/providers/{providerId}/sensors)
 	PutProviderSensors(ctx context.Context, request PutProviderSensorsRequestObject) (PutProviderSensorsResponseObject, error)
+	// GetProviderTrackables List associated trackables
+	// (GET /v2/providers/{providerId}/trackables)
+	GetProviderTrackables(ctx context.Context, request GetProviderTrackablesRequestObject) (GetProviderTrackablesResponseObject, error)
 	// PutRPC Invoke JSON-RPC
 	// (PUT /v2/rpc)
 	PutRPC(ctx context.Context, request PutRPCRequestObject) (PutRPCResponseObject, error)
@@ -7070,7 +8910,7 @@ type StrictServerInterface interface {
 	// GetTrackableMotions List trackable motions
 	// (GET /v2/trackables/motions)
 	GetTrackableMotions(ctx context.Context, request GetTrackableMotionsRequestObject) (GetTrackableMotionsResponseObject, error)
-	// GetTrackablesSummary Get trackable summary
+	// GetTrackablesSummary List complete trackables
 	// (GET /v2/trackables/summary)
 	GetTrackablesSummary(ctx context.Context, request GetTrackablesSummaryRequestObject) (GetTrackablesSummaryResponseObject, error)
 	// DeleteTrackable Delete a trackable
@@ -7109,7 +8949,7 @@ type StrictServerInterface interface {
 	// CreateZone Create a zone
 	// (POST /v2/zones)
 	CreateZone(ctx context.Context, request CreateZoneRequestObject) (CreateZoneResponseObject, error)
-	// GetZonesSummary Get zone summary
+	// GetZonesSummary List complete zones
 	// (GET /v2/zones/summary)
 	GetZonesSummary(ctx context.Context, request GetZonesSummaryRequestObject) (GetZonesSummaryResponseObject, error)
 	// DeleteZone Delete a zone
@@ -7217,8 +9057,10 @@ func (sh *strictHandler) ListFences(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateFence operation middleware
-func (sh *strictHandler) CreateFence(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CreateFence(w http.ResponseWriter, r *http.Request, params CreateFenceParams) {
 	var request CreateFenceRequestObject
+
+	request.Params = params
 
 	var body CreateFenceJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -7248,8 +9090,10 @@ func (sh *strictHandler) CreateFence(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetFencesSummary operation middleware
-func (sh *strictHandler) GetFencesSummary(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetFencesSummary(w http.ResponseWriter, r *http.Request, params GetFencesSummaryParams) {
 	var request GetFencesSummaryRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFencesSummary(ctx, request.(GetFencesSummaryRequestObject))
@@ -7298,10 +9142,11 @@ func (sh *strictHandler) DeleteFence(w http.ResponseWriter, r *http.Request, fen
 }
 
 // GetFence operation middleware
-func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceParams) {
 	var request GetFenceRequestObject
 
 	request.FenceId = fenceId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFence(ctx, request.(GetFenceRequestObject))
@@ -7324,10 +9169,11 @@ func (sh *strictHandler) GetFence(w http.ResponseWriter, r *http.Request, fenceI
 }
 
 // UpdateFence operation middleware
-func (sh *strictHandler) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (sh *strictHandler) UpdateFence(w http.ResponseWriter, r *http.Request, fenceId FenceId, params UpdateFenceParams) {
 	var request UpdateFenceRequestObject
 
 	request.FenceId = fenceId
+	request.Params = params
 
 	var body UpdateFenceJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -7357,10 +9203,11 @@ func (sh *strictHandler) UpdateFence(w http.ResponseWriter, r *http.Request, fen
 }
 
 // GetFenceLocations operation middleware
-func (sh *strictHandler) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (sh *strictHandler) GetFenceLocations(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceLocationsParams) {
 	var request GetFenceLocationsRequestObject
 
 	request.FenceId = fenceId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFenceLocations(ctx, request.(GetFenceLocationsRequestObject))
@@ -7382,11 +9229,39 @@ func (sh *strictHandler) GetFenceLocations(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// GetFenceMotions operation middleware
+func (sh *strictHandler) GetFenceMotions(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceMotionsParams) {
+	var request GetFenceMotionsRequestObject
+
+	request.FenceId = fenceId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFenceMotions(ctx, request.(GetFenceMotionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFenceMotions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFenceMotionsResponseObject); ok {
+		if err := validResponse.VisitGetFenceMotionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetFenceProviders operation middleware
-func (sh *strictHandler) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId) {
+func (sh *strictHandler) GetFenceProviders(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceProvidersParams) {
 	var request GetFenceProvidersRequestObject
 
 	request.FenceId = fenceId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFenceProviders(ctx, request.(GetFenceProvidersRequestObject))
@@ -7401,6 +9276,33 @@ func (sh *strictHandler) GetFenceProviders(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetFenceProvidersResponseObject); ok {
 		if err := validResponse.VisitGetFenceProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFenceTrackables operation middleware
+func (sh *strictHandler) GetFenceTrackables(w http.ResponseWriter, r *http.Request, fenceId FenceId, params GetFenceTrackablesParams) {
+	var request GetFenceTrackablesRequestObject
+
+	request.FenceId = fenceId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFenceTrackables(ctx, request.(GetFenceTrackablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFenceTrackables")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFenceTrackablesResponseObject); ok {
+		if err := validResponse.VisitGetFenceTrackablesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7512,8 +9414,10 @@ func (sh *strictHandler) DeleteProviderLocations(w http.ResponseWriter, r *http.
 }
 
 // GetProviderLocations operation middleware
-func (sh *strictHandler) GetProviderLocations(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetProviderLocations(w http.ResponseWriter, r *http.Request, params GetProviderLocationsParams) {
 	var request GetProviderLocationsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProviderLocations(ctx, request.(GetProviderLocationsRequestObject))
@@ -7528,37 +9432,6 @@ func (sh *strictHandler) GetProviderLocations(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProviderLocationsResponseObject); ok {
 		if err := validResponse.VisitGetProviderLocationsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PostProviderLocations operation middleware
-func (sh *strictHandler) PostProviderLocations(w http.ResponseWriter, r *http.Request) {
-	var request PostProviderLocationsRequestObject
-
-	var body PostProviderLocationsJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PostProviderLocations(ctx, request.(PostProviderLocationsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PostProviderLocations")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PostProviderLocationsResponseObject); ok {
-		if err := validResponse.VisitPostProviderLocationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7590,37 +9463,6 @@ func (sh *strictHandler) PutProviderLocations(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProviderLocationsResponseObject); ok {
 		if err := validResponse.VisitPutProviderLocationsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PostProviderProximities operation middleware
-func (sh *strictHandler) PostProviderProximities(w http.ResponseWriter, r *http.Request) {
-	var request PostProviderProximitiesRequestObject
-
-	var body PostProviderProximitiesJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PostProviderProximities(ctx, request.(PostProviderProximitiesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PostProviderProximities")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PostProviderProximitiesResponseObject); ok {
-		if err := validResponse.VisitPostProviderProximitiesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7769,10 +9611,11 @@ func (sh *strictHandler) UpdateProvider(w http.ResponseWriter, r *http.Request, 
 }
 
 // GetProviderFences operation middleware
-func (sh *strictHandler) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+func (sh *strictHandler) GetProviderFences(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderFencesParams) {
 	var request GetProviderFencesRequestObject
 
 	request.ProviderId = providerId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProviderFences(ctx, request.(GetProviderFencesRequestObject))
@@ -7821,10 +9664,11 @@ func (sh *strictHandler) DeleteProviderLocation(w http.ResponseWriter, r *http.R
 }
 
 // GetProviderLocation operation middleware
-func (sh *strictHandler) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+func (sh *strictHandler) GetProviderLocation(w http.ResponseWriter, r *http.Request, providerId ProviderId, params GetProviderLocationParams) {
 	var request GetProviderLocationRequestObject
 
 	request.ProviderId = providerId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProviderLocation(ctx, request.(GetProviderLocationRequestObject))
@@ -7971,6 +9815,32 @@ func (sh *strictHandler) PutProviderSensors(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetProviderTrackables operation middleware
+func (sh *strictHandler) GetProviderTrackables(w http.ResponseWriter, r *http.Request, providerId ProviderId) {
+	var request GetProviderTrackablesRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProviderTrackables(ctx, request.(GetProviderTrackablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProviderTrackables")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProviderTrackablesResponseObject); ok {
+		if err := validResponse.VisitGetProviderTrackablesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutRPC operation middleware
 func (sh *strictHandler) PutRPC(w http.ResponseWriter, r *http.Request) {
 	var request PutRPCRequestObject
@@ -8075,8 +9945,10 @@ func (sh *strictHandler) ListTrackables(w http.ResponseWriter, r *http.Request) 
 }
 
 // CreateTrackable operation middleware
-func (sh *strictHandler) CreateTrackable(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CreateTrackable(w http.ResponseWriter, r *http.Request, params CreateTrackableParams) {
 	var request CreateTrackableRequestObject
+
+	request.Params = params
 
 	var body CreateTrackableJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -8106,8 +9978,10 @@ func (sh *strictHandler) CreateTrackable(w http.ResponseWriter, r *http.Request)
 }
 
 // GetTrackableMotions operation middleware
-func (sh *strictHandler) GetTrackableMotions(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetTrackableMotions(w http.ResponseWriter, r *http.Request, params GetTrackableMotionsParams) {
 	var request GetTrackableMotionsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrackableMotions(ctx, request.(GetTrackableMotionsRequestObject))
@@ -8206,10 +10080,11 @@ func (sh *strictHandler) GetTrackable(w http.ResponseWriter, r *http.Request, tr
 }
 
 // UpdateTrackable operation middleware
-func (sh *strictHandler) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (sh *strictHandler) UpdateTrackable(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params UpdateTrackableParams) {
 	var request UpdateTrackableRequestObject
 
 	request.TrackableId = trackableId
+	request.Params = params
 
 	var body UpdateTrackableJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -8239,10 +10114,11 @@ func (sh *strictHandler) UpdateTrackable(w http.ResponseWriter, r *http.Request,
 }
 
 // GetTrackableFences operation middleware
-func (sh *strictHandler) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (sh *strictHandler) GetTrackableFences(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableFencesParams) {
 	var request GetTrackableFencesRequestObject
 
 	request.TrackableId = trackableId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrackableFences(ctx, request.(GetTrackableFencesRequestObject))
@@ -8265,10 +10141,11 @@ func (sh *strictHandler) GetTrackableFences(w http.ResponseWriter, r *http.Reque
 }
 
 // GetTrackableLocation operation middleware
-func (sh *strictHandler) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (sh *strictHandler) GetTrackableLocation(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationParams) {
 	var request GetTrackableLocationRequestObject
 
 	request.TrackableId = trackableId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrackableLocation(ctx, request.(GetTrackableLocationRequestObject))
@@ -8291,10 +10168,11 @@ func (sh *strictHandler) GetTrackableLocation(w http.ResponseWriter, r *http.Req
 }
 
 // GetTrackableLocations operation middleware
-func (sh *strictHandler) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (sh *strictHandler) GetTrackableLocations(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableLocationsParams) {
 	var request GetTrackableLocationsRequestObject
 
 	request.TrackableId = trackableId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrackableLocations(ctx, request.(GetTrackableLocationsRequestObject))
@@ -8317,10 +10195,11 @@ func (sh *strictHandler) GetTrackableLocations(w http.ResponseWriter, r *http.Re
 }
 
 // GetTrackableMotion operation middleware
-func (sh *strictHandler) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId) {
+func (sh *strictHandler) GetTrackableMotion(w http.ResponseWriter, r *http.Request, trackableId TrackableId, params GetTrackableMotionParams) {
 	var request GetTrackableMotionRequestObject
 
 	request.TrackableId = trackableId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetTrackableMotion(ctx, request.(GetTrackableMotionRequestObject))
@@ -8419,8 +10298,10 @@ func (sh *strictHandler) DeleteZones(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListZones operation middleware
-func (sh *strictHandler) ListZones(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListZones(w http.ResponseWriter, r *http.Request, params ListZonesParams) {
 	var request ListZonesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListZones(ctx, request.(ListZonesRequestObject))
@@ -8474,8 +10355,10 @@ func (sh *strictHandler) CreateZone(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetZonesSummary operation middleware
-func (sh *strictHandler) GetZonesSummary(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetZonesSummary(w http.ResponseWriter, r *http.Request, params GetZonesSummaryParams) {
 	var request GetZonesSummaryRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetZonesSummary(ctx, request.(GetZonesSummaryRequestObject))
@@ -8609,10 +10492,11 @@ func (sh *strictHandler) GetZoneCreateFence(w http.ResponseWriter, r *http.Reque
 }
 
 // PutZoneTransform operation middleware
-func (sh *strictHandler) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId) {
+func (sh *strictHandler) PutZoneTransform(w http.ResponseWriter, r *http.Request, zoneId ZoneId, params PutZoneTransformParams) {
 	var request PutZoneTransformRequestObject
 
 	request.ZoneId = zoneId
+	request.Params = params
 
 	var body PutZoneTransformJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

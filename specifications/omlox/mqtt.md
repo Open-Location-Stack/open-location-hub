@@ -387,8 +387,9 @@ The repository MQTT surface covers:
 - RPC method announcements, request handling topics, and response topics
 - support for OMLOX reserved RPC parameters and error codes
 
-Current limitation:
-- the hub publishes retained availability announcements for hub-owned RPC methods but does not enforce MQTT v5 message expiry because the current client layer does not expose that broker feature cleanly
+The client uses MQTT 5. Retained RPC availability announcements carry a
+120-second Message Expiry Interval. The registry also expires external handlers
+using the remaining broker-supplied lifetime, or 120 seconds when absent.
 
 ## Reference implementation notes
 

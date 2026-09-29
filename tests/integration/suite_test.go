@@ -337,7 +337,7 @@ func runSuiteMigrations(ctx context.Context, pg testcontainers.Container) error 
 	if err := ensurePostgresDatabaseNoTest(ctx, pg, "openrtls"); err != nil {
 		return err
 	}
-	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql"} {
+	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql", "00003_zone_foreign_id_unique.sql"} {
 		content, err := os.ReadFile(filepath.Join(repoRoot(), "migrations", name))
 		if err != nil {
 			return fmt.Errorf("read migration %s failed: %w", name, err)

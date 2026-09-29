@@ -225,7 +225,7 @@ func TestInvokeAllWithinTimeoutCollectsAllResponses(t *testing.T) {
 
 	request := testRequest(t, "com.vendor.echo")
 	mode := gen.UnderscoreAllWithinTimeout
-	timeoutMs := float32(10)
+	timeoutMs := float64(10)
 	request.Params = &gen.JsonRpcRequest_Params{
 		UnderscoreAggregation: &mode,
 		UnderscoreTimeout:     &timeoutMs,
@@ -425,5 +425,29 @@ func assertErrorCode(t *testing.T, raw json.RawMessage, want int) {
 	}
 	if body.Error.Code != want {
 		t.Fatalf("unexpected error code: got=%d want=%d body=%s", body.Error.Code, want, string(raw))
+	}
+}
+
+func TestExpiredExternalAvailabilityIsNotRoutedOrListed(t *testing.T) {
+	b := &Bridge{available: map[string]map[string]availabilityEntry{
+		"external.method": {"handler": {Source: methodSourceExternal, ExpiresAt: time.Now().Add(-time.Second)}},
+		"local.method":    {"local": {Source: methodSourceLocal}},
+	}}
+	methods, err := b.AvailableMethods(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := methods["external.method"]; ok {
+		t.Fatal("expired method still listed")
+	}
+	if _, ok := methods["local.method"]; !ok {
+		t.Fatal("local method expired")
+	}
+	if b.hasExternalHandler("external.method", "handler") || b.hasExternalMethod("external.method") {
+		t.Fatal("expired handler still routed")
+	}
+	b.ensureAvailableLocked("external.method", "handler", methodSourceExternal)
+	if !b.hasExternalHandler("external.method", "handler") {
+		t.Fatal("refreshed handler not routed")
 	}
 }

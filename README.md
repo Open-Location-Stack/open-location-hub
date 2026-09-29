@@ -1,5 +1,8 @@
 # Open Location Hub
 
+Version **0.2.0** introduces breaking API changes relative to earlier releases.
+The OMLOX protocol baseline remains Hub 2.0.0 (August 2023).
+
 Open Location Hub is an OpenAPI-first Go implementation of an OMLOX-ready location hub. It provides OMLOX `/v2` REST resources, OMLOX companion MQTT and WebSocket surfaces, and hub-mediated RPC control-plane support for location-driven integrations.
 
 The hub is vendor-neutral and environment-driven. It runs with Postgres, MQTT, and JWT-based access control, and it follows a contract-first workflow with the normative REST contract in [specifications/openapi/omlox-hub.v0.yaml](specifications/openapi/omlox-hub.v0.yaml).
@@ -136,6 +139,7 @@ Elasticsearch, see [`deploy/hetzner/README.md`](deploy/hetzner/README.md).
 - [docs/auth.md](docs/auth.md)
 - [docs/rpc.md](docs/rpc.md)
 - [docs/connectors.md](docs/connectors.md)
+- [0.2 integration compatibility](docs/omlox-0.2-integration-compatibility.md)
 - [docs/connectors-websocket.md](docs/connectors-websocket.md)
 - [docs/connectors-mqtt.md](docs/connectors-mqtt.md)
 

@@ -69,3 +69,9 @@ Behavior:
 - Hub-wide defaults come from environment configuration.
 - Zone-level values override hub defaults for that zone only.
 - Unknown keys are preserved for forward compatibility but ignored by the current resolver.
+
+
+Nonempty zone `foreign_id` values are unique (published section 7.7). Migration
+00003 enforces this in PostgreSQL; existing duplicates must be resolved before
+upgrading. Complete proximity zone positions use longitude/latitude and their
+radius must be nonnegative.

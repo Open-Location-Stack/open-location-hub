@@ -74,7 +74,7 @@ func TestCRSTransformerRandomGlobalRoundTrips(t *testing.T) {
 	}
 }
 
-func TestLocalTransformerRoundTripTwoPointSimilarity(t *testing.T) {
+func TestLocalTransformerRoundTripFourPointSimilarity(t *testing.T) {
 	t.Parallel()
 
 	zone := syntheticZone(t, 47.3744, 8.5411, 32, 15, 1.0, 0)
@@ -139,7 +139,7 @@ func TestLocalTransformerRandomSyntheticZones(t *testing.T) {
 		if err != nil {
 			t.Fatalf("sample %d wgs84 to local failed: %v", i, err)
 		}
-		// Ground control points are stored through generated GeoJSON float32
+		// Ground control points are stored through generated GeoJSON float64
 		// coordinates, so some synthetic samples drift by well under a meter
 		// after repeated CRS projection round trips.
 		assertPointClose(t, local, roundTrip, 1.0)
@@ -229,6 +229,7 @@ func syntheticZoneTransform(t *testing.T, lat, lon, tx, ty, scale, rotationRad f
 		{localX: 0, localY: 0, east: tx, north: ty},
 		{localX: 10, localY: 0, east: tx + scale*10*cosTheta, north: ty + scale*10*sinTheta},
 		{localX: 0, localY: 10, east: tx - scale*10*sinTheta, north: ty + scale*10*cosTheta},
+		{localX: 10, localY: 10, east: tx + scale*10*(cosTheta-sinTheta), north: ty + scale*10*(sinTheta+cosTheta)},
 	}
 	return zoneWithGCPs(t, lat, lon, points)
 }
@@ -280,10 +281,8 @@ func zoneWithGCPs(t *testing.T, lat, lon float64, points []localFixturePoint) ge
 		if err != nil {
 			t.Fatalf("projected to wgs84 failed: %v", err)
 		}
-		gcps = append(gcps, gen.GroundControlPoint{
-			Local: point2D(t, point.localX, point.localY),
-			Wgs84: wgs84Point,
-		})
+		wgs := pointXY(t, wgs84Point)
+		gcps = append(gcps, gen.GroundControlPoint{wgs.X, wgs.Y}, gen.GroundControlPoint{point.localX, point.localY})
 	}
 	zoneID := uuid.New()
 	return gen.Zone{
@@ -295,10 +294,8 @@ func zoneWithGCPs(t *testing.T, lat, lon float64, points []localFixturePoint) ge
 
 func zoneWithDuplicateWGS84(t *testing.T) gen.Zone {
 	t.Helper()
-	wgs := point2D(t, 8, 47)
 	gcps := []gen.GroundControlPoint{
-		{Local: point2D(t, 0, 0), Wgs84: wgs},
-		{Local: point2D(t, 10, 0), Wgs84: wgs},
+		{8, 47}, {0, 0}, {8, 47}, {10, 0}, {8, 47}, {10, 10}, {8, 47}, {0, 10},
 	}
 	zoneID := uuid.New()
 	return gen.Zone{
@@ -311,7 +308,7 @@ func zoneWithDuplicateWGS84(t *testing.T) gen.Zone {
 func point2D(t *testing.T, x, y float64) gen.Point {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{float32(x), float32(y)}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{float64(x), float64(y)}); err != nil {
 		t.Fatalf("point setup failed: %v", err)
 	}
 	return point

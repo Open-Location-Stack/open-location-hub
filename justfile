@@ -107,3 +107,9 @@ check-python:
 	done
 	uv run --locked --directory connectors/gtfs python -c 'import gtfs_support, connector_mqtt; from google.transit import gtfs_realtime_pb2; feed = gtfs_realtime_pb2.FeedMessage(); feed.header.gtfs_realtime_version = "2.0"; gtfs_realtime_pb2.FeedMessage.FromString(feed.SerializeToString())'
 	uv run --locked --directory connectors/uwb_sim python -m unittest discover -p 'test_*.py'
+	uv run --locked --directory connectors/gtfs python -m unittest discover -p 'test_*.py'
+	uv run --locked --directory connectors/replay python -m unittest discover -p 'test_*.py'
+
+# Fast package tests without launching integration containers.
+test-unit *args: proj-check
+    {{proj-env}} go test {{args}} ./cmd/... ./internal/...

@@ -140,12 +140,12 @@ func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
 		wantStatus   int
 		wantContains string
 	}{
-		{name: "list zones", method: http.MethodGet, path: "/v2/zones", wantStatus: http.StatusOK, wantContains: `"type":"rfid"`},
+		{name: "list zones", method: http.MethodGet, path: "/v2/zones", wantStatus: http.StatusOK, wantContains: zoneID.String()},
 		{name: "create zone", method: http.MethodPost, path: "/v2/zones", body: `{"type":"rfid"}`, wantStatus: http.StatusCreated, wantContains: zoneID.String()},
 		{name: "get zone", method: http.MethodGet, path: "/v2/zones/" + zoneID.String(), wantStatus: http.StatusOK, wantContains: zoneID.String()},
-		{name: "update zone", method: http.MethodPut, path: "/v2/zones/" + zoneID.String(), body: `{"id":"11111111-1111-1111-1111-111111111111","type":"uwb"}`, wantStatus: http.StatusOK, wantContains: `"type":"uwb"`},
+		{name: "update zone", method: http.MethodPut, path: "/v2/zones/" + zoneID.String(), body: `{"id":"11111111-1111-1111-1111-111111111111","type":"uwb"}`, wantStatus: http.StatusNoContent},
 		{name: "delete zone not found", method: http.MethodDelete, path: "/v2/zones/" + zoneID.String(), wantStatus: http.StatusNotFound, wantContains: `"zone not found"`},
-		{name: "list trackables", method: http.MethodGet, path: "/v2/trackables", wantStatus: http.StatusOK, wantContains: `"type":"asset"`},
+		{name: "list trackables", method: http.MethodGet, path: "/v2/trackables", wantStatus: http.StatusOK, wantContains: trackableID.String()},
 		{name: "create trackable", method: http.MethodPost, path: "/v2/trackables", body: `{"type":"asset"}`, wantStatus: http.StatusCreated, wantContains: trackableID.String()},
 		{name: "get trackable internal error", method: http.MethodGet, path: "/v2/trackables/" + trackableID.String(), wantStatus: http.StatusInternalServerError, wantContains: `"type":"internal_error"`},
 		{name: "update trackable invalid body", method: http.MethodPut, path: "/v2/trackables/" + trackableID.String(), body: `{"type":"asset"} {"extra":true}`, wantStatus: http.StatusBadRequest, wantContains: `"invalid request body"`},
@@ -153,7 +153,7 @@ func TestHandlerRoutesExerciseSuccessAndFailurePaths(t *testing.T) {
 		{name: "list providers", method: http.MethodGet, path: "/v2/providers", wantStatus: http.StatusOK, wantContains: `"provider-a"`},
 		{name: "create provider internal error", method: http.MethodPost, path: "/v2/providers", body: `{"type":"uwb"}`, wantStatus: http.StatusInternalServerError, wantContains: `"write failed"`},
 		{name: "get provider", method: http.MethodGet, path: "/v2/providers/provider-a", wantStatus: http.StatusOK, wantContains: `"provider-a"`},
-		{name: "update provider", method: http.MethodPut, path: "/v2/providers/provider-a", body: `{"type":"uwb"}`, wantStatus: http.StatusOK, wantContains: `"provider-a"`},
+		{name: "update provider", method: http.MethodPut, path: "/v2/providers/provider-a", body: `{"type":"uwb"}`, wantStatus: http.StatusNoContent},
 		{name: "delete provider", method: http.MethodDelete, path: "/v2/providers/provider-a", wantStatus: http.StatusNoContent},
 		{name: "list fences", method: http.MethodGet, path: "/v2/fences", wantStatus: http.StatusOK, wantContains: fenceID.String()},
 		{name: "create fence oversized body", method: http.MethodPost, path: "/v2/fences", body: `{"geometry":{"type":"Polygon","coordinates":[[[1,2],[3,4],[1,2]]]},"extension":{"payload":"abcdefghijklmnopqrstuvwxyz"}}`, wantStatus: http.StatusBadRequest, wantContains: `"invalid request body"`},
@@ -226,7 +226,7 @@ func TestHandlerDirectBodiesCoverRawAndTypedEndpoints(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/v2/providers/locations", bytes.NewReader(locationBody))
 	rec := httptest.NewRecorder()
-	h.PostProviderLocations(rec, req)
+	h.PutProviderLocations(rec, req)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "provider_id is required") {
 		t.Fatalf("unexpected locations response: %d %s", rec.Code, rec.Body.String())
 	}
@@ -237,23 +237,23 @@ func TestHandlerDirectBodiesCoverRawAndTypedEndpoints(t *testing.T) {
 	}
 	req = httptest.NewRequest(http.MethodPost, "/v2/providers/proximities", bytes.NewReader(proximityBody))
 	rec = httptest.NewRecorder()
-	h.PostProviderProximities(rec, req)
-	if rec.Code != http.StatusAccepted {
+	h.PutProviderProximities(rec, req)
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("unexpected proximity status: %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	fenceBody := `{"crs":"local","zone_id":"zone-a","region":{"type":"Point","coordinates":[1,2]},"radius":5}`
 	req = httptest.NewRequest(http.MethodPost, "/v2/fences", strings.NewReader(fenceBody))
 	rec = httptest.NewRecorder()
-	h.CreateFence(rec, req)
+	h.CreateFence(rec, req, gen.CreateFenceParams{})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("unexpected create fence status: %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	req = httptest.NewRequest(http.MethodPut, "/v2/fences/"+fenceID.String(), strings.NewReader(`{"id":"33333333-3333-3333-3333-333333333333","crs":"local","zone_id":"zone-a","region":{"type":"Point","coordinates":[1,2]},"radius":5}`))
 	rec = httptest.NewRecorder()
-	h.UpdateFence(rec, req, fenceID)
-	if rec.Code != http.StatusOK {
+	h.UpdateFence(rec, req, fenceID, gen.UpdateFenceParams{})
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("unexpected update fence status: %d body=%s", rec.Code, rec.Body.String())
 	}
 
@@ -324,16 +324,16 @@ func TestHandlerStubbedOmloxRoutesReturnNotImplemented(t *testing.T) {
 		{method: http.MethodDelete, path: "/v2/providers", status: http.StatusNoContent},
 		{method: http.MethodGet, path: "/v2/providers/summary", status: http.StatusOK},
 		{method: http.MethodGet, path: "/v2/providers/locations", status: http.StatusNotImplemented},
-		{method: http.MethodPut, path: "/v2/providers/locations", body: `[]`, status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/locations", body: `[]`, status: http.StatusNoContent},
 		{method: http.MethodDelete, path: "/v2/providers/locations", status: http.StatusNotImplemented},
-		{method: http.MethodPut, path: "/v2/providers/proximities", body: `[]`, status: http.StatusNotImplemented},
+		{method: http.MethodPut, path: "/v2/providers/proximities", body: `[]`, status: http.StatusNoContent},
 		{method: http.MethodGet, path: "/v2/providers/provider-a/fences", status: http.StatusNotImplemented},
 		{method: http.MethodGet, path: "/v2/providers/provider-a/location", status: http.StatusNotImplemented},
 		{method: http.MethodPut, path: "/v2/providers/provider-a/location", body: `{}`, status: http.StatusNotImplemented},
 		{method: http.MethodDelete, path: "/v2/providers/provider-a/location", status: http.StatusNotImplemented},
 		{method: http.MethodPut, path: "/v2/providers/provider-a/proximity", body: `{}`, status: http.StatusNotImplemented},
 		{method: http.MethodGet, path: "/v2/providers/provider-a/sensors", status: http.StatusOK},
-		{method: http.MethodPut, path: "/v2/providers/provider-a/sensors", body: `{}`, status: http.StatusOK},
+		{method: http.MethodPut, path: "/v2/providers/provider-a/sensors", body: `{}`, status: http.StatusNoContent},
 		{method: http.MethodDelete, path: "/v2/fences", status: http.StatusNoContent},
 		{method: http.MethodGet, path: "/v2/fences/summary", status: http.StatusOK},
 		{method: http.MethodGet, path: "/v2/fences/" + fenceID.String() + "/providers", status: http.StatusNotImplemented},
@@ -609,3 +609,10 @@ func (e fakeAuthError) Error() string   { return e.message }
 func (e fakeAuthError) Status() int     { return e.status }
 func (e fakeAuthError) Type() string    { return e.typ }
 func (e fakeAuthError) Message() string { return e.message }
+
+func (f *fakeService) ProjectLocation(_ context.Context, v gen.Location, _, _ string) (gen.Location, error) {
+	return v, nil
+}
+func (f *fakeService) ProjectFence(_ context.Context, v gen.Fence, _, _ string) (gen.Fence, error) {
+	return v, nil
+}

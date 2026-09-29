@@ -59,7 +59,7 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 		wg.Add(1)
 		go func(index int, provider string) {
 			defer wg.Done()
-			resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+			resp, err := requestJSONAuthorizedNoFail(http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 				"crs":           "local",
 				"position":      pointPayload(float64(5+index), float64(7+index)),
 				"provider_id":   provider,
@@ -70,7 +70,7 @@ func TestScenarioConcurrentRESTLocationPublishersFanOutToMQTTAndWebSocket(t *tes
 				errCh <- fmt.Errorf("provider %s: %w", provider, err)
 				return
 			}
-			if resp.StatusCode != http.StatusAccepted {
+			if resp.StatusCode != http.StatusNoContent {
 				defer resp.Body.Close()
 				errCh <- fmt.Errorf("provider %s: unexpected status %d", provider, resp.StatusCode)
 				return
@@ -142,7 +142,7 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+		resp, err := requestJSONAuthorizedNoFail(http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 			"crs":           "local",
 			"position":      pointPayload(5, 7),
 			"provider_id":   providers[0],
@@ -154,7 +154,7 @@ func TestScenarioMixedRESTAndMQTTIngestShareOneHubSubscribers(t *testing.T) {
 			return
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusAccepted {
+		if resp.StatusCode != http.StatusNoContent {
 			errCh <- fmt.Errorf("rest ingest: unexpected status %d", resp.StatusCode)
 		}
 	}()
@@ -213,14 +213,14 @@ func TestScenarioProviderAssignedTrackableAutoAssociatesLocation(t *testing.T) {
 	subscriber, messages := mqttSubscriber(t, brokerURL, mqtt.TopicLocationLocal(providerID), mqtt.TopicTrackableMotionLocal(trackableID))
 	defer subscriber.Disconnect(250)
 
-	resp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	resp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
 		"provider_id":   providerID,
 		"provider_type": "uwb",
 		"source":        zoneID,
 	}})
-	assertStatusAndClose(t, resp, http.StatusAccepted)
+	assertStatusAndClose(t, resp, http.StatusNoContent)
 
 	location := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerID)], 10*time.Second)
 	if location.Trackables == nil || len(*location.Trackables) != 1 || (*location.Trackables)[0] != trackableID {
@@ -393,7 +393,7 @@ func postMovementStep(t *testing.T, appBaseURL, token, zoneID string, objects []
 		wg.Add(1)
 		go func(object movingObject) {
 			defer wg.Done()
-			resp, err := requestJSONAuthorizedNoFail(http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+			resp, err := requestJSONAuthorizedNoFail(http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 				"crs":           "local",
 				"position":      pointPayload(x, object.laneY),
 				"provider_id":   object.providerID,
@@ -406,7 +406,7 @@ func postMovementStep(t *testing.T, appBaseURL, token, zoneID string, objects []
 				return
 			}
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusAccepted {
+			if resp.StatusCode != http.StatusNoContent {
 				errCh <- fmt.Errorf("%s: unexpected status %d", object.providerID, resp.StatusCode)
 			}
 		}(object)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/dhconnelly/rtreego"
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/transform"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -31,6 +33,8 @@ type metadataSnapshot struct {
 	fencesByID             map[string]gen.Fence
 	fenceSignatures        map[string]string
 	fenceIndexes           map[string]*fenceSpatialIndex
+	worldFencesByID        map[string]gen.Fence
+	worldFenceIndexes      map[string]*fenceSpatialIndex
 	trackables             []gen.Trackable
 	trackablesByID         map[string]gen.Trackable
 	trackablesByProviderID map[string][]gen.Trackable
@@ -232,7 +236,25 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		snapshot.providerSignatures[item.Id] = record.Signature
 	}
 	snapshot.fenceIndexes = buildFenceIndexes(snapshot.fences)
+	snapshot.buildWorldFenceIndexes()
 	return snapshot
+}
+
+// Rebuild transformed geometry only when metadata changes. Fences in different
+// local zones then share a geographic index without per-observation scans.
+func (s *metadataSnapshot) buildWorldFenceIndexes() {
+	s.worldFencesByID = make(map[string]gen.Fence, len(s.fences))
+	world := make([]gen.Fence, 0, len(s.fences))
+	projector := &Service{metadata: &MetadataCache{snapshot: *s}, transformCache: transform.NewCache(), crsTransformer: transform.NewCRSTransformer()}
+	for _, fence := range s.fences {
+		projected, err := projector.ProjectFence(context.Background(), fence, "EPSG:4326", "")
+		if err != nil {
+			continue
+		}
+		s.worldFencesByID[fence.Id.String()] = projected
+		world = append(world, projected)
+	}
+	s.worldFenceIndexes = buildFenceIndexes(world)
 }
 
 func payloadSignature(payload []byte) string {
@@ -329,6 +351,7 @@ func (c *MetadataCache) UpsertZone(item gen.Zone, signature string) {
 	}
 	next.zoneSignatures[item.Id.String()] = signature
 	next.fenceIndexes = buildFenceIndexes(next.fences)
+	next.buildWorldFenceIndexes()
 	c.snapshot = next
 }
 
@@ -348,6 +371,7 @@ func (c *MetadataCache) DeleteZone(id openapi_types.UUID) {
 	}
 	delete(next.zoneSignatures, id.String())
 	next.fenceIndexes = buildFenceIndexes(next.fences)
+	next.buildWorldFenceIndexes()
 	c.snapshot = next
 }
 
@@ -361,6 +385,7 @@ func (c *MetadataCache) UpsertFence(item gen.Fence, signature string) {
 	next.fencesByID[item.Id.String()] = item
 	next.fenceSignatures[item.Id.String()] = signature
 	next.fenceIndexes = buildFenceIndexes(next.fences)
+	next.buildWorldFenceIndexes()
 	c.snapshot = next
 }
 
@@ -374,6 +399,7 @@ func (c *MetadataCache) DeleteFence(id openapi_types.UUID) {
 	delete(next.fencesByID, id.String())
 	delete(next.fenceSignatures, id.String())
 	next.fenceIndexes = buildFenceIndexes(next.fences)
+	next.buildWorldFenceIndexes()
 	c.snapshot = next
 }
 
@@ -617,6 +643,10 @@ func buildFenceIndexes(fences []gen.Fence) map[string]*fenceSpatialIndex {
 }
 
 func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, error) {
+	return s.fenceCandidatesWithRadius(location, 0)
+}
+
+func (s metadataSnapshot) fenceCandidatesWithRadius(location gen.Location, radius float64) ([]gen.Fence, error) {
 	scopeKey, ok, err := s.locationFenceScopeKey(location)
 	if err != nil {
 		return nil, err
@@ -632,7 +662,16 @@ func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, e
 	if err != nil {
 		return nil, nil
 	}
-	results := index.tree.SearchIntersect(rtreego.Point{point[0], point[1]}.ToRect(0))
+	dx, dy := collisionMetersToCoordinateOffsets(locationCRS(location), point, radius)
+	// The R-tree uses strict rectangle intersection. Expand by one ULP so
+	// a single touching point remains a candidate as required by section 9.3.
+	minX, minY := math.Nextafter(point[0]-dx, math.Inf(-1)), math.Nextafter(point[1]-dy, math.Inf(-1))
+	maxX, maxY := math.Nextafter(point[0]+dx, math.Inf(1)), math.Nextafter(point[1]+dy, math.Inf(1))
+	query, err := rtreego.NewRect(rtreego.Point{minX, minY}, []float64{maxX - minX, maxY - minY})
+	if err != nil {
+		return nil, err
+	}
+	results := index.tree.SearchIntersect(query)
 	fences := make([]gen.Fence, 0, len(results))
 	for _, spatial := range results {
 		entry, ok := spatial.(indexedFence)
@@ -705,9 +744,17 @@ func fenceBoundingRect(fence gen.Fence) (rtreego.Rect, bool) {
 				if fence.Radius != nil {
 					radius = float64(*fence.Radius)
 				}
+				crs := stringPtrValue(fence.Crs)
+				if crs == "" {
+					crs = "EPSG:4326"
+				}
+				dx, dy := collisionMetersToCoordinateOffsets(crs, center, radius)
+				if radius == 0 {
+					return rtreego.Point{center[0], center[1]}.ToRect(0), true
+				}
 				rect, err := rtreego.NewRect(
-					rtreego.Point{center[0] - radius, center[1] - radius},
-					[]float64{radius * 2, radius * 2},
+					rtreego.Point{center[0] - dx, center[1] - dy},
+					[]float64{dx * 2, dy * 2},
 				)
 				if err != nil {
 					return rtreego.Rect{}, false

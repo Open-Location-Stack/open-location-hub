@@ -204,7 +204,7 @@ The connector expects the NDJSON shape produced by the shared logging scripts:
       {
         "position": { "type": "Point", "coordinates": [8.56, 50.03] },
         "provider_id": "opensky-demo",
-        "provider_type": "adsb",
+        "provider_type": "unknown",
         "source": "opensky:3c6621",
         "timestamp_generated": "2026-04-02T10:14:58+00:00"
       }
@@ -248,3 +248,10 @@ Batching behavior:
   metadata that was never present in the logged location payload
 - trackable bootstrap writes only the replay-visible fields: provider mapping,
   name, properties, and configured radius
+
+
+For Open Location Hub 0.2, vendor-specific technology labels are mapped to
+`unknown` and retained in `properties.upstream_provider_type`; files are not
+rewritten. Local-coordinate recordings require their source zone (or matching
+zone `foreign_id`) to be configured before replay. Import its GCPs for geographic
+projection, or create an explicitly incomplete zone for native local data only.

@@ -50,8 +50,6 @@ HTTP request decoding behavior:
 - `RPC_HANDLER_ID` (default `open-location-hub`)
 - `COLLISIONS_ENABLED` (`true`/`false`, default `false`)
 - `COLLISION_STATE_TTL` (duration, default `2m`)
-- `COLLISION_COLLIDING_DEBOUNCE` (duration, default `5s`)
-- `COLLISION_DEFAULT_RADIUS_METERS` (number, default `0.5`)
 - `KALMAN_FILTER_ENABLED` (`true`/`false`, default `false`)
 - `KALMAN_LOCATION_MAX_POINTS` (default `8`)
 - `KALMAN_LOCATION_MAX_AGE` (duration, default `10s`)
@@ -71,7 +69,7 @@ Stateful ingest behavior:
 - the `metadata_changes` WebSocket topic emits lightweight `{id,type,operation,timestamp}` notifications for zone, fence, trackable, and location-provider CRUD or reconcile drift
 - when `PPROF_ENABLED=true`, the auth-protected `/debug/pprof/*` handlers are registered on the main HTTP server for local profiling
 - `PPROF_MUTEX_PROFILE_FRACTION` and `PPROF_BLOCK_PROFILE_RATE` directly control the Go runtime mutex and blocking profilers so replay or soak runs can capture contention evidence without patching the binary
-- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and keeps short-lived collision pair state in memory for `COLLISION_STATE_TTL`
+- when `COLLISIONS_ENABLED=true`, the hub evaluates trackable-versus-trackable collisions from the latest active WGS84 motion state and retains observations for `COLLISION_STATE_TTL`; active pairs persist until their specification-defined separation or timeout
 - when `KALMAN_FILTER_ENABLED=true`, the decision stage keeps short-lived per-trackable filter state plus a bounded retained sample history in memory
 - `KALMAN_LOCATION_MAX_POINTS` caps the retained history per trackable; `KALMAN_LOCATION_MAX_AGE` also drops stale samples and resets the filter when the gap between accepted samples exceeds that age window
 - Kalman normalization only affects the derived decision path for trackable-associated locations; native/raw publication remains unchanged
@@ -79,10 +77,12 @@ Stateful ingest behavior:
 - `KALMAN_EMIT_MAX_FREQUENCY_HZ` throttles only derived location and trackable-motion publication; geofence and collision decisions still use every accepted normalized point even when publication is suppressed
 - collision work uses only the normalized WGS84 motion state; local-only streams without a safe WGS84 transform do not participate in collision evaluation
 - collision thresholds are expressed in meters
-- `Trackable.radius` is the per-trackable collision-radius override in meters; when it is absent, the hub falls back to `COLLISION_DEFAULT_RADIUS_METERS`
+- `Trackable.radius` defines circular extent in meters and defaults to zero, as required by the specification
 - WGS84 collision checks use a cheap short-range planar approximation that converts lon/lat deltas to approximate meters before threshold comparison; this favors hot-path throughput over geodesic precision
 - fallback collision geometry for trackables without explicit polygon geometry uses the same meter-based approximation so emitted geometry remains consistent with the runtime threshold model
-- `COLLISION_COLLIDING_DEBOUNCE` limits repeated `colliding` emissions for already-active pairs
+- every significant update that still intersects emits `colliding`; there is no collision notification debounce
+- provider timeout/tolerance values override trackable values; the two sides contribute their maximum timeout and summed exit tolerance
+- collision exit timers run autonomously; returning to intersection cancels pending separation
 
 RPC behavior:
 - `RPC_TIMEOUT` is the default wait time for request-response style RPC calls when the client does not supply `_timeout`
@@ -92,9 +92,9 @@ RPC behavior:
 
 ## Proximity Resolution
 - `PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN` (number, default `0`)
-- `PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION` (duration, default `15s`)
-- `PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE` (number, default `2`)
-- `PROXIMITY_RESOLUTION_MIN_DWELL_DURATION` (duration, default `5s`)
+- `PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION` (duration, default `0s`)
+- `PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE` (number, default `0`)
+- `PROXIMITY_RESOLUTION_MIN_DWELL_DURATION` (duration, default `0s`)
 - `PROXIMITY_RESOLUTION_POSITION_MODE` (default `zone_position`; supported value: `zone_position`)
 - `PROXIMITY_RESOLUTION_FALLBACK_RADIUS` (number, default `0`)
 - `PROXIMITY_RESOLUTION_STALE_STATE_TTL` (duration, default `10m`)
@@ -159,3 +159,9 @@ For production deployments:
 - use per-method RPC permissions in the auth registry to control who may invoke which methods
 - grant `com.omlox.core.xcmd` only to tightly controlled operator or automation roles
 - keep direct MQTT broker access limited to the hub and trusted device/adaptor components
+
+
+The MQTT client requires a broker supporting MQTT 5. RPC availability is retained
+with a 120-second expiry. Proximity grace and dwell behavior is opt-in; the default
+uses the zone in each observation immediately. Before applying migration 00003,
+resolve any duplicate nonempty zone `foreign_id` values in an existing database.

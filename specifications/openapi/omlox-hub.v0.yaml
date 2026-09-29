@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Open Location Hub API
-  version: 0.1.8
+  version: 0.2.0
   description: |
     REST API documentation for Open Location Hub.
 
@@ -19,27 +19,28 @@ externalDocs:
   description: Companion OMLOX protocol notes for WebSocket, MQTT, and RPC mapping details.
   url: ./README.md
 servers:
-  - url: http://localhost:8080
+- url: http://localhost:8080
 security:
-  - bearerAuth: []
+- bearerAuth: []
 tags:
-  - name: zones
-    description: Manage OMLOX zones, including georeferenced and proximity-capable zone definitions.
-  - name: trackables
-    description: Manage trackable definitions and locating preferences used by ingest and eventing flows.
-  - name: providers
-    description: Manage location providers and receive location or proximity ingest payloads.
-  - name: fences
-    description: Manage fence definitions used for derived fence-event publication.
-  - name: rpc
-    description: Inspect reachable JSON-RPC methods and invoke hub-owned or MQTT-bridged control-plane functionality.
+- name: zones
+  description: Manage OMLOX zones, including georeferenced and proximity-capable zone definitions.
+- name: trackables
+  description: Manage trackable definitions and locating preferences used by ingest and eventing flows.
+- name: providers
+  description: Manage location providers and receive location or proximity ingest payloads.
+- name: fences
+  description: Manage fence definitions used for derived fence-event publication.
+- name: rpc
+  description: Inspect reachable JSON-RPC methods and invoke hub-owned or MQTT-bridged control-plane
+    functionality.
 paths:
   /v2/zones:
     get:
       tags: [zones]
       operationId: listZones
       summary: List zones
-      description: Returns the complete zone registry known to the hub.
+      description: Returns the identifiers of all accessible zones.
       responses:
         '200':
           description: Zones
@@ -48,11 +49,14 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Zone'
+                  type: string
+                  format: uuid
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryForeignId'
     delete:
       tags: [zones]
       operationId: deleteZones
@@ -96,22 +100,26 @@ paths:
     get:
       tags: [zones]
       operationId: getZonesSummary
-      summary: Get zone summary
-      description: Returns a compact count of zones known to the hub.
+      summary: List complete zones
+      description: Returns complete resource objects for all accessible zones.
       responses:
         '200':
           description: Zone summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceSummary'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Zone'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryForeignId'
   /v2/zones/{zoneId}:
     parameters:
-      - $ref: '#/components/parameters/ZoneId'
+    - $ref: '#/components/parameters/ZoneId'
     get:
       tags: [zones]
       operationId: getZone
@@ -142,12 +150,6 @@ paths:
             schema:
               $ref: '#/components/schemas/ZoneWrite'
       responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Zone'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -156,6 +158,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
     delete:
       tags: [zones]
       operationId: deleteZone
@@ -172,7 +176,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/zones/{zoneId}/transform:
     parameters:
-      - $ref: '#/components/parameters/ZoneId'
+    - $ref: '#/components/parameters/ZoneId'
     put:
       tags: [zones]
       operationId: putZoneTransform
@@ -183,24 +187,16 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/SimpleTransform'
       responses:
         '200':
           description: Transformed point
           content:
             application/json:
               schema:
-                type: object
-                required: [position, crs, zone_id]
-                properties:
-                  position:
-                    $ref: '#/components/schemas/Point'
-                  crs:
-                    type: string
-                  zone_id:
-                    type: string
-                    format: uuid
+                oneOf:
+                - $ref: '#/components/schemas/SimpleTransform'
+                - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -209,9 +205,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/zones/{zoneId}/createfence:
     parameters:
-      - $ref: '#/components/parameters/ZoneId'
+    - $ref: '#/components/parameters/ZoneId'
     get:
       tags: [zones]
       operationId: getZoneCreateFence
@@ -237,7 +235,7 @@ paths:
       tags: [trackables]
       operationId: listTrackables
       summary: List trackables
-      description: Returns the complete trackable registry known to the hub.
+      description: Returns the identifiers of all accessible trackables.
       responses:
         '200':
           description: Trackables
@@ -246,7 +244,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Trackable'
+                  type: string
+                  format: uuid
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -287,19 +286,24 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryForceLocationUpdate'
+      - $ref: '#/components/parameters/QuerySubdivide'
   /v2/trackables/summary:
     get:
       tags: [trackables]
       operationId: getTrackablesSummary
-      summary: Get trackable summary
-      description: Returns a compact count of trackables known to the hub.
+      summary: List complete trackables
+      description: Returns complete resource objects for all accessible trackables.
       responses:
         '200':
           description: Trackable summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceSummary'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trackable'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -318,14 +322,20 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TrackableMotion'
+                  oneOf:
+                  - $ref: '#/components/schemas/TrackableMotion'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/trackables/{trackableId}:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackable
@@ -370,6 +380,9 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryForceLocationUpdate'
+      - $ref: '#/components/parameters/QuerySubdivide'
     delete:
       tags: [trackables]
       operationId: deleteTrackable
@@ -386,7 +399,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/trackables/{trackableId}/fences:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableFences
@@ -407,9 +420,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QuerySpatialQuery'
   /v2/trackables/{trackableId}/location:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableLocation
@@ -421,16 +436,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Location'
+                oneOf:
+                - $ref: '#/components/schemas/Location'
+                - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/trackables/{trackableId}/locations:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableLocations
@@ -444,16 +465,22 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Location'
+                  oneOf:
+                  - $ref: '#/components/schemas/Location'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/trackables/{trackableId}/motion:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableMotion
@@ -465,16 +492,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TrackableMotion'
+                oneOf:
+                - $ref: '#/components/schemas/TrackableMotion'
+                - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/trackables/{trackableId}/providers:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableProviders
@@ -497,7 +530,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/trackables/{trackableId}/sensors:
     parameters:
-      - $ref: '#/components/parameters/TrackableId'
+    - $ref: '#/components/parameters/TrackableId'
     get:
       tags: [trackables]
       operationId: getTrackableSensors
@@ -509,9 +542,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties:
-                  $ref: '#/components/schemas/ExtensionProperties'
+                $ref: '#/components/schemas/SensorData'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -523,7 +554,7 @@ paths:
       tags: [providers]
       operationId: listProviders
       summary: List providers
-      description: Returns the complete location-provider registry known to the hub.
+      description: Returns the identifiers of all accessible providers.
       responses:
         '200':
           description: Providers
@@ -532,7 +563,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/LocationProvider'
+                  type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -577,22 +608,24 @@ paths:
     get:
       tags: [providers]
       operationId: getProvidersSummary
-      summary: Get provider summary
-      description: Returns a compact count of location providers known to the hub.
+      summary: List complete providers
+      description: Returns complete resource objects for all accessible providers.
       responses:
         '200':
           description: Provider summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceSummary'
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocationProvider'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
   /v2/providers/{providerId}:
     parameters:
-      - $ref: '#/components/parameters/ProviderId'
+    - $ref: '#/components/parameters/ProviderId'
     get:
       tags: [providers]
       operationId: getProvider
@@ -623,12 +656,6 @@ paths:
             schema:
               $ref: '#/components/schemas/LocationProviderWrite'
       responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LocationProvider'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -637,6 +664,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
     delete:
       tags: [providers]
       operationId: deleteProvider
@@ -653,7 +682,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/providers/{providerId}/location:
     parameters:
-      - $ref: '#/components/parameters/ProviderId'
+    - $ref: '#/components/parameters/ProviderId'
     get:
       tags: [providers]
       operationId: getProviderLocation
@@ -665,13 +694,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Location'
+                oneOf:
+                - $ref: '#/components/schemas/Location'
+                - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
     put:
       tags: [providers]
       operationId: putProviderLocation
@@ -684,8 +719,6 @@ paths:
             schema:
               $ref: '#/components/schemas/Location'
       responses:
-        '202':
-          description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -694,6 +727,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
     delete:
       tags: [providers]
       operationId: deleteProviderLocation
@@ -710,7 +745,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/providers/{providerId}/fences:
     parameters:
-      - $ref: '#/components/parameters/ProviderId'
+    - $ref: '#/components/parameters/ProviderId'
     get:
       tags: [providers]
       operationId: getProviderFences
@@ -731,9 +766,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QuerySpatialQuery'
   /v2/providers/{providerId}/sensors:
     parameters:
-      - $ref: '#/components/parameters/ProviderId'
+    - $ref: '#/components/parameters/ProviderId'
     get:
       tags: [providers]
       operationId: getProviderSensors
@@ -745,7 +782,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExtensionProperties'
+                $ref: '#/components/schemas/SensorData'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
@@ -762,15 +799,8 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/SensorData'
       responses:
-        '200':
-          description: Updated provider
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LocationProvider'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -779,9 +809,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
   /v2/providers/{providerId}/proximity:
     parameters:
-      - $ref: '#/components/parameters/ProviderId'
+    - $ref: '#/components/parameters/ProviderId'
     put:
       tags: [providers]
       operationId: putProviderProximity
@@ -794,8 +826,6 @@ paths:
             schema:
               $ref: '#/components/schemas/Proximity'
       responses:
-        '202':
-          description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -804,6 +834,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
   /v2/providers/locations:
     get:
       tags: [providers]
@@ -818,33 +850,17 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Location'
+                  oneOf:
+                  - $ref: '#/components/schemas/Location'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-    post:
-      tags: [providers]
-      operationId: postProviderLocations
-      summary: Ingest locations
-      description: Accepts provider location updates, validates them, stores latest state, and republishes derived variants.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Location'
-      responses:
-        '202':
-          description: Accepted
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
     put:
       tags: [providers]
       operationId: putProviderLocations
@@ -859,14 +875,14 @@ paths:
               items:
                 $ref: '#/components/schemas/Location'
       responses:
-        '202':
-          description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
     delete:
       tags: [providers]
       operationId: deleteProviderLocations
@@ -894,42 +910,20 @@ paths:
               items:
                 $ref: '#/components/schemas/Proximity'
       responses:
-        '202':
-          description: Accepted
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-    post:
-      tags: [providers]
-      operationId: postProviderProximities
-      summary: Ingest proximities
-      description: Accepts proximity observations, resolves them to zones where possible, and emits derived locations.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/Proximity'
-      responses:
-        '202':
-          description: Accepted
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
   /v2/fences:
     get:
       tags: [fences]
       operationId: listFences
       summary: List fences
-      description: Returns the complete fence registry known to the hub.
+      description: Returns the identifiers of all accessible fences.
       responses:
         '200':
           description: Fences
@@ -938,7 +932,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Fence'
+                  type: string
+                  format: uuid
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -979,26 +974,36 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QuerySubdivide'
   /v2/fences/summary:
     get:
       tags: [fences]
       operationId: getFencesSummary
-      summary: Get fence summary
-      description: Returns a compact count of fences known to the hub.
+      summary: List complete fences
+      description: Returns complete resource objects for all accessible fences.
       responses:
         '200':
           description: Fence summary
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResourceSummary'
+                type: array
+                items:
+                  oneOf:
+                  - $ref: '#/components/schemas/Fence'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
   /v2/fences/{fenceId}:
     parameters:
-      - $ref: '#/components/parameters/FenceId'
+    - $ref: '#/components/parameters/FenceId'
     get:
       tags: [fences]
       operationId: getFence
@@ -1010,13 +1015,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Fence'
+                oneOf:
+                - $ref: '#/components/schemas/Fence'
+                - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
     put:
       tags: [fences]
       operationId: updateFence
@@ -1029,12 +1040,6 @@ paths:
             schema:
               $ref: '#/components/schemas/FenceWrite'
       responses:
-        '200':
-          description: Updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Fence'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1043,6 +1048,10 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '204':
+          description: Updated successfully; no response body.
+      parameters:
+      - $ref: '#/components/parameters/QuerySubdivide'
     delete:
       tags: [fences]
       operationId: deleteFence
@@ -1059,7 +1068,7 @@ paths:
           $ref: '#/components/responses/Forbidden'
   /v2/fences/{fenceId}/providers:
     parameters:
-      - $ref: '#/components/parameters/FenceId'
+    - $ref: '#/components/parameters/FenceId'
     get:
       tags: [fences]
       operationId: getFenceProviders
@@ -1080,9 +1089,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QuerySpatialQuery'
   /v2/fences/{fenceId}/locations:
     parameters:
-      - $ref: '#/components/parameters/FenceId'
+    - $ref: '#/components/parameters/FenceId'
     get:
       tags: [fences]
       operationId: getFenceLocations
@@ -1096,13 +1107,20 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Location'
+                  oneOf:
+                  - $ref: '#/components/schemas/Location'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
         '404':
           $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
+      - $ref: '#/components/parameters/QuerySpatialQuery'
   /v2/rpc/available:
     get:
       tags: [rpc]
@@ -1148,16 +1166,88 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/JsonRpcSuccessResponse'
-                  - $ref: '#/components/schemas/JsonRpcErrorResponse'
+                - $ref: '#/components/schemas/JsonRpcSuccessResponse'
+                - $ref: '#/components/schemas/JsonRpcErrorResponse'
         '204':
-          description: Notification accepted. Returned when `id` and `_caller_id` are omitted, so no response payload is expected.
+          description: Notification accepted. Returned when `id` and `_caller_id` are omitted, so no response
+            payload is expected.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v2/providers/{providerId}/trackables:
+    parameters:
+    - $ref: '#/components/parameters/ProviderId'
+    get:
+      tags:
+      - providers
+      operationId: getProviderTrackables
+      summary: List associated trackables
+      description: Returns trackables associated with the provider.
+      responses:
+        '200':
+          description: Matching resources.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trackable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v2/fences/{fenceId}/trackables:
+    parameters:
+    - $ref: '#/components/parameters/FenceId'
+    get:
+      tags:
+      - fences
+      operationId: getFenceTrackables
+      summary: List trackables inside the fence
+      description: Returns resources currently inside the fence. By default membership includes active exit
+        timers; spatial_query=true uses geometry only.
+      responses:
+        '200':
+          description: Matching resources.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Trackable'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/QuerySpatialQuery'
+  /v2/fences/{fenceId}/motions:
+    parameters:
+    - $ref: '#/components/parameters/FenceId'
+    get:
+      tags:
+      - fences
+      operationId: getFenceMotions
+      summary: List motions inside the fence
+      description: Returns resources currently inside the fence. By default membership includes active exit
+        timers; spatial_query=true uses geometry only.
+      responses:
+        '200':
+          description: Matching resources.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - $ref: '#/components/schemas/TrackableMotion'
+                  - $ref: '#/components/schemas/GeoJSONFeatureCollection'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - $ref: '#/components/parameters/QueryCrs'
+      - $ref: '#/components/parameters/QueryZoneId'
+      - $ref: '#/components/parameters/QueryGeojson'
+      - $ref: '#/components/parameters/QuerySpatialQuery'
 components:
   securitySchemes:
     bearerAuth:
@@ -1200,6 +1290,51 @@ components:
       schema:
         type: string
         format: uuid
+    QueryCrs:
+      name: crs
+      in: query
+      description: Output coordinate reference system. Defaults to EPSG:4326; local returns original
+        coordinates unless zone_id selects another zone.
+      schema:
+        type: string
+    QueryZoneId:
+      name: zone_id
+      in: query
+      description: Target zone for local coordinate projection. Used with crs=local.
+      schema:
+        type: string
+    QueryGeojson:
+      name: geojson
+      in: query
+      description: Return GeoJSON features instead of resource envelopes.
+      schema:
+        type: boolean
+    QueryForeignId:
+      name: foreign_id
+      in: query
+      description: Return only zones with this external identifier.
+      schema:
+        type: string
+    QueryForceLocationUpdate:
+      name: force_location_update
+      in: query
+      description: Re-evaluate stored provider locations after saving the trackable. Emit events only when the
+        resulting state changes.
+      schema:
+        type: boolean
+    QuerySubdivide:
+      name: subdivide
+      in: query
+      description: Densify polygon edges to at most 10 meters before coordinate transformation. Requests
+        requiring more than 100000 vertices are rejected. Point regions are unchanged.
+      schema:
+        type: boolean
+    QuerySpatialQuery:
+      name: spatial_query
+      in: query
+      description: Use current geometric containment instead of membership maintained by fence timers.
+      schema:
+        type: boolean
   responses:
     BadRequest:
       description: The request body or path parameters were invalid for the targeted operation.
@@ -1242,22 +1377,10 @@ components:
           description: Human-readable error message.
         details:
           type: array
-          description: Actionable validation, routing, or authorization details that explain how to correct the request.
+          description: Actionable validation, routing, or authorization details that explain how to correct
+            the request.
           items:
             type: string
-
-    ResourceSummary:
-      type: object
-      description: Compact collection summary.
-      required: [type, count]
-      properties:
-        type:
-          type: string
-          description: Resource collection represented by the summary.
-        count:
-          type: integer
-          minimum: 0
-          description: Number of resources currently known to the hub.
 
     ExtensionProperties:
       type: object
@@ -1277,6 +1400,7 @@ components:
       maxItems: 2
       items:
         type: number
+        format: double
     GeoJsonPosition3D:
       type: array
       description: GeoJSON 3D coordinate tuple in `[x, y, z]` order.
@@ -1284,24 +1408,52 @@ components:
       maxItems: 3
       items:
         type: number
+        format: double
     GeoJsonPosition:
       description: GeoJSON coordinate tuple used by `Point`, `LineString`, and `Polygon`.
       oneOf:
-        - $ref: '#/components/schemas/GeoJsonPosition2D'
-        - $ref: '#/components/schemas/GeoJsonPosition3D'
+      - $ref: '#/components/schemas/GeoJsonPosition2D'
+      - $ref: '#/components/schemas/GeoJsonPosition3D'
 
     PositiveNumber:
       type: number
-      description: Positive numeric value greater than zero.
+      description: Finite nonnegative numeric value. Zero is allowed.
       minimum: 0
-      exclusiveMinimum: true
 
+      format: double
     PositiveOrMinusOne:
-      description: Positive numeric value or `-1` when the OMLOX model allows disabling the behavior.
+      description: Nonnegative numeric value or `-1` for an infinite timeout. Zero means immediate.
       anyOf:
-        - type: number
-          enum: [-1]
-        - $ref: '#/components/schemas/PositiveNumber'
+      - type: number
+        enum: [-1]
+        format: double
+      - $ref: '#/components/schemas/PositiveNumber'
+
+    GeoJSONFeatureCollection:
+      type: object
+      description: OMLOX GeoJSON wrapper, returned when geojson=true.
+      required: [type, features]
+      properties:
+        type:
+          type: string
+          const: FeatureCollection
+        features:
+          type: array
+          items:
+            type: object
+            required: [type, geometry, properties]
+            properties:
+              type:
+                type: string
+                const: Feature
+              geometry:
+                oneOf:
+                - $ref: '#/components/schemas/Point'
+                - $ref: '#/components/schemas/Polygon'
+                - $ref: '#/components/schemas/LineString'
+              properties:
+                type: object
+                additionalProperties: true
 
     Point:
       type: object
@@ -1347,18 +1499,14 @@ components:
               $ref: '#/components/schemas/GeoJsonPosition'
 
     GroundControlPoint:
-      type: object
-      description: |
-        Mapping between a WGS84 coordinate and the corresponding local zone
-        coordinate. Use multiple control points to define the local-to-global
-        transform for a zone.
-      required: [wgs84, local]
-      properties:
-        wgs84:
-          $ref: '#/components/schemas/Point'
-        local:
-          $ref: '#/components/schemas/Point'
-
+      type: array
+      description: One coordinate pair in ground_control_points. Even indexes are WGS84 longitude/latitude;
+        the following odd index is the corresponding local x/y.
+      minItems: 2
+      maxItems: 2
+      items:
+        type: number
+        format: double
     LocatingRule:
       type: object
       description: Trackable locating rule used to prioritize candidate locations from providers.
@@ -1367,13 +1515,19 @@ components:
         expression:
           type: string
           description: >
-            Rule expression. Supported properties include `accuracy`,
-            `provider_id`, `type`, `source`, `floor`, `speed`, and
-            `timestamp_diff`.
+            Boolean expression using comparisons, AND, parentheses, and literals.
+            Supported properties are accuracy, name (provider name), provider_id,
+            type (provider technology), source, floor, speed, and timestamp_diff
+            (generated-time age in milliseconds). Missing comparison operands do
+            not match; omitted floor is zero. Nesting is limited to 64 groups.
+          maxLength: 4096
         priority:
           type: number
-          description: Lower values indicate higher precedence.
+          description: Higher positive values take precedence. Unmatched locations have priority zero; ties
+            use the newest timestamp_generated.
 
+          minimum: 0
+          format: double
     Zone:
       type: object
       description: Stored zone resource returned by the REST API.
@@ -1382,7 +1536,8 @@ components:
         id:
           type: string
           format: uuid
-          description: Hub-assigned or client-supplied UUID. Hub-generated values are UUIDv7 so they remain time-sortable.
+          description: Hub-assigned or client-supplied UUID. Hub-generated values are UUIDv7 so they remain
+            time-sortable.
         foreign_id:
           type: string
           description: External identifier from an upstream system.
@@ -1391,9 +1546,12 @@ components:
         radius:
           type: number
           description: Radius in meters when the zone is modeled as a point with extent.
+          format: double
         ground_control_points:
           type: array
-          description: Local-to-WGS84 reference pairs used for georeferencing local coordinates.
+          description: Alternating WGS84 [longitude, latitude] and local [x, y] coordinate pairs. Complete
+            non-proximity zones require at least four mappings (eight arrays). Proximity and incomplete zones
+            must omit this field.
           items:
             $ref: '#/components/schemas/GroundControlPoint'
         incomplete_configuration:
@@ -1408,6 +1566,12 @@ components:
           description: >
             Positioning system type. Common values include `uwb`, `wifi`,
             `rfid`, and `ibeacon`.
+          enum:
+          - uwb
+          - wifi
+          - rfid
+          - ibeacon
+          x-go-type: string
         site:
           type: string
           description: Optional site identifier.
@@ -1417,6 +1581,7 @@ components:
         floor:
           type: number
           description: Optional floor number or level indicator.
+          format: double
         name:
           type: string
           description: Human-readable zone name.
@@ -1432,40 +1597,41 @@ components:
           type: number
           description: Optional zone altitude in meters relative to WGS84.
 
+          format: double
     ZoneWrite:
       type: object
       description: Mutable fields used to create or replace a zone resource.
       required: [type]
       allOf:
-        - if:
-            properties:
-              type:
+      - if:
+          properties:
+            type:
+              enum: [rfid, ibeacon]
+          required: [type]
+        then:
+          required: [position]
+          not:
+            required: [ground_control_points]
+      - if:
+          properties:
+            type:
+              not:
                 enum: [rfid, ibeacon]
-            required: [type]
-          then:
-            required: [position]
-            not:
-              required: [ground_control_points]
-        - if:
-            properties:
-              type:
-                not:
-                  enum: [rfid, ibeacon]
-              incomplete_configuration:
-                const: false
-            required: [type, incomplete_configuration]
-          then:
-            required: [ground_control_points]
-        - if:
-            properties:
-              type:
-                not:
-                  enum: [rfid, ibeacon]
-            required: [type]
-            not:
-              required: [incomplete_configuration]
-          then:
-            required: [ground_control_points]
+            incomplete_configuration:
+              const: false
+          required: [type, incomplete_configuration]
+        then:
+          required: [ground_control_points]
+      - if:
+          properties:
+            type:
+              not:
+                enum: [rfid, ibeacon]
+          required: [type]
+          not:
+            required: [incomplete_configuration]
+        then:
+          required: [ground_control_points]
       properties:
         id:
           type: string
@@ -1479,9 +1645,12 @@ components:
         radius:
           type: number
           description: Radius in meters when the zone is modeled as a point with extent.
+          format: double
         ground_control_points:
           type: array
-          description: Local-to-WGS84 reference pairs required for fully configured non-proximity zones.
+          description: Alternating WGS84 [longitude, latitude] and local [x, y] coordinate pairs. Complete
+            non-proximity zones require at least four mappings (eight arrays). Proximity and incomplete zones
+            must omit this field.
           items:
             $ref: '#/components/schemas/GroundControlPoint'
         incomplete_configuration:
@@ -1493,12 +1662,19 @@ components:
         type:
           type: string
           description: OMLOX positioning technology or zone type such as `uwb`, `wifi`, `rfid`, or `ibeacon`.
+          enum:
+          - uwb
+          - wifi
+          - rfid
+          - ibeacon
+          x-go-type: string
         site:
           type: string
         building:
           type: string
         floor:
           type: number
+          format: double
         name:
           type: string
         description:
@@ -1510,6 +1686,7 @@ components:
         wgs84_height:
           type: number
 
+          format: double
     Trackable:
       type: object
       description: Stored trackable resource returned by the REST API.
@@ -1529,7 +1706,9 @@ components:
         extrusion:
           type: number
           minimum: 0
-          exclusiveMinimum: true
+          description: Height in meters. Zero represents a plane; omitted values use the floor or unbounded
+            height.
+          format: double
         location_providers:
           $ref: '#/components/schemas/StringIdList'
           description: Preferred providers considered when deriving trackable locations.
@@ -1544,8 +1723,11 @@ components:
         radius:
           type: number
           description: |
-            Collision and fallback-geometry radius in meters. When present, this
-            overrides the runtime default collision radius for this trackable.
+            Circular extent in meters used for fence and collision decisions.
+            Defaults to zero. When set, motion geometry approximates this circle.
+          minimum: 0
+          default: 0
+          format: double
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
@@ -1573,7 +1755,9 @@ components:
         extrusion:
           type: number
           minimum: 0
-          exclusiveMinimum: true
+          description: Height in meters. Zero represents a plane; omitted values use the floor or unbounded
+            height.
+          format: double
         location_providers:
           $ref: '#/components/schemas/StringIdList'
           description: Preferred providers considered when deriving trackable locations.
@@ -1588,8 +1772,11 @@ components:
         radius:
           type: number
           description: |
-            Collision and fallback-geometry radius in meters. When present, this
-            overrides the runtime default collision radius for this trackable.
+            Circular extent in meters used for fence and collision decisions.
+            Defaults to zero. When set, motion geometry approximates this circle.
+          minimum: 0
+          default: 0
+          format: double
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
         locating_rules:
@@ -1607,11 +1794,19 @@ components:
           type: string
         type:
           type: string
+          enum:
+          - uwb
+          - gps
+          - wifi
+          - rfid
+          - ibeacon
+          - virtual
+          - unknown
+          x-go-type: string
         name:
           type: string
         sensors:
-          $ref: '#/components/schemas/ExtensionProperties'
-          description: Provider-specific sensor metadata preserved by the hub.
+          $ref: '#/components/schemas/SensorData'
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -1632,11 +1827,19 @@ components:
           type: string
         type:
           type: string
+          enum:
+          - uwb
+          - gps
+          - wifi
+          - rfid
+          - ibeacon
+          - virtual
+          - unknown
+          x-go-type: string
         name:
           type: string
         sensors:
-          $ref: '#/components/schemas/ExtensionProperties'
-          description: Provider-specific sensor metadata preserved by the hub.
+          $ref: '#/components/schemas/SensorData'
         fence_timeout:
           $ref: '#/components/schemas/PositiveOrMinusOne'
         exit_tolerance:
@@ -1659,8 +1862,17 @@ components:
           type: string
           description: Source locator or sensor identifier that produced the observation.
         provider_type:
+          x-go-type: string
           type: string
           description: Provider technology or implementation type.
+          enum:
+          - uwb
+          - gps
+          - wifi
+          - rfid
+          - ibeacon
+          - virtual
+          - unknown
         provider_id:
           type: string
           description: Stable provider identifier.
@@ -1677,35 +1889,45 @@ components:
           description: Timestamp when the provider sent the observation to the hub.
         crs:
           type: string
-          description: Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current implementation.
+          description: Valid EPSG identifier or `local`. Omitted values are treated as `local` by the current
+            implementation.
         associated:
           type: boolean
           description: Indicates whether the location has already been associated with a trackable.
         accuracy:
           type: number
           description: Estimated positional accuracy in meters.
+          format: double
         floor:
           type: number
           description: Optional floor number or level indicator.
+          format: double
         true_heading:
           type: number
           description: Heading in degrees relative to true north.
+          format: double
         magnetic_heading:
           type: number
           description: Heading in degrees relative to magnetic north.
+          format: double
         heading_accuracy:
           type: number
           description: Estimated heading accuracy in degrees.
+          format: double
         elevation_ref:
           type: string
           enum: [floor, wgs84]
           description: Reference system for altitude-like values carried in the geometry.
         speed:
           type: number
-          description: Estimated speed in meters per second. Derived hub outputs may also populate this from normalized track movement.
+          description: Estimated speed in meters per second. Derived hub outputs may also populate this from
+            normalized track movement.
+          format: double
         course:
           type: number
-          description: Travel course in degrees. Derived hub outputs may also populate this from normalized track movement.
+          description: Travel course in degrees. Derived hub outputs may also populate this from normalized
+            track movement.
+          format: double
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
@@ -1718,8 +1940,14 @@ components:
           type: string
           description: Source locator or sensor identifier that produced the observation.
         provider_type:
+          x-go-type: string
           type: string
           description: Provider technology or implementation type.
+          enum:
+          - rfid
+          - ibeacon
+          - virtual
+          - unknown
         provider_id:
           type: string
           description: Stable provider identifier.
@@ -1734,6 +1962,7 @@ components:
         accuracy:
           type: number
           description: Estimated confidence or accuracy value supplied by the provider.
+          format: double
         properties:
           $ref: '#/components/schemas/ExtensionProperties'
 
@@ -1748,19 +1977,23 @@ components:
           description: Hub-generated fence identifiers are UUIDv7 when the hub creates them.
         region:
           oneOf:
-            - $ref: '#/components/schemas/Polygon'
-            - $ref: '#/components/schemas/Point'
+          - $ref: '#/components/schemas/Polygon'
+          - $ref: '#/components/schemas/Point'
           description: Fence geometry expressed as either a polygon or a point-plus-radius.
         radius:
           type: number
           description: Radius in meters when `region` is a point.
+          format: double
         extrusion:
           type: number
           minimum: 0
-          exclusiveMinimum: true
+          description: Height in meters. Zero represents a plane; omitted values use the floor or unbounded
+            height.
+          format: double
         floor:
           type: number
           description: Optional floor number or level indicator.
+          format: double
         foreign_id:
           type: string
         name:
@@ -1790,13 +2023,13 @@ components:
       description: Mutable fields used to create or replace a fence resource.
       required: [region]
       allOf:
-        - if:
-            properties:
-              crs:
-                const: local
-            required: [crs]
-          then:
-            required: [zone_id]
+      - if:
+          properties:
+            crs:
+              const: local
+          required: [crs]
+        then:
+          required: [zone_id]
       properties:
         id:
           type: string
@@ -1804,17 +2037,21 @@ components:
           description: If omitted on create, the hub generates a time-sortable UUIDv7.
         region:
           oneOf:
-            - $ref: '#/components/schemas/Polygon'
-            - $ref: '#/components/schemas/Point'
+          - $ref: '#/components/schemas/Polygon'
+          - $ref: '#/components/schemas/Point'
           description: Fence geometry expressed as either a polygon or a point-plus-radius.
         radius:
           type: number
+          format: double
         extrusion:
           type: number
           minimum: 0
-          exclusiveMinimum: true
+          description: Height in meters. Zero represents a plane; omitted values use the floor or unbounded
+            height.
+          format: double
         floor:
           type: number
+          format: double
         foreign_id:
           type: string
         name:
@@ -1847,7 +2084,8 @@ components:
         id:
           type: string
           format: uuid
-          description: Hub-generated fence event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
+          description: Hub-generated fence event identifiers are UUIDv7 so downstream consumers can sort them
+            by issue time.
         fence_id:
           type: string
           format: uuid
@@ -1879,9 +2117,12 @@ components:
         id:
           type: string
           format: uuid
-          description: Hub-generated collision event identifiers are UUIDv7 so downstream consumers can sort them by issue time.
+          description: Hub-generated collision event identifiers are UUIDv7 so downstream consumers can sort
+            them by issue time.
         object_type:
           type: string
+          enum:
+          - trackable
         position:
           $ref: '#/components/schemas/Point'
         geometry:
@@ -1889,6 +2130,7 @@ components:
         floor:
           type: number
 
+          format: double
     CollisionEvent:
       type: object
       description: Collision event model emitted when collision processing is enabled.
@@ -1914,14 +2156,16 @@ components:
           minItems: 2
           items:
             $ref: '#/components/schemas/Collision'
+          maxItems: 2
         collision_area:
           oneOf:
-            - $ref: '#/components/schemas/LineString'
-            - $ref: '#/components/schemas/Point'
+          - $ref: '#/components/schemas/LineString'
+          - $ref: '#/components/schemas/Point'
         center_distance:
           type: number
           description: Approximate center-to-center separation in meters at evaluation time.
 
+          format: double
     TrackableMotion:
       type: object
       description: Derived trackable motion payload published by the hub.
@@ -1933,6 +2177,7 @@ components:
           type: string
         extrusion:
           type: number
+          format: double
         geometry:
           $ref: '#/components/schemas/Polygon'
         location:
@@ -1966,13 +2211,15 @@ components:
           description: JSON-RPC protocol version.
         id:
           oneOf:
-            - type: string
-            - type: integer
-            - type: number
+          - type: string
+          - type: integer
+          - type: number
+            format: double
           description: Request identifier. Omit together with `_caller_id` to send a notification.
         method:
           type: string
-          description: JSON-RPC method name such as `com.omlox.ping`, `com.omlox.identify`, `com.omlox.core.xcmd`, or a deployment-specific vendor method.
+          description: JSON-RPC method name such as `com.omlox.ping`, `com.omlox.identify`,
+            `com.omlox.core.xcmd`, or a deployment-specific vendor method.
         params:
           type: object
           description: Method-specific parameters plus supported OMLOX bridge extensions.
@@ -1980,20 +2227,26 @@ components:
           properties:
             _timeout:
               type: number
-              description: Maximum time in milliseconds to wait for responses when the request expects a result.
+              description: Maximum time in milliseconds to wait for responses when the request expects a
+                result.
+              format: double
             _aggregation:
               type: string
-              description: Response aggregation mode used when multiple handlers may answer. `_handler_id` and `_aggregation` cannot be combined.
+              description: Response aggregation mode used when multiple handlers may answer. `_handler_id` and
+                `_aggregation` cannot be combined.
               enum:
-                - _all_within_timeout
-                - _return_first_success
-                - _return_first_error
+              - _all_within_timeout
+              - _return_first_success
+              - _return_first_error
             _handler_id:
               type: string
-              description: Optional explicit handler identifier for directed invocation. Use the value returned by `GET /v2/rpc/available` to target a specific handler, including `open-location-hub` for local built-in methods.
+              description: Optional explicit handler identifier for directed invocation. Use the value
+                returned by `GET /v2/rpc/available` to target a specific handler, including
+                `open-location-hub` for local built-in methods.
             _caller_id:
               type: string
-              description: Caller identifier used to correlate MQTT responses. Omit together with `id` to send a notification.
+              description: Caller identifier used to correlate MQTT responses. Omit together with `id` to send
+                a notification.
 
     JsonRpcErrorObject:
       type: object
@@ -2017,9 +2270,10 @@ components:
           const: '2.0'
         id:
           oneOf:
-            - type: string
-            - type: integer
-            - type: number
+          - type: string
+          - type: integer
+          - type: number
+            format: double
         result:
           additionalProperties: true
 
@@ -2033,8 +2287,30 @@ components:
           const: '2.0'
         id:
           oneOf:
-            - type: string
-            - type: integer
-            - type: number
+          - type: string
+          - type: integer
+          - type: number
+            format: double
         error:
           $ref: '#/components/schemas/JsonRpcErrorObject'
+    SensorData:
+      description: Application-defined JSON sensor data, including objects, arrays, scalars, and null.
+      x-go-type: json.RawMessage
+    SimpleTransform:
+      type: object
+      description: Position transformed between local zone coordinates and WGS84.
+      required:
+      - position
+      properties:
+        position:
+          $ref: '#/components/schemas/Point'
+        crs:
+          type: string
+          enum:
+          - local
+          - EPSG:4326
+          default: local
+          description: Coordinate reference system of the supplied position.
+        source:
+          type: string
+          description: Zone identifier used for the transformation.
