@@ -38,7 +38,7 @@ def main() -> int:
     bbox = resolve_bbox()
 
     provider_id = os.getenv("OPENSKY_PROVIDER_ID", "opensky-demo")
-    provider_type = os.getenv("OPENSKY_PROVIDER_TYPE", "adsb")
+    provider_type = os.getenv("OPENSKY_PROVIDER_TYPE", "unknown")
     provider_name = os.getenv("OPENSKY_PROVIDER_NAME", "OpenSky Aircraft Demonstrator")
     poll_interval = float(os.getenv("OPENSKY_POLL_INTERVAL_SECONDS", "20"))
     on_ground_only = (os.getenv("OPENSKY_ON_GROUND_ONLY") or "").strip().lower() in {"1", "true", "yes"}

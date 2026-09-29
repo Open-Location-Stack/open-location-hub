@@ -9,8 +9,9 @@ import (
 )
 
 type expiringLocation struct {
-	value     gen.Location
-	expiresAt time.Time
+	receivedAt time.Time
+	value      gen.Location
+	expiresAt  time.Time
 }
 
 type expiringProximityState struct {
@@ -34,9 +35,12 @@ type expiringKalmanTrack struct {
 }
 
 type expiringFenceMembership struct {
-	expiresAt          time.Time
-	toleranceStartedAt time.Time
-	exitPendingSince   time.Time
+	timers    exitTimers
+	entryTime time.Time
+	fence     gen.Fence
+	location  gen.Location
+
+	expiresAt time.Time
 }
 
 // ProcessingState keeps transient decision state in memory.
@@ -45,11 +49,16 @@ type ProcessingState struct {
 	now                     func() time.Time
 	dedup                   map[string]time.Time
 	latestLocations         map[string]expiringLocation
+	providerLocationKeys    map[string]map[string]struct{}
+	trackableCandidates     map[string]map[string]expiringLocation
+	trackableInputs         map[string]expiringLocation
 	latestTrackableLocation map[string]expiringLocation
 	proximity               map[string]expiringProximityState
 	fenceMembership         map[string]map[string]expiringFenceMembership
 	motions                 map[string]expiringMotion
+	collisionMotions        map[string]expiringMotion
 	collisions              map[string]expiringCollisionState
+	collisionPairs          map[string]map[string]struct{}
 	kalmanTracks            map[string]expiringKalmanTrack
 }
 
@@ -62,11 +71,16 @@ func NewProcessingState(now func() time.Time) *ProcessingState {
 		now:                     now,
 		dedup:                   map[string]time.Time{},
 		latestLocations:         map[string]expiringLocation{},
+		providerLocationKeys:    map[string]map[string]struct{}{},
+		trackableCandidates:     map[string]map[string]expiringLocation{},
+		trackableInputs:         map[string]expiringLocation{},
 		latestTrackableLocation: map[string]expiringLocation{},
 		proximity:               map[string]expiringProximityState{},
 		fenceMembership:         map[string]map[string]expiringFenceMembership{},
 		motions:                 map[string]expiringMotion{},
+		collisionMotions:        map[string]expiringMotion{},
 		collisions:              map[string]expiringCollisionState{},
+		collisionPairs:          map[string]map[string]struct{}{},
 		kalmanTracks:            map[string]expiringKalmanTrack{},
 	}
 }
@@ -86,10 +100,57 @@ func (s *ProcessingState) Deduplicate(key string, ttl time.Duration) bool {
 	return true
 }
 
-func (s *ProcessingState) SetLatestLocation(key string, value gen.Location, ttl time.Duration) {
+func (s *ProcessingState) SetLatestLocation(key string, value gen.Location, ttl time.Duration) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.latestLocations[key] = expiringLocation{value: value, expiresAt: s.nowUTC().Add(ttl)}
+	now := s.nowUTC()
+	item := expiringLocation{value: value, receivedAt: now, expiresAt: now.Add(ttl)}
+	if old, ok := s.latestLocations[key]; ok && old.expiresAt.After(now) && candidateTime(item).Before(candidateTime(old)) {
+		return false
+	}
+	if old, ok := s.latestLocations[key]; ok && old.value.ProviderId != value.ProviderId {
+		s.deleteLatestLocationLocked(key)
+	}
+	s.latestLocations[key] = item
+	keys := s.providerLocationKeys[value.ProviderId]
+	if keys == nil {
+		keys = make(map[string]struct{})
+		s.providerLocationKeys[value.ProviderId] = keys
+	}
+	keys[key] = struct{}{}
+	return true
+}
+
+// GetLatestProviderLocation returns the newest unexpired observation across a
+// provider's sources without scanning other providers' locations.
+func (s *ProcessingState) GetLatestProviderLocation(providerID string) (gen.Location, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := s.nowUTC()
+	var latest gen.Location
+	found := false
+	for key := range s.providerLocationKeys[providerID] {
+		item := s.latestLocations[key]
+		if item.expiresAt.After(now) && (!found || locationTime(item.value).After(locationTime(latest))) {
+			latest = item.value
+			found = true
+		}
+	}
+	return latest, found
+}
+
+// Caller holds mu. All removals keep the provider index in step with state.
+func (s *ProcessingState) deleteLatestLocationLocked(key string) {
+	item, ok := s.latestLocations[key]
+	if !ok {
+		return
+	}
+	delete(s.latestLocations, key)
+	keys := s.providerLocationKeys[item.value.ProviderId]
+	delete(keys, key)
+	if len(keys) == 0 {
+		delete(s.providerLocationKeys, item.value.ProviderId)
+	}
 }
 
 func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
@@ -97,7 +158,7 @@ func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
 	defer s.mu.Unlock()
 	item, ok := s.latestLocations[key]
 	if !ok || !item.expiresAt.After(s.nowUTC()) {
-		delete(s.latestLocations, key)
+		s.deleteLatestLocationLocked(key)
 		return gen.Location{}, false
 	}
 	return item.value, true
@@ -106,7 +167,7 @@ func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
 func (s *ProcessingState) DeleteLatestLocation(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.latestLocations, key)
+	s.deleteLatestLocationLocked(key)
 }
 
 func (s *ProcessingState) ListLatestLocations() []gen.Location {
@@ -116,7 +177,7 @@ func (s *ProcessingState) ListLatestLocations() []gen.Location {
 	locations := make([]gen.Location, 0, len(s.latestLocations))
 	for key, item := range s.latestLocations {
 		if !item.expiresAt.After(now) {
-			delete(s.latestLocations, key)
+			s.deleteLatestLocationLocked(key)
 			continue
 		}
 		locations = append(locations, item.value)
@@ -193,7 +254,7 @@ func (s *ProcessingState) IsInsideFence(trackableID, fenceID string) bool {
 		return false
 	}
 	membership, ok := current[fenceID]
-	if !ok || !membership.expiresAt.After(s.nowUTC()) {
+	if !ok || (!membership.expiresAt.IsZero() && !membership.expiresAt.After(s.nowUTC())) {
 		delete(current, fenceID)
 		if len(current) == 0 {
 			delete(s.fenceMembership, trackableID)
@@ -213,7 +274,7 @@ func (s *ProcessingState) ListInsideFences(trackableID string) []string {
 	now := s.nowUTC()
 	ids := make([]string, 0, len(current))
 	for fenceID, membership := range current {
-		if !membership.expiresAt.After(now) {
+		if !membership.expiresAt.IsZero() && !membership.expiresAt.After(now) {
 			delete(current, fenceID)
 			continue
 		}
@@ -244,7 +305,7 @@ func (s *ProcessingState) FenceMembershipState(trackableID, fenceID string) (exp
 		return expiringFenceMembership{}, false
 	}
 	membership, ok := current[fenceID]
-	if !ok || !membership.expiresAt.After(s.nowUTC()) {
+	if !ok || (!membership.expiresAt.IsZero() && !membership.expiresAt.After(s.nowUTC())) {
 		delete(current, fenceID)
 		if len(current) == 0 {
 			delete(s.fenceMembership, trackableID)
@@ -319,12 +380,32 @@ func (s *ProcessingState) ListActiveMotions() []gen.TrackableMotion {
 	return motions
 }
 
+func (s *ProcessingState) setCollisionMotion(id string, value gen.TrackableMotion, ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.collisionMotions[id] = expiringMotion{value: value, expiresAt: s.nowUTC().Add(ttl)}
+}
+func (s *ProcessingState) listCollisionMotions() []gen.TrackableMotion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.nowUTC()
+	out := make([]gen.TrackableMotion, 0, len(s.collisionMotions))
+	for id, item := range s.collisionMotions {
+		if !item.expiresAt.After(now) {
+			delete(s.collisionMotions, id)
+			continue
+		}
+		out = append(out, item.value)
+	}
+	return out
+}
+
 func (s *ProcessingState) GetCollisionState(key string) (activeCollisionState, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.collisions[key]
-	if !ok || !item.expiresAt.After(s.nowUTC()) {
-		delete(s.collisions, key)
+	if !ok || (!item.expiresAt.IsZero() && !item.expiresAt.After(s.nowUTC())) {
+		s.deleteCollisionStateLocked(key)
 		return activeCollisionState{}, false
 	}
 	return item.value, true
@@ -333,13 +414,45 @@ func (s *ProcessingState) GetCollisionState(key string) (activeCollisionState, b
 func (s *ProcessingState) SetCollisionState(key string, value activeCollisionState, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.collisions[key] = expiringCollisionState{value: value, expiresAt: s.nowUTC().Add(ttl)}
+	var expires time.Time
+	if ttl > 0 {
+		expires = s.nowUTC().Add(ttl)
+	}
+	s.collisions[key] = expiringCollisionState{value: value, expiresAt: expires}
+	for _, id := range []string{value.leftMotion.Id, value.rightMotion.Id} {
+		if s.collisionPairs[id] == nil {
+			s.collisionPairs[id] = map[string]struct{}{}
+		}
+		s.collisionPairs[id][key] = struct{}{}
+	}
 }
 
 func (s *ProcessingState) DeleteCollisionState(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.deleteCollisionStateLocked(key)
+}
+func (s *ProcessingState) deleteCollisionStateLocked(key string) {
+	item, ok := s.collisions[key]
+	if !ok {
+		return
+	}
+	for _, id := range []string{item.value.leftMotion.Id, item.value.rightMotion.Id} {
+		delete(s.collisionPairs[id], key)
+		if len(s.collisionPairs[id]) == 0 {
+			delete(s.collisionPairs, id)
+		}
+	}
 	delete(s.collisions, key)
+}
+func (s *ProcessingState) collisionsForTrackable(id string) []activeCollisionState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]activeCollisionState, 0, len(s.collisionPairs[id]))
+	for key := range s.collisionPairs[id] {
+		out = append(out, s.collisions[key].value)
+	}
+	return out
 }
 
 func (s *ProcessingState) GetKalmanTrackState(trackableID string) (kalmanTrackState, bool) {
@@ -400,7 +513,22 @@ func (s *ProcessingState) SweepExpired() {
 	}
 	for key, item := range s.latestLocations {
 		if !item.expiresAt.After(now) {
-			delete(s.latestLocations, key)
+			s.deleteLatestLocationLocked(key)
+		}
+	}
+	for id, candidates := range s.trackableCandidates {
+		for key, item := range candidates {
+			if !item.expiresAt.After(now) {
+				delete(candidates, key)
+			}
+		}
+		if len(candidates) == 0 {
+			delete(s.trackableCandidates, id)
+		}
+	}
+	for id, item := range s.trackableInputs {
+		if !item.expiresAt.After(now) {
+			delete(s.trackableInputs, id)
 		}
 	}
 	for key, item := range s.latestTrackableLocation {
@@ -415,7 +543,7 @@ func (s *ProcessingState) SweepExpired() {
 	}
 	for trackableID, memberships := range s.fenceMembership {
 		for fenceID, membership := range memberships {
-			if !membership.expiresAt.After(now) {
+			if !membership.expiresAt.IsZero() && !membership.expiresAt.After(now) {
 				delete(memberships, fenceID)
 			}
 		}
@@ -428,9 +556,14 @@ func (s *ProcessingState) SweepExpired() {
 			delete(s.motions, key)
 		}
 	}
-	for key, item := range s.collisions {
+	for key, item := range s.collisionMotions {
 		if !item.expiresAt.After(now) {
-			delete(s.collisions, key)
+			delete(s.collisionMotions, key)
+		}
+	}
+	for key, item := range s.collisions {
+		if !item.expiresAt.IsZero() && !item.expiresAt.After(now) {
+			s.deleteCollisionStateLocked(key)
 		}
 	}
 	for key, item := range s.kalmanTracks {

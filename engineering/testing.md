@@ -70,18 +70,20 @@ Run Python dependency checks with:
 
 ```bash
 just check-python
-UV_PYTHON=3.12 just check-python
 ```
 
 This checks all five `uv.lock` files against their manifests, installs the locked
 dependencies, compiles connector scripts, checks imports and GTFS protobuf
-serialization, and runs the UWB simulator tests. CI covers Python 3.12 and 3.14.
+serialization, and runs the UWB simulator, GTFS, and replay tests. Python 3.14 is
+the only supported minor version. CI and `.python-version` select its current
+stable patch, 3.14.7; manifests require `>=3.14.7,<3.15`. Update these pins together
+when adopting a newer Python release.
 After editing Python requirements, run `uv lock --project <directory>` before
 validation. Use `uv lock --upgrade --project <directory>` for a dependency refresh.
 
 Container builds use Go 1.27.1 and Alpine 3.24 for both build and runtime stages.
 Integration fixtures use PostgreSQL 17.11, Valkey 9.1.2, Mosquitto 2.1.2, Dex
-2.45.1, and Python 3.14.6. PostgreSQL stays on major 17 to preserve compatibility
+2.45.1, and Python 3.14.7. PostgreSQL stays on major 17 to preserve compatibility
 with existing local and deployed data directories; a major upgrade needs a
 separate data migration. The deployment collector is pinned to 0.161.0.
 SigNoz stays at 0.117.1: its 0.143.0 source tree no longer includes the
@@ -122,3 +124,48 @@ The integration suite now also includes shared-hub scenario coverage for high-tr
 - GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly.
 - direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
 - Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](../docs/auth.md).
+
+## OMLOX 0.2 alignment checks
+
+`just test-unit` runs Go package tests without starting integration containers. The
+locating-rule tests cover the published UWB/GPS priority and age example, typed
+expression validation, out-of-order timestamps, independent provider publication,
+and motion reads with collisions disabled. The complete release gate remains
+`just bootstrap`, `just generate`, and `just check`; a unit-only pass is insufficient.
+
+Keep the sibling CLI contract synchronized and test its actual HTTP methods,
+query parameters, and 204 handling. Run the plugfest adapter's Node tests after
+changing normalization or CLI forwarding. Record live DeepHub/ZIGPOS outcomes
+separately from local mocks/replays in the integration compatibility note.
+
+## Fence and collision behavior
+
+Unit coverage exercises all nine table-13/table-14 transitions, infinite and zero
+timeouts, timer replacement/cancellation, and autonomous fence exits. Geometry
+checks cover meter-based geographic radii, polygon holes, boundary tangency, and
+trackable radius expansion of spatial candidates. Collision checks cover first-mover
+ordering, large jumps ending active pairs, every-update continuation events, provider
+overrides, timeout maxima, return-to-intersection cancellation, floor/height separation,
+and retaining active membership independently of observation cache TTL.
+
+Live DeepHub and ZIGPOS hubs are unavailable. Their live interoperability tests are
+explicitly skipped for the 0.2 validation; use adapter tests and available recordings, and
+report those results as local evidence only.
+
+
+The 0.2 regression suite also covers the JSON/OpenAPI contract changes, GCP arrays,
+source-zone mapping, field defaults, requested projection, GeoJSON unions, and
+cross-connection WebSocket subscription IDs. A local MQTT 5 client reads a retained
+RPC announcement from Mosquitto and asserts its remaining expiry is at most 120
+seconds. CLI HTTP tests and the seven plugfest Node tests provide offline adapter
+coverage; they do not connect to vendor hubs.
+
+## Queue and lookup regression coverage
+
+`just test-unit` includes deterministic `testing/synctest` checks for idle event-bus
+flush recovery, MQTT worker and queue bounds, handler cancellation, and copied
+message payloads. Concurrent subscribe/emit/unsubscribe and metadata snapshot
+writes are exercised under `just test-unit -race`. Lookup tests cover multiple
+provider sources, stale observations, expiry, deletion, and changed trackable
+assignments. WebSocket tests assert that unrelated events are filtered before
+projection and matching subscriptions share projection work within a batch.

@@ -84,9 +84,9 @@ class UwbSimTests(unittest.TestCase):
     def test_floor_definitions_include_ground_control_points(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             floor = build_floor_definitions("building-a", Path(temp_dir) / "assets")[0]
-        self.assertEqual(len(floor.ground_control_points), 3)
-        self.assertIn("local", floor.ground_control_points[0])
-        self.assertIn("wgs84", floor.ground_control_points[0])
+        self.assertEqual(len(floor.ground_control_points), 8)
+        self.assertEqual(len(floor.ground_control_points[0]), 2)
+        self.assertEqual(len(floor.ground_control_points[1]), 2)
 
     def test_agent_payload_emits_wgs84_locations(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

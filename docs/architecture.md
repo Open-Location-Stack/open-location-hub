@@ -16,6 +16,8 @@
 - The runtime resolves the singleton hub metadata row before the service starts so one stable `hub_id` and label are available for startup validation, internal event provenance, and identify responses.
 - The hub loads those resources into an immutable in-memory metadata snapshot before it accepts traffic.
 - Successful CRUD writes update Postgres first, then update the in-memory snapshot, invalidate any affected derived metadata such as zone transforms, and emit a `metadata_changes` bus event.
+- Metadata writers serialize snapshot preparation and take the reader lock only to publish the completed snapshot. A fence edit reprojects that fence and reuses other world geometries; zone changes rebuild world geometry. Spatial trees are rebuilt from the resulting snapshot. Readers continue on the previous immutable snapshot during preparation.
+- Provider location reads use a provider-to-source index maintained on writes, deletion, and expiry. Provider-to-trackable reads use the metadata assignment index.
 - A background reconcile loop reloads durable metadata periodically and emits the same `metadata_changes` notifications when it detects out-of-band create, update, or delete drift.
 - Decision-critical ingest state is kept in process memory:
   - dedup windows
@@ -27,13 +29,13 @@
   - collision pair state
 
 ## Event Fan-Out
-1. REST, MQTT, or WebSocket ingest enters the shared hub service.
+1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
-3. A buffered native-publication stage emits native location and motion events without blocking ingest on downstream fan-out.
-4. A second buffered decision stage applies optional per-trackable Kalman normalization before alternate-CRS publication, geofence evaluation, and collision preparation.
-5. Decision work is sharded by provider/source so one hot stream does not serialize the entire derived path, while updates for the same stream stay ordered on the same worker.
+3. A buffered native-publication stage emits native provider location events. Trackable motion publication waits for location selection.
+4. A second buffered decision stage publishes alternate provider projections independently, then selects each trackable's significant location using locating rules and generated timestamps. Selected locations pass through optional Kalman normalization before motion publication, geofence evaluation, and collision preparation.
+5. Decision work is sharded by provider/source. Candidate evaluation and selected output are protected by bounded per-trackable lock stripes, so two providers for the same trackable cannot overwrite each other's decisions concurrently. Unrelated trackables can proceed independently.
 6. The sharded decision workers drain queued locations in bounded batches before processing them so bursty ingest spends less time on per-item queue churn.
-7. When Kalman publication throttling is enabled, the decision stage may suppress some derived location and trackable-motion events while still running geofence and collision work on every accepted normalized point.
+7. Kalman throttling applies to selected trackable motion publication. Raw provider streams remain independent; fencing and collision work still run for selected normalized observations.
 8. Collision evaluation runs as its own downstream stage fed from the decision output so pairwise collision work does not block the rest of the derived path.
 9. Collision work evaluates normalized WGS84 motions only; streams without a safe WGS84 representation do not enter collision evaluation.
 10. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
@@ -44,14 +46,20 @@ Implications:
 - MQTT is no longer the only downstream publication path
 - the internal event seam decouples downstream publication from MQTT-specific topics
 - location ingest latency is protected from slower transport fan-out, geofence work, or collision work
-- the decision-stage queue is the insertion point for optional filtered or smoothed track processing before fence/collision decisions
-- when Kalman filtering is enabled, derived `location` and `trackable_motion` publication can be rate-limited independently from decision logic so high-frequency UWB-style updates still drive fencing and collision checks
+- the decision stage retains candidates per trackable and provider/source, evaluates the highest matching rule priority, and uses newest generated time to resolve ties; without rules, only strictly newer generated timestamps move a trackable
+- rule expressions are parsed and type-checked on writes, cached by trackable rule content, and evaluated without executable code; `timestamp_diff` is age in milliseconds
+- `force_location_update=true` re-evaluates retained assigned-provider observations after trackable writes, without changing provider data or replaying an unchanged motion notification
+- selected motion reads use their own cache and work when collisions are disabled; collision workers maintain a separate projected-motion cache
+- switching a selected provider/source or selecting an older retained observation resets the optional Kalman filter to avoid blending unrelated coordinate frames
+- when Kalman filtering is enabled, `trackable_motion` publication can be rate-limited independently from decision logic
 - collision evaluation remains WGS84-only so downstream collision payloads stay in one coordinate space
+- pending internal events resume delivery when subscribers make room, even if no further events arrive; unsubscribe stops the flusher and synchronizes channel closure with concurrent emitters
+- WebSocket subscriptions match topic and observation filters before projection; a broadcast batch shares projections for each event, CRS, and target zone across connections
 - lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
 - WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
-- fence exits are still driven by accepted location updates, but the decision path now applies per-fence/provider/trackable tolerance bands and exit debounce before emitting `region_exit`
+- fence membership follows the published three-timer transition table; an indexed deadline scheduler emits exits without requiring another location update, using provider settings before trackable settings before fence settings
 
 ## Observability Boundaries
 - `internal/observability` owns OpenTelemetry resource setup, OTLP exporters, lifecycle management, and the small internal instrumentation API used by the rest of the runtime.
@@ -119,3 +127,10 @@ Resolver scope:
 - When auth is enabled, WebSocket messages authenticate with `params.token` and apply dedicated topic publish/subscribe authorization.
 - `collision_events` is a known topic but remains configuration-gated by `COLLISIONS_ENABLED`.
 - `metadata_changes` is a subscribe-only topic that carries lightweight metadata replication notifications shaped as `{id,type,operation,timestamp}`.
+
+
+The 0.2 transport layer uses MQTT 5 with expiring RPC discovery. WebSocket
+subscriptions select one location representation and then project into the
+requested coordinate system. Native observations remain available through
+`crs=local` without a target zone. Stored source metadata is preserved across
+projection, and motion/collision geometry follows the same transform as positions.

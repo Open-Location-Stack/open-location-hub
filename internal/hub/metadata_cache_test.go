@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,11 +16,11 @@ import (
 func TestNewMetadataCacheBuildsIndexes(t *testing.T) {
 	t.Parallel()
 
-	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "foreign-zone", [2]float32{1, 2}, nil, nil)
+	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "foreign-zone", [2]float64{1, 2}, nil, nil)
 	providerIDs := gen.StringIdList{"provider-a"}
 	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox, LocationProviders: &providerIDs}
 	provider := gen.LocationProvider{Id: "provider-a", Type: "uwb"}
-	fence := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	fence := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 
 	cache, err := NewMetadataCache(context.Background(), fakeQueries{
 		listZonesFn:      metadataZoneList(t, zone),
@@ -55,10 +56,10 @@ func TestNewMetadataCacheBuildsIndexes(t *testing.T) {
 func TestMetadataCacheFenceCandidatesMatchLocalZoneScope(t *testing.T) {
 	t.Parallel()
 
-	zoneA := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
-	zoneB := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-b", [2]float32{0, 0}, nil, nil)
-	fenceA := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
-	fenceB := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	zoneA := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float64{0, 0}, nil, nil)
+	zoneB := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-b", [2]float64{0, 0}, nil, nil)
+	fenceA := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
+	fenceB := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	localCRS := "local"
 	fenceA.Crs = &localCRS
 	fenceA.ZoneId = stringPtrValueRef(zoneA.Id.String())
@@ -75,7 +76,7 @@ func TestMetadataCacheFenceCandidatesMatchLocalZoneScope(t *testing.T) {
 		t.Fatalf("NewMetadataCache failed: %v", err)
 	}
 
-	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 2})
+	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float64{1, 2})
 	candidates, err := cache.FenceCandidates(location)
 	if err != nil {
 		t.Fatalf("FenceCandidates failed: %v", err)
@@ -88,13 +89,13 @@ func TestMetadataCacheFenceCandidatesMatchLocalZoneScope(t *testing.T) {
 func TestMetadataCacheFenceCandidatesMatchLocationFloor(t *testing.T) {
 	t.Parallel()
 
-	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
-	fenceAllFloors := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
-	fenceFloor1 := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
-	fenceFloor2 := testPointFence(t, uuid.New(), [2]float32{1, 2}, 5)
+	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float64{0, 0}, nil, nil)
+	fenceAllFloors := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
+	fenceFloor1 := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
+	fenceFloor2 := testPointFence(t, uuid.New(), [2]float64{1, 2}, 5)
 	localCRS := "local"
-	floor1 := float32(1)
-	floor2 := float32(2)
+	floor1 := float64(1)
+	floor2 := float64(2)
 	for _, fence := range []*gen.Fence{&fenceAllFloors, &fenceFloor1, &fenceFloor2} {
 		fence.Crs = &localCRS
 		fence.ZoneId = stringPtrValueRef(zone.Id.String())
@@ -112,7 +113,7 @@ func TestMetadataCacheFenceCandidatesMatchLocationFloor(t *testing.T) {
 		t.Fatalf("NewMetadataCache failed: %v", err)
 	}
 
-	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 2})
+	location := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float64{1, 2})
 	location.Floor = &floor1
 	candidates, err := cache.FenceCandidates(location)
 	if err != nil {
@@ -149,7 +150,7 @@ func TestMetadataCacheFenceCandidatesMatchWGS84PolygonFence(t *testing.T) {
 		t.Fatalf("NewMetadataCache failed: %v", err)
 	}
 
-	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float32{8.90318, 52.01776})
+	location := testLocationWithCoordinates(t, stringPtrValueRef("EPSG:4326"), "simulated-tag-1", [2]float64{8.90318, 52.01776})
 	scopeKey, ok, err := cache.current().locationFenceScopeKey(location)
 	if err != nil {
 		t.Fatalf("locationFenceScopeKey failed: %v", err)
@@ -191,24 +192,24 @@ func TestMetadataCacheFenceCandidatesMatchWGS84PolygonFence(t *testing.T) {
 func TestMetadataCacheFenceCandidatesSupportPointAndPolygonAcrossScopes(t *testing.T) {
 	t.Parallel()
 
-	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float32{0, 0}, nil, nil)
+	zone := testZoneWithForeignID(t, uuid.New(), "uwb", "zone-a", [2]float64{0, 0}, nil, nil)
 	localCRS := "local"
 	wgsCRS := "EPSG:4326"
 
-	localPointFence := testPointFence(t, uuid.New(), [2]float32{5, 5}, 2)
+	localPointFence := testPointFence(t, uuid.New(), [2]float64{5, 5}, 2)
 	localPointFence.Crs = &localCRS
 	localPointFence.ZoneId = stringPtrValueRef(zone.Id.String())
 
-	localPolygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+	localPolygonFence := testPolygonFence(t, uuid.New(), [][2]float64{
 		{4, 4}, {6, 4}, {6, 6}, {4, 6}, {4, 4},
 	})
 	localPolygonFence.Crs = &localCRS
 	localPolygonFence.ZoneId = stringPtrValueRef(zone.Id.String())
 
-	wgsPointFence := testPointFence(t, uuid.New(), [2]float32{8.5411, 47.3744}, 0.0002)
+	wgsPointFence := testPointFence(t, uuid.New(), [2]float64{8.5411, 47.3744}, 0.0002)
 	wgsPointFence.Crs = &wgsCRS
 
-	wgsPolygonFence := testPolygonFence(t, uuid.New(), [][2]float32{
+	wgsPolygonFence := testPolygonFence(t, uuid.New(), [][2]float64{
 		{8.5410, 47.3743}, {8.5412, 47.3743}, {8.5412, 47.3745}, {8.5410, 47.3745}, {8.5410, 47.3743},
 	})
 	wgsPolygonFence.Crs = &wgsCRS
@@ -230,22 +231,22 @@ func TestMetadataCacheFenceCandidatesSupportPointAndPolygonAcrossScopes(t *testi
 	}{
 		{
 			name:       "local point",
-			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 5}),
+			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{5, 5}),
 			expectedID: localPointFence.Id,
 		},
 		{
 			name:       "local polygon",
-			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float32{5, 5}),
+			location:   testLocationWithCoordinates(t, &localCRS, zone.Id.String(), [2]float64{5, 5}),
 			expectedID: localPolygonFence.Id,
 		},
 		{
 			name:       "wgs point",
-			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float32{8.5411, 47.3744}),
+			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float64{8.5411, 47.3744}),
 			expectedID: wgsPointFence.Id,
 		},
 		{
 			name:       "wgs polygon",
-			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float32{8.5411, 47.3744}),
+			location:   testLocationWithCoordinates(t, &wgsCRS, "provider-a", [2]float64{8.5411, 47.3744}),
 			expectedID: wgsPolygonFence.Id,
 		},
 	}
@@ -273,8 +274,8 @@ func TestMetadataCacheFenceCandidatesSupportPointAndPolygonAcrossScopes(t *testi
 func TestMetadataCacheReconcileDiffsCreateUpdateDelete(t *testing.T) {
 	t.Parallel()
 
-	zoneA := testZone(t, uuid.New(), "uwb", [2]float32{1, 2}, nil, nil)
-	zoneB := testZone(t, uuid.New(), "uwb", [2]float32{3, 4}, nil, nil)
+	zoneA := testZone(t, uuid.New(), "uwb", [2]float64{1, 2}, nil, nil)
+	zoneB := testZone(t, uuid.New(), "uwb", [2]float64{3, 4}, nil, nil)
 	updated := zoneA
 	updated.Name = stringPtrValueRef("updated")
 
@@ -321,10 +322,10 @@ func TestServiceWarmMetadataRemovesHotPathQueries(t *testing.T) {
 	t.Parallel()
 
 	zone := georeferencedZoneFixture(t, 47.3744, 8.5411)
-	fence := testPointFence(t, uuid.New(), [2]float32{5, 7}, 2)
+	fence := testPointFence(t, uuid.New(), [2]float64{5, 7}, 2)
 	trackable := gen.Trackable{Id: uuidAsOpenAPI(uuid.New()), Type: gen.TrackableTypeOmlox}
 	trackableIDs := []string{trackable.Id.String()}
-	location := testLocationWithCoordinates(t, stringPtrValueRef("local"), zone.Id.String(), [2]float32{5, 7})
+	location := testLocationWithCoordinates(t, stringPtrValueRef("local"), zone.Id.String(), [2]float64{5, 7})
 	location.Trackables = &trackableIDs
 
 	var listZoneCalls, listFenceCalls, listTrackableCalls int
@@ -344,13 +345,12 @@ func TestServiceWarmMetadataRemovesHotPathQueries(t *testing.T) {
 	}
 
 	service, err := New(zapTestLogger(t), queries, NewEventBus(), Config{
-		LocationTTL:                time.Minute,
-		ProximityTTL:               time.Minute,
-		DedupTTL:                   time.Minute,
-		MetadataReconcileInterval:  time.Minute,
-		CollisionsEnabled:          true,
-		CollisionStateTTL:          time.Minute,
-		CollisionCollidingDebounce: time.Second,
+		LocationTTL:               time.Minute,
+		ProximityTTL:              time.Minute,
+		DedupTTL:                  time.Minute,
+		MetadataReconcileInterval: time.Minute,
+		CollisionsEnabled:         true,
+		CollisionStateTTL:         time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
@@ -547,4 +547,67 @@ func mustProviderRows(t *testing.T, items ...gen.LocationProvider) []sqlcgen.Pro
 
 func stringPtrValueRef(value string) *string {
 	return &value
+}
+
+func TestConcurrentMetadataWritersPublishCompleteImmutableSnapshots(t *testing.T) {
+	cache := &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)}
+	original := cache.current()
+	var workers sync.WaitGroup
+	for range 16 {
+		fence := testPointFence(t, uuid.New(), [2]float64{13, 52}, 5)
+		workers.Go(func() {
+			cache.UpsertFence(fence, fence.Id.String())
+			for range 20 {
+				snapshot := cache.current()
+				if len(snapshot.fencesByID) != len(snapshot.worldFencesByID) {
+					t.Error("reader observed partially built metadata")
+				}
+				if _, ok := snapshot.fencesByID[fence.Id.String()]; !ok {
+					t.Error("concurrent writer lost a completed write")
+				}
+			}
+		})
+	}
+	workers.Wait()
+	if len(cache.ListFences()) != 16 {
+		t.Fatal("concurrent fence writes were lost")
+	}
+	if len(original.fences) != 0 || len(original.worldFencesByID) != 0 {
+		t.Fatal("an old snapshot was mutated")
+	}
+}
+
+func TestFenceMutationRefreshesWorldIndexAndPreservesPriorSnapshot(t *testing.T) {
+	cache := &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)}
+	service := &Service{metadata: cache}
+	fence := testPointFence(t, uuid.New(), [2]float64{13, 52}, 5)
+	other := testPointFence(t, uuid.New(), [2]float64{15, 52}, 5)
+	cache.UpsertFence(fence, "first")
+	cache.UpsertFence(other, "other")
+	before := cache.current()
+	fence = testPointFence(t, fence.Id, [2]float64{14, 52}, 5)
+	cache.UpsertFence(fence, "moved")
+	crs := "EPSG:4326"
+	for _, tc := range []struct {
+		x     float64
+		count int
+	}{{13, 0}, {14, 1}, {15, 1}} {
+		matches, err := service.fenceCandidatesForLocation(context.Background(), testLocationWithCoordinates(t, &crs, "", [2]float64{tc.x, 52}))
+		if err != nil || len(matches) != tc.count {
+			t.Fatalf("world candidates at %g: %d, %v", tc.x, len(matches), err)
+		}
+	}
+	oldPoint, err := before.worldFencesByID[fence.Id.String()].Region.AsPoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	coords, _ := oldPoint.Coordinates.AsGeoJsonPosition2D()
+	if coords[0] != 13 {
+		t.Fatal("old world geometry was mutated")
+	}
+	cache.DeleteFence(fence.Id)
+	matches, err := service.fenceCandidatesForLocation(context.Background(), testLocationWithCoordinates(t, &crs, "", [2]float64{14, 52}))
+	if err != nil || len(matches) != 0 {
+		t.Fatal("deleted fence remained in world index")
+	}
 }

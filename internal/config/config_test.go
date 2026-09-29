@@ -63,9 +63,7 @@ func TestDefaults(t *testing.T) {
 	if cfg.CollisionsEnabled {
 		t.Fatal("expected collisions to default to disabled")
 	}
-	if cfg.CollisionDefaultRadiusMeters != 0.5 {
-		t.Fatalf("unexpected collision default radius: %v", cfg.CollisionDefaultRadiusMeters)
-	}
+
 	if cfg.KalmanFilterEnabled {
 		t.Fatal("expected kalman filter to default to disabled")
 	}
@@ -198,18 +196,6 @@ func TestPprofRatesMustBeNonNegative(t *testing.T) {
 	}
 }
 
-func TestCollisionDefaultRadiusMustBePositive(t *testing.T) {
-	t.Parallel()
-
-	_, err := configFromMap(map[string]string{
-		"AUTH_MODE":                       "none",
-		"COLLISION_DEFAULT_RADIUS_METERS": "0",
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
 func TestKalmanLocationMaxPointsMustExceedOne(t *testing.T) {
 	t.Parallel()
 
@@ -270,5 +256,23 @@ func TestInvalidHubIDFailsValidation(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+func TestMQTTHandlerLimits(t *testing.T) {
+	cfg, err := configFromMap(map[string]string{"AUTH_MODE": "none"})
+	if err != nil || cfg.MQTTHandlerWorkers != 4 || cfg.MQTTHandlerBuffer != 1024 {
+		t.Fatalf("unexpected MQTT defaults: workers=%d buffer=%d err=%v", cfg.MQTTHandlerWorkers, cfg.MQTTHandlerBuffer, err)
+	}
+	cfg, err = configFromMap(map[string]string{"AUTH_MODE": "none", "MQTT_HANDLER_WORKERS": "2", "MQTT_HANDLER_BUFFER": "16"})
+	if err != nil || cfg.MQTTHandlerWorkers != 2 || cfg.MQTTHandlerBuffer != 16 {
+		t.Fatal("MQTT handler overrides not applied")
+	}
+	for _, key := range []string{"MQTT_HANDLER_WORKERS", "MQTT_HANDLER_BUFFER"} {
+		for _, value := range []string{"0", "-1"} {
+			if _, err := configFromMap(map[string]string{"AUTH_MODE": "none", key: value}); err == nil {
+				t.Fatalf("accepted %s=%s", key, value)
+			}
+		}
 	}
 }

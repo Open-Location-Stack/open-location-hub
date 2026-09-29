@@ -1,7 +1,9 @@
 package hub
 
 import (
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
@@ -117,5 +119,55 @@ func TestEventBusStillDropsDiscreteEventsWhenSubscriberIsFull(t *testing.T) {
 	<-ch
 	if drops := bus.Stats().Snapshot().EventBusDrops; drops != 1 {
 		t.Fatalf("expected one event bus drop for discrete events, got %d", drops)
+	}
+}
+
+func TestEventBusFlushesAfterIdleSubscriberResumes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		bus := NewEventBus()
+		ch, unsubscribe := bus.Subscribe(1)
+		defer unsubscribe()
+		event := Event{Kind: EventLocation, Payload: LocationEnvelope{Location: gen.Location{ProviderId: "provider"}}}
+		bus.Emit(event)
+		event.EventTime = time.Now()
+		bus.Emit(event)
+		// Let the flusher encounter a full channel with no new messages coming.
+		synctest.Wait()
+		event.EventTime = event.EventTime.Add(time.Second)
+		bus.Emit(event)
+		synctest.Wait()
+		<-ch
+		synctest.Wait()
+		select {
+		case latest := <-ch:
+			if !latest.EventTime.Equal(event.EventTime) {
+				t.Fatal("pending update was not refreshed while waiting for the reader")
+			}
+		default:
+			t.Fatal("pending event remained stuck after the reader resumed")
+		}
+	})
+}
+
+func TestEventBusConcurrentSubscribeEmitAndUnsubscribe(t *testing.T) {
+	bus := NewEventBus()
+	event := Event{Kind: EventLocation, Payload: LocationEnvelope{Location: gen.Location{ProviderId: "provider"}}}
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			for range 100 {
+				ch, unsubscribe := bus.Subscribe(1)
+				bus.Emit(event)
+				bus.Emit(event)
+				unsubscribe()
+				unsubscribe()
+				for range ch {
+				}
+			}
+		})
+	}
+	workers.Wait()
+	if got := bus.Stats().Snapshot().EventBusSubscribers; got != 0 {
+		t.Fatalf("subscriber count after cleanup = %d", got)
 	}
 }

@@ -21,7 +21,7 @@ Optional:
 
 ## Ingestion endpoints
 
-- `POST /v2/providers/proximities` (REST)
+- `PUT /v2/providers/proximities` (REST)
 - WebSocket topic `proximity_updates` via `/v2/ws/socket`
 - MQTT optional: `/omlox/json/proximity_updates/{source}/{provider_id}`
 
@@ -32,7 +32,8 @@ Optional:
 - The hub applies stateful proximity resolution before emitting the derived `Location`.
 - Default hub behavior:
   - enter the first confirmed proximity zone immediately
-  - keep the current zone briefly during competing nearby-zone observations to reduce flapping
-  - expire stale zone membership after a configurable grace interval
+  - switch to the zone reported by each accepted observation
+  - derive a WGS84 location from that zone, inheriting its floor
+- Hysteresis is disabled by default. Explicit nonzero grace/dwell settings enable the optional hub-specific behavior.
 - This repository implements hub-specific resolver tuning via zone extension properties, not new OMLOX top-level fields.
 - `Proximity.properties` remains informational in this phase and does not override configured zone resolution policy.

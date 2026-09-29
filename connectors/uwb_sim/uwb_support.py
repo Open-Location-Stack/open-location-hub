@@ -107,7 +107,7 @@ class FloorDefinition:
     image_height: int
     anchor_latitude: float
     anchor_longitude: float
-    ground_control_points: list[dict[str, object]]
+    ground_control_points: list[list[float]]
     image_corners_local: dict[str, list[float]]
     image_corners_wgs84: dict[str, list[float]]
     outline_ring_wgs84: list[list[float]]
@@ -155,13 +155,14 @@ def build_floor_definitions(
             round(z_base, 3),
         )
         center_lon, center_lat = local_xy_to_wgs84(center_local[0], center_local[1], anchor_latitude, anchor_longitude)
-        gcp_nodes = ("center", "connector", "top_dead")
+        gcp_nodes = ("center", "connector", "top_dead", "bottom_dead")
         ground_control_points = [
-            {
-                "local": point_geometry(nodes[name][0], nodes[name][1]),
-                "wgs84": point_geometry(*local_xy_to_wgs84(nodes[name][0], nodes[name][1], anchor_latitude, anchor_longitude)),
-            }
+            pair
             for name in gcp_nodes
+            for pair in [
+                list(local_xy_to_wgs84(nodes[name][0], nodes[name][1], anchor_latitude, anchor_longitude)),
+                [nodes[name][0], nodes[name][1]],
+            ]
         ]
         definitions.append(
             FloorDefinition(

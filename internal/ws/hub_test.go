@@ -119,7 +119,7 @@ func TestPayloadBatchForSubscriptionBuildsJSONArrayFromCachedItems(t *testing.T)
 		Kind:    hub.EventLocation,
 		Scope:   hub.ScopeLocal,
 		Payload: hub.LocationEnvelope{Location: location},
-	}})
+	}}, nil)
 	if !ok {
 		t.Fatal("expected payload batch")
 	}
@@ -334,7 +334,7 @@ func readWS(t *testing.T, conn *websocket.Conn) wrapper {
 func testLocation(t *testing.T) gen.Location {
 	t.Helper()
 	point := gen.Point{Type: "Point"}
-	if err := point.Coordinates.FromGeoJsonPosition2D([]float32{1, 2}); err != nil {
+	if err := point.Coordinates.FromGeoJsonPosition2D([]float64{1, 2}); err != nil {
 		t.Fatalf("set point failed: %v", err)
 	}
 	crs := "local"

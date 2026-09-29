@@ -18,13 +18,13 @@ The repository documentation is now split by audience: software/runtime document
 - Core REST CRUD is implemented for zones, providers, trackables, and fences through a shared service layer backed by Postgres and `sqlc`.
 - Hub-generated UUIDs for REST-managed resources, derived fence and collision events, and JSON-RPC caller IDs now use UUIDv7 so newly issued identifiers are time-sortable.
 - UUID generation is intentionally centralized behind `internal/ids` so the repository can switch from `github.com/google/uuid` to a future Go standard-library UUIDv7 implementation with a narrowly scoped change once that support is available and stable.
-- Provider ingestion endpoints are implemented for locations and proximities, with in-memory deduplication, latest-state tracking, unique-provider trackable auto-association from `Trackable.location_providers`, proximity hysteresis, fence membership, and collision state.
+- Provider ingestion endpoints are implemented for locations and proximities, with in-memory deduplication, latest-state tracking, provider-to-trackable auto-association from `Trackable.location_providers`, proximity hysteresis, fence membership, and collision state.
 - Ingest accepts omitted `crs`, `local`, and named EPSG codes, derives true local and WGS84 variants when transformation is possible, and suppresses only the unavailable output topic when it is not.
 - A shared internal event bus now fans normalized hub events out to MQTT and WebSocket consumers instead of keeping MQTT as the only outbound path.
 - MQTT is broker-backed and wired into startup, inbound ingest topics, and outbound location, fence-event, trackable-motion, and optional collision publication.
 - The mandatory OMLOX WebSocket surface is implemented at `GET /v2/ws/socket`, including wrapper events, runtime subscription IDs, topic fan-out, `params.token` authentication, dedicated WebSocket topic permissions, GeoJSON topic variants, and disabled-feature errors for collision topic access when collisions are turned off.
 - WebSocket connection shutdown no longer closes the outbound send channel, so concurrent disconnect and fan-out paths now converge on the `done` signal instead of racing a send against channel close under `go test -race`.
-- Collision support now exists as an explicitly optional feature controlled by `COLLISIONS_ENABLED`; when enabled, the hub emits bounded single-hub trackable-versus-trackable collision events in WGS84 using meter-based thresholds (`Trackable.radius` or `COLLISION_DEFAULT_RADIUS_METERS`) and a short-range planar approximation on the hot path.
+- Collision support now exists as an explicitly optional feature controlled by `COLLISIONS_ENABLED`; when enabled, the hub emits bounded single-hub trackable-versus-trackable collision events in WGS84 using meter-based thresholds (`Trackable.radius`, defaulting to zero) and a short-range planar approximation on the hot path.
 - RPC now operates as a control-plane surface: `GET /v2/rpc/available` and `PUT /v2/rpc` support hub-owned methods, MQTT-bridged methods, retained method discovery, and the `_all_within_timeout`, `_return_first_success`, and `_return_first_error` aggregation modes.
 - Unit and integration coverage exist for config validation, auth, CRUD behavior, transient ingest state, CRS transformation/georeferencing behavior, MQTT topic mapping/publication, RPC bridge behavior, Dex-backed end-to-end authorization, and shared-hub traffic scenarios including multi-geofence movement validation, with `t.Parallel()` now enabled across the test suites after removing the remaining shared runtime-seam and process-env test coupling.
 - The integration test harness now keeps HTTP response bodies open for decode assertions, retries Postgres migration startup briefly so CI tolerates transient container readiness races on hosted runners, auto-aligns Testcontainers with the active Docker context when local runtimes use non-default Unix sockets, and reuses one shared hub app image per integration test process so concurrent runs do not contend on redundant identical builds.
@@ -37,24 +37,24 @@ The repository documentation is now split by audience: software/runtime document
 
 ### Implemented but still incomplete
 - The persistence model stores canonical API payloads as JSON and only indexes a minimal set of fields; there is not yet richer filtering, search, or migration support for query-heavy workloads.
-- Proximity ingestion now uses a stateful resolver that maps proximity updates to proximity-capable zones, applies anti-flap stickiness, and emits derived locations from the resolved zone position.
+- Proximity ingestion maps observations to proximity-capable zones and emits WGS84 locations from the zone position. Anti-flap stickiness is an opt-in extension.
 - Proximity resolution is still intentionally simple:
   - it uses the resolved zone's declared position rather than triangulation or sensor fusion
   - it does not support moving zones tied to a provider or trackable
   - it does not combine multiple simultaneous proximity observations into a richer confidence model
   - it does not yet share logic with trackable locating rules or fence tolerance behavior
 - CRS transformation now exists for WGS84, projected EPSG inputs, and OMLOX local coordinates backed by zone ground control points, but it currently relies on a fitted 2D similarity model and does not yet attempt richer benchmark/anchor calibration.
-- PROJ installation on macOS currently relies on a shimmed host setup. In practice that means coordinate-transformation behavior is not a verified macOS build path in the current repository state.
+- PROJ installation on macOS uses the repository pkg-config shim; native transformation unit tests run through `just test-unit` on macOS.
 - Linux and Docker builds use native PROJ packages and are expected to work normally.
 - GitHub Actions Ubuntu runners now explicitly install `just`, `pkg-config`, `libproj-dev`, and `proj-data` before the regular verification and race-test jobs, matching the documented Linux dependency model.
-- CRS behavior is currently verified only through Linux/Docker-backed builds and tests.
-- Fence processing is currently a simple in-process point-in-region check over latest locations; provider- and trackable-specific timeout semantics from the OMLOX text are not yet modeled in depth.
+- CRS behavior is covered by local unit tests and Linux/Docker integration tests.
+- Fence processing uses indexed, projected geometry, circular trackable extent, parameter specificity, and scheduled table-13 exits. Collision state follows table 14 and survives observation-cache expiry.
 - MQTT publication and subscription use a QoS 1 baseline and reconnect behavior, but there is no explicit retry accounting or dead-letter handling.
 - MQTT remains useful for local integration, but the intended architecture is that cross-hub federation uses REST and WebSocket rather than MQTT.
 - RPC now publishes retained announcements for hub-owned methods and hosts local implementations of `com.omlox.ping`, `com.omlox.identify`, and `com.omlox.core.xcmd`; `com.omlox.identify` now reports the persisted hub label and stable `hub_id`, while `com.omlox.core.xcmd` still depends on a deployment-specific adapter before it can execute real device commands.
 - Startup now persists singleton hub metadata in Postgres, bootstraps `HUB_ID` and `HUB_LABEL` from env or sensible defaults on first run, and fails fast on later env-versus-storage mismatches unless `RESET_HUB_ID=true`.
 - The shared internal event bus now populates `origin_hub_id` from persisted hub metadata for all emitted events so provenance is available for downstream consumers and later federation work.
-- MQTT method announcement support currently relies on retained publication without MQTT v5 message-expiry enforcement because the current client layer does not yet expose that broker feature cleanly.
+- MQTT uses version 5 with 120-second retained announcement expiry and expiry-aware external handler discovery.
 - OTLP observability is now part of the runtime baseline: the hub can export metrics, traces, and logs to a collector, the ingest and decision hot paths emit bounded-cardinality telemetry, and e2e coverage now verifies all three signals reach an OTLP receiver.
 - The repository now has a dedicated `just test-race` target and CI step, and the RPC bridge test double has been synchronized so the package passes the Go race detector under the standard package-selection rules.
 - Coverage is still lighter in observability and a few storage/runtime edge packages than in the core service and RPC packages, but the previous blind spots around the REST handler layer, MQTT client edges, process wiring, metadata cache diffs, and in-memory processing state now have direct failure-path coverage.
@@ -75,7 +75,7 @@ Delivered:
 
 ### Phase 2: Ingestion and transient state baseline
 Delivered:
-- `POST /v2/providers/locations` and `POST /v2/providers/proximities` are implemented.
+- `PUT /v2/providers/locations` and `PUT /v2/providers/proximities` are implemented.
 - In-memory TTL configuration now governs latest state, proximity-derived state, dedup windows, metadata reconcile cadence, and RPC timeout.
 - Ingestion uses a shared path so HTTP and MQTT inputs exercise the same core logic.
 - Location ingest validation now accepts omitted `crs`, `local`, and named EPSG codes, with runtime transformation determining which derived outputs are publishable.
@@ -92,7 +92,7 @@ Delivered:
 
 Residual work:
 - Document and enforce operational behavior for sustained publish failures, reconnect storms, and overloaded downstream consumers.
-- Revisit MQTT v5 message-expiry support for retained RPC availability announcements if strict OMLOX expiry behavior becomes a deployment requirement.
+- MQTT 5 retained availability expiry is implemented and covered by local Mosquitto integration tests.
 
 ### Phase 4: RPC baseline
 Delivered:
@@ -145,8 +145,8 @@ Current observability baseline in this phase:
 
 ### Additional implementation depth
 Scope:
-- Add richer query/filter behavior for REST resources where OMLOX workflows benefit from more than list-by-created-time.
-- Add stronger event modeling for fence timeouts, motion derivation, and future collision handling.
+- Additional nonstandard search/filter capabilities can be considered separately; the published REST query parameters are implemented in 0.2.
+- Open Location Hub 0.2 implements locating-rule selection and fence/collision timer transitions; further cross-hub event correlation belongs to federation work.
 - Revisit the current 2D similarity-fit georeferencing model if OMLOX deployments require affine, anchor-assisted, or higher-order calibration.
 - Revisit optional proximity depth such as mobile zones, richer confidence-based switching, and shared tolerance semantics with fences/trackable locating.
 - Revisit the JSON-payload-first storage model if query volume or federation requirements demand more structured persistence.
@@ -158,8 +158,8 @@ Exit criteria:
 
 ### Phase 7: Standards-facing feature completion
 Scope:
-- Close remaining MQTT extension gaps for enabled deployments, including clearer expiry behavior, topic-family completeness, and operational handling under reconnect/replay conditions.
-- Deepen the currently bounded collision implementation and decide how much more OMLOX collision behavior belongs in the product scope.
+- MQTT 5 expiry and topic mappings are covered by 0.2; deployment-specific XCMD execution still needs a device adapter.
+- The single-hub collision baseline is implemented; cross-hub collision correlation remains a federation concern.
 
 Exit criteria:
 - Another OMLOX-compliant client or hub can use the documented REST, WebSocket, and optional MQTT surfaces without relying on repository-specific shortcuts or undocumented gaps.

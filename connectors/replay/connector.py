@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Iterator
 
 from hub_client import HubConfig, HubRESTClient, HubWebSocketPublisher
-from replay_support import build_replay_schedule, load_env_file, load_logged_locations
+from replay_support import build_replay_schedule, load_env_file, load_logged_locations, normalize_technology
 
 
 LOGGER = logging.getLogger("replay.connector")
@@ -149,9 +149,9 @@ def ensure_hub_resources(
     known_providers: set[str] = set()
     known_trackables: set[str] = set()
     for item in logged_locations:
-        location = item.location
+        location = normalize_technology(item.location)
         provider_id = location.get("provider_id")
-        provider_type = location.get("provider_type") or "replay"
+        provider_type = location.get("provider_type") or "unknown"
         if isinstance(provider_id, str) and provider_id and provider_id not in known_providers:
             hub_rest.ensure_provider(
                 provider_id=provider_id,

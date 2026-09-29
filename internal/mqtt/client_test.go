@@ -6,241 +6,128 @@ import (
 	"testing"
 	"time"
 
-	pahomqtt "github.com/eclipse/paho.mqtt.golang"
-	"go.uber.org/zap"
+	"github.com/eclipse/paho.golang/packets"
+	"github.com/eclipse/paho.golang/paho"
 )
 
-func TestAddOnConnectListenerRunsImmediatelyWhenConnected(t *testing.T) {
-	t.Parallel()
+type fakeConnection struct {
+	packet        *paho.Publish
+	err           error
+	reason        byte
+	subscriptions int
+	closed        bool
+}
 
-	client := &Client{inner: &fakePahoClient{connected: true}}
+func (f *fakeConnection) Publish(_ context.Context, p *paho.Publish) (*paho.PublishResponse, error) {
+	f.packet = p
+	return &paho.PublishResponse{ReasonCode: f.reason}, f.err
+}
+func (f *fakeConnection) Subscribe(context.Context, *paho.Subscribe) (*paho.Suback, error) {
+	f.subscriptions++
+	return &paho.Suback{Reasons: []byte{f.reason}}, f.err
+}
+func (f *fakeConnection) Disconnect(context.Context) error { f.closed = true; return nil }
 
-	called := make(chan struct{}, 1)
-	client.AddOnConnectListener(func(context.Context) {
-		called <- struct{}{}
-	})
-
+func TestMQTT5AvailabilityExpiry(t *testing.T) {
+	f := &fakeConnection{}
+	c := &Client{inner: f}
+	for _, tc := range []struct {
+		topic           string
+		retain, expires bool
+	}{{TopicRPCAvailable("test"), true, true}, {TopicLocationEPSG4326("provider"), false, false}, {TopicRPCAvailable("test"), false, false}} {
+		if err := c.PublishJSON(context.Background(), tc.topic, map[string]string{"id": "handler"}, tc.retain); err != nil {
+			t.Fatal(err)
+		}
+		p := f.packet
+		if p.QoS != 1 || p.Retain != tc.retain {
+			t.Fatalf("wrong publication: %+v", p)
+		}
+		if tc.expires {
+			if p.Properties == nil || p.Properties.MessageExpiry == nil || *p.Properties.MessageExpiry != 120 {
+				t.Fatal("missing 120-second MQTT 5 expiry")
+			}
+		} else if p.Properties != nil {
+			t.Fatal("unexpected expiry")
+		}
+	}
+}
+func TestBrokerFailuresAreReturned(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		reason byte
+	}{{errors.New("broker failure"), 0}, {nil, 0x87}} {
+		c := &Client{inner: &fakeConnection{err: tc.err, reason: tc.reason}}
+		defer c.Close()
+		c.connected.Store(true)
+		if c.PublishRaw(context.Background(), "topic", nil, false) == nil {
+			t.Fatal("expected publish failure")
+		}
+		if c.Subscribe("topic", func(context.Context, string, []byte) error { return nil }) == nil {
+			t.Fatal("expected subscribe failure")
+		}
+	}
+	if (&Client{}).PublishJSON(context.Background(), "topic", make(chan int), false) == nil {
+		t.Fatal("expected marshal failure")
+	}
+}
+func TestResubscribeDoesNotDuplicateHandlers(t *testing.T) {
+	f := &fakeConnection{}
+	c := &Client{inner: f}
+	called := make(chan string, 2)
+	if err := c.Subscribe("topic/+", func(_ context.Context, topic string, payload []byte) error {
+		called <- topic + ":" + string(payload)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if f.subscriptions != 0 {
+		t.Fatal("should defer broker subscription while disconnected")
+	}
+	c.resubscribe(f)
+	c.resubscribe(f)
+	c.router.Route(&packets.Publish{Topic: "topic/1", Payload: []byte("hello"), Properties: &packets.Properties{}})
+	select {
+	case v := <-called:
+		if v != "topic/1:hello" {
+			t.Fatal(v)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no routed message")
+	}
 	select {
 	case <-called:
-	case <-time.After(time.Second):
-		t.Fatal("expected listener to run immediately")
+		t.Fatal("duplicate callback")
+	case <-time.After(10 * time.Millisecond):
+	}
+	c.connected.Store(true)
+	hook := false
+	c.AddOnConnectListener(func(context.Context) { hook = true })
+	if !hook {
+		t.Fatal("missing immediate hook")
+	}
+	if err := c.Close(); err != nil || !f.closed {
+		t.Fatal("did not close")
 	}
 }
-
-func TestSubscribeDefersBrokerSubscriptionUntilConnected(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{inner: &fakePahoClient{connected: false}}
-
-	called := false
-	err := client.Subscribe("topic/+", func(context.Context, string, []byte) error {
-		called = true
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("subscribe returned error: %v", err)
-	}
-	if called {
-		t.Fatal("message handler should not run during registration")
-	}
-	if len(client.subscriptions) != 1 {
-		t.Fatalf("expected one registered subscription, got %d", len(client.subscriptions))
-	}
-}
-
-func TestSubscribeReturnsBrokerErrorWhenConnected(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("subscribe failed")
-	inner := &fakePahoClient{
-		connected: true,
-		subscribeToken: fakeToken{
-			waitTimeout: true,
-			err:         wantErr,
-		},
-	}
-	client := &Client{inner: inner}
-
-	err := client.Subscribe("topic/+", func(context.Context, string, []byte) error { return nil })
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected broker error, got %v", err)
-	}
-}
-
-func TestPublishJSONReturnsMarshalError(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{}
-	err := client.PublishJSON(context.Background(), "topic", map[string]any{"invalid": make(chan int)}, false)
-	if err == nil {
-		t.Fatal("expected marshal error")
-	}
-}
-
-func TestPublishRawTimeoutAndError(t *testing.T) {
-	t.Run("timeout", func(t *testing.T) {
-		t.Parallel()
-
-		client := &Client{inner: &fakePahoClient{
-			publishToken: fakeToken{waitTimeout: false},
-		}}
-		err := client.PublishRaw(context.Background(), "topic", []byte("payload"), false)
-		if err == nil || err.Error() != "mqtt publish timed out for topic" {
-			t.Fatalf("unexpected timeout error: %v", err)
+func TestConnectionConfigPreservesTLSAndCredentials(t *testing.T) {
+	for _, scheme := range []string{"tls", "ssl", "mqtts", "wss"} {
+		cfg, err := connectionConfig(scheme + "://user:secret@example.test:8883")
+		if err != nil {
+			t.Fatal(err)
 		}
-	})
-
-	t.Run("broker error", func(t *testing.T) {
-		t.Parallel()
-
-		wantErr := errors.New("publish failed")
-		client := &Client{inner: &fakePahoClient{
-			publishToken: fakeToken{waitTimeout: true, err: wantErr},
-		}}
-		err := client.PublishRaw(context.Background(), "topic", []byte("payload"), true)
-		if !errors.Is(err, wantErr) {
-			t.Fatalf("expected broker error, got %v", err)
+		if cfg.ServerUrls[0].User != nil || cfg.ConnectUsername != "user" || string(cfg.ConnectPassword) != "secret" {
+			t.Fatal("credentials not transferred")
 		}
-	})
-}
-
-func TestResubscribeRunsHandlersAndHooksOnConnect(t *testing.T) {
-	t.Parallel()
-
-	inner := &fakePahoClient{
-		connected:      true,
-		subscribeToken: fakeToken{waitTimeout: true},
+		if cfg.ServerUrls[0].Scheme == "mqtt" {
+			t.Fatal("TLS downgraded")
+		}
 	}
-	client := &Client{
-		logger: zap.NewNop(),
-		inner:  inner,
-		subscriptions: []subscription{{
-			filter: "topic/+",
-			handler: func(_ context.Context, topic string, payload []byte) error {
-				if topic != "topic/1" || string(payload) != "hello" {
-					t.Fatalf("unexpected message delivered: topic=%s payload=%s", topic, string(payload))
-				}
-				return nil
-			},
-		}},
-	}
-	hooks := make(chan struct{}, 2)
-	client.AddOnConnectListener(func(context.Context) {
-		hooks <- struct{}{}
-	})
-
-	client.resubscribe(inner)
-	if inner.lastSubscriptionHandler == nil {
-		t.Fatal("expected broker subscribe callback to be installed")
-	}
-	inner.lastSubscriptionHandler(inner, fakeMessage{topic: "topic/1", payload: []byte("hello")})
-
-	client.runOnConnectHooks(context.Background())
-	select {
-	case <-hooks:
-	case <-time.After(time.Second):
-		t.Fatal("expected on-connect hook to run")
+	if _, err := connectionConfig("http://example.test"); err == nil {
+		t.Fatal("accepted invalid scheme")
 	}
 }
-
-func TestSubscribeTimeoutReturnsContextualError(t *testing.T) {
-	t.Parallel()
-
-	client := &Client{
-		logger: zap.NewNop(),
-		inner:  &fakePahoClient{},
-	}
-	err := client.subscribe(client.inner, "topic/+", func(context.Context, string, []byte) error { return nil })
-	if err == nil || err.Error() != "mqtt subscribe timed out for topic/+" {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCloseDisconnectsConnectedClient(t *testing.T) {
-	t.Parallel()
-
-	inner := &fakePahoClient{connected: true}
-	client := &Client{inner: inner}
-
-	if err := client.Close(); err != nil {
-		t.Fatalf("close returned error: %v", err)
-	}
-	if inner.disconnectQuiesce != 250 {
-		t.Fatalf("unexpected disconnect quiesce: %d", inner.disconnectQuiesce)
-	}
-}
-
 func TestTopicMapping(t *testing.T) {
-	t.Parallel()
-
-	if got := TopicLocationPub("abc"); got != "/omlox/json/location_updates/pub/abc" {
-		t.Fatalf("unexpected topic: %s", got)
-	}
-	if got := TopicProximity("src", "abc"); got != "/omlox/json/proximity_updates/src/abc" {
-		t.Fatalf("unexpected topic: %s", got)
-	}
-	if got := TopicRPCResponse("echo", "caller"); got != "/omlox/jsonrpc/rpc/echo/response/caller" {
-		t.Fatalf("unexpected response topic: %s", got)
+	if TopicLocationPub("abc") != "/omlox/json/location_updates/pub/abc" || TopicRPCResponse("echo", "caller") != "/omlox/jsonrpc/rpc/echo/response/caller" {
+		t.Fatal("wrong topic")
 	}
 }
-
-type fakePahoClient struct {
-	connected               bool
-	publishToken            fakeToken
-	subscribeToken          fakeToken
-	lastSubscriptionHandler pahomqtt.MessageHandler
-	disconnectQuiesce       uint
-}
-
-func (f *fakePahoClient) IsConnected() bool      { return f.connected }
-func (f *fakePahoClient) IsConnectionOpen() bool { return f.connected }
-func (f *fakePahoClient) Connect() pahomqtt.Token {
-	return fakeToken{waitTimeout: true}
-}
-func (f *fakePahoClient) Disconnect(quiesce uint) {
-	f.disconnectQuiesce = quiesce
-}
-func (f *fakePahoClient) Publish(string, byte, bool, interface{}) pahomqtt.Token {
-	return f.publishToken
-}
-func (f *fakePahoClient) Subscribe(_ string, _ byte, callback pahomqtt.MessageHandler) pahomqtt.Token {
-	f.lastSubscriptionHandler = callback
-	return f.subscribeToken
-}
-func (f *fakePahoClient) SubscribeMultiple(map[string]byte, pahomqtt.MessageHandler) pahomqtt.Token {
-	return fakeToken{waitTimeout: true}
-}
-func (f *fakePahoClient) Unsubscribe(...string) pahomqtt.Token {
-	return fakeToken{waitTimeout: true}
-}
-func (f *fakePahoClient) AddRoute(string, pahomqtt.MessageHandler) {}
-func (f *fakePahoClient) OptionsReader() pahomqtt.ClientOptionsReader {
-	return pahomqtt.ClientOptionsReader{}
-}
-
-type fakeToken struct {
-	waitTimeout bool
-	err         error
-}
-
-func (f fakeToken) Wait() bool                     { return f.waitTimeout }
-func (f fakeToken) WaitTimeout(time.Duration) bool { return f.waitTimeout }
-func (f fakeToken) Done() <-chan struct{} {
-	ch := make(chan struct{})
-	close(ch)
-	return ch
-}
-func (f fakeToken) Error() error { return f.err }
-
-type fakeMessage struct {
-	topic   string
-	payload []byte
-}
-
-func (m fakeMessage) Duplicate() bool   { return false }
-func (m fakeMessage) Qos() byte         { return 1 }
-func (m fakeMessage) Retained() bool    { return false }
-func (m fakeMessage) Topic() string     { return m.topic }
-func (m fakeMessage) MessageID() uint16 { return 1 }
-func (m fakeMessage) Payload() []byte   { return m.payload }
-func (m fakeMessage) Ack()              {}

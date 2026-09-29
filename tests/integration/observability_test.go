@@ -33,14 +33,14 @@ func TestObservabilityExportsOTLPLogsMetricsAndTraces(t *testing.T) {
 	}
 	decodeResponse(t, createResp, &zone)
 
-	locationResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	locationResp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
 		"provider_id":   scopedID(t, "provider-observability"),
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatusAndClose(t, locationResp, http.StatusAccepted)
+	assertStatusAndClose(t, locationResp, http.StatusNoContent)
 
 	if err := waitForSinkPaths(ctx, suite.otlpSink, 30*time.Second, "/v1/traces", "/v1/metrics", "/v1/logs"); err != nil {
 		t.Fatal(err)

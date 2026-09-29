@@ -88,7 +88,8 @@ type ProximityEnvelope struct {
 // TrackableMotionEnvelope keeps a motion payload together with its GeoJSON
 // representation when useful for downstream consumers.
 type TrackableMotionEnvelope struct {
-	Motion gen.TrackableMotion `json:"motion"`
+	Motion   gen.TrackableMotion  `json:"motion"`
+	Original *gen.TrackableMotion `json:"-"`
 
 	motionJSON json.RawMessage `json:"-"`
 }
@@ -157,6 +158,7 @@ func (e MetadataChange) ItemJSON() json.RawMessage {
 // Event is the normalized hub event emitted once and then consumed by
 // transport-specific publishers such as MQTT and WebSocket.
 type Event struct {
+	Native      bool         `json:"-"`
 	Kind        EventKind    `json:"kind"`
 	Scope       EventScope   `json:"scope"`
 	EventTime   time.Time    `json:"event_time"`
@@ -198,8 +200,15 @@ type eventSubscriber struct {
 	done         chan struct{}
 	flushSignal  chan struct{}
 	mu           sync.Mutex
-	pending      map[string]Event
+	closed       bool
+	version      uint64
+	pending      map[string]pendingEvent
 	pendingOrder []string
+}
+
+type pendingEvent struct {
+	event   Event
+	version uint64
 }
 
 // NewEventBus constructs an EventBus.
@@ -217,10 +226,10 @@ func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
 	id := b.nextID
 	b.nextID++
 	b.subscribers[id] = sub
-	b.mu.Unlock()
 	if b.stats != nil {
 		b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
 	}
+	b.mu.Unlock()
 
 	return sub.ch, func() {
 		b.mu.Lock()
@@ -280,86 +289,66 @@ func newEventSubscriber(buffer int) *eventSubscriber {
 		ch:          make(chan Event, buffer),
 		done:        make(chan struct{}),
 		flushSignal: make(chan struct{}, subscriberFlushSignalBuffer),
-		pending:     make(map[string]Event),
+		pending:     make(map[string]pendingEvent),
 	}
 	go sub.flushLoop()
 	return sub
 }
 
 func (s *eventSubscriber) close() {
-	close(s.done)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed {
+		s.closed = true
+		close(s.done)
+	}
 }
 
 func (s *eventSubscriber) deliver(event Event) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
 	key, coalescible := eventCoalescingKey(event)
-	if coalescible {
-		s.mu.Lock()
-		if _, exists := s.pending[key]; exists {
-			s.pending[key] = event
-			s.mu.Unlock()
-			s.signalFlush()
-			return true
-		}
-		hasBacklog := len(s.pendingOrder) > 0
-		s.mu.Unlock()
-		if hasBacklog {
-			return s.enqueuePending(key, event)
-		}
+	if coalescible && len(s.pendingOrder) > 0 {
+		return s.enqueuePendingLocked(key, event)
 	}
 
 	select {
-	case <-s.done:
-		return false
 	case s.ch <- event:
-		if coalescible {
-			s.clearPending(key)
-		}
 		return true
 	default:
 		if !coalescible {
 			return false
 		}
-		return s.enqueuePending(key, event)
+		return s.enqueuePendingLocked(key, event)
 	}
 }
 
-func (s *eventSubscriber) enqueuePending(key string, event Event) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.pending[key]; exists {
-		s.pending[key] = event
-		s.signalFlushLocked()
-		return true
+func (s *eventSubscriber) enqueuePendingLocked(key string, event Event) bool {
+	if _, exists := s.pending[key]; !exists {
+		if len(s.pendingOrder) >= subscriberPendingLimit {
+			return false
+		}
+		s.pendingOrder = append(s.pendingOrder, key)
 	}
-	if len(s.pendingOrder) >= subscriberPendingLimit {
-		return false
-	}
-	s.pending[key] = event
-	s.pendingOrder = append(s.pendingOrder, key)
+	s.version++
+	s.pending[key] = pendingEvent{event: event, version: s.version}
 	s.signalFlushLocked()
 	return true
 }
 
-func (s *eventSubscriber) clearPending(key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.pending[key]; !exists {
-		return
-	}
-	delete(s.pending, key)
-	for i, pendingKey := range s.pendingOrder {
-		if pendingKey == key {
-			s.pendingOrder = append(s.pendingOrder[:i], s.pendingOrder[i+1:]...)
-			return
-		}
-	}
-}
-
 func (s *eventSubscriber) flushLoop() {
+	defer func() {
+		// Synchronize channel closure with deliver's direct send path.
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		close(s.ch)
+	}()
 	for {
 		select {
 		case <-s.done:
-			close(s.ch)
 			return
 		case <-s.flushSignal:
 			s.flushPending()
@@ -376,15 +365,15 @@ func (s *eventSubscriber) flushPending() {
 		select {
 		case <-s.done:
 			return
-		case s.ch <- event:
-			s.removePending(key)
-		default:
-			return
+		case s.ch <- event.event:
+			s.removePending(key, event.version)
+		case <-s.flushSignal:
+			// Refresh the pending value while waiting for the reader to catch up.
 		}
 	}
 }
 
-func (s *eventSubscriber) peekPending() (string, Event, bool) {
+func (s *eventSubscriber) peekPending() (string, pendingEvent, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for len(s.pendingOrder) > 0 {
@@ -395,12 +384,16 @@ func (s *eventSubscriber) peekPending() (string, Event, bool) {
 		}
 		s.pendingOrder = s.pendingOrder[1:]
 	}
-	return "", Event{}, false
+	return "", pendingEvent{}, false
 }
 
-func (s *eventSubscriber) removePending(key string) {
+func (s *eventSubscriber) removePending(key string, version uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.pending[key].version != version {
+		// A newer value arrived while the previous value was being sent.
+		return
+	}
 	delete(s.pending, key)
 	if len(s.pendingOrder) == 0 {
 		return
@@ -415,12 +408,6 @@ func (s *eventSubscriber) removePending(key string) {
 			return
 		}
 	}
-}
-
-func (s *eventSubscriber) signalFlush() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.signalFlushLocked()
 }
 
 func (s *eventSubscriber) signalFlushLocked() {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/auth"
@@ -48,21 +49,22 @@ type wrapper struct {
 }
 
 type Hub struct {
-	logger            *zap.Logger
-	service           *hub.Service
-	bus               *hub.EventBus
-	authenticator     auth.Authenticator
-	registry          *auth.Registry
-	authCfg           config.AuthConfig
-	writeTimeout      time.Duration
-	outboundBuffer    int
-	collisionsEnabled bool
-	readTimeout       time.Duration
-	pingInterval      time.Duration
-	upgrader          websocket.Upgrader
-	stats             *hub.RuntimeStats
-	mu                sync.RWMutex
-	connections       map[*connection]struct{}
+	nextSubscriptionID atomic.Uint64
+	logger             *zap.Logger
+	service            *hub.Service
+	bus                *hub.EventBus
+	authenticator      auth.Authenticator
+	registry           *auth.Registry
+	authCfg            config.AuthConfig
+	writeTimeout       time.Duration
+	outboundBuffer     int
+	collisionsEnabled  bool
+	readTimeout        time.Duration
+	pingInterval       time.Duration
+	upgrader           websocket.Upgrader
+	stats              *hub.RuntimeStats
+	mu                 sync.RWMutex
+	connections        map[*connection]struct{}
 }
 
 type connection struct {
@@ -72,7 +74,6 @@ type connection struct {
 	sendMu   sync.Mutex
 	pending  map[string][]byte
 	mu       sync.RWMutex
-	nextID   int
 	subs     map[int]subscription
 	closed   bool
 	closeMux sync.Mutex
@@ -91,7 +92,7 @@ type locationFilter struct {
 	Source       string
 	CRS          string
 	ZoneID       string
-	Floor        *float32
+	Floor        *float64
 	AccuracyLTE  *float64
 }
 
@@ -109,7 +110,7 @@ type motionFilter struct {
 	ProviderID  string
 	CRS         string
 	ZoneID      string
-	Floor       *float32
+	Floor       *float64
 	AccuracyLTE *float64
 }
 
@@ -119,7 +120,7 @@ type collisionFilter struct {
 	CollisionType string
 	CRS           string
 	ZoneID        string
-	Floor         *float32
+	Floor         *float64
 }
 
 type metadataFilter struct {
@@ -191,7 +192,6 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 		send:    make(chan []byte, h.outboundBuffer),
 		pending: map[string][]byte{},
 		subs:    map[int]subscription{},
-		nextID:  1,
 		done:    make(chan struct{}),
 	}
 	c.configureSocket()
@@ -260,8 +260,12 @@ func (h *Hub) broadcastBatch(events []hub.Event) {
 		conns = append(conns, conn)
 	}
 	h.mu.RUnlock()
+	var projections *projectionCache
+	if h.service != nil {
+		projections = newProjectionCache(h.service)
+	}
 	for _, conn := range conns {
-		conn.deliverBatch(events)
+		conn.deliverBatch(events, projections)
 	}
 }
 
@@ -366,9 +370,15 @@ func (c *connection) handleSubscribe(msg wrapper) {
 		c.sendError(errInvalidPayload, err.Error())
 		return
 	}
+	if c.hub.service != nil {
+		crs, zoneID := projectionParams(filter)
+		if err := c.hub.service.ValidateProjection(context.Background(), crs, zoneID); err != nil {
+			c.sendError(errSubscribeFailed, err.Error())
+			return
+		}
+	}
 	c.mu.Lock()
-	id := c.nextID
-	c.nextID++
+	id := int(c.hub.nextSubscriptionID.Add(1))
 	c.subs[id] = subscription{id: id, topic: msg.Topic, filter: filter}
 	c.mu.Unlock()
 	c.sendWrapper(wrapper{Event: "subscribed", Topic: msg.Topic, SubscriptionID: &id})
@@ -457,7 +467,7 @@ func (c *connection) authenticate(params map[string]any, subscribe bool, topic s
 	return principal, nil
 }
 
-func (c *connection) deliverBatch(events []hub.Event) {
+func (c *connection) deliverBatch(events []hub.Event, projections *projectionCache) {
 	start := time.Now()
 	c.mu.RLock()
 	subs := make([]subscription, 0, len(c.subs))
@@ -466,7 +476,7 @@ func (c *connection) deliverBatch(events []hub.Event) {
 	}
 	c.mu.RUnlock()
 	for _, sub := range subs {
-		payload, ok := payloadBatchForSubscription(sub, events)
+		payload, ok := payloadBatchForSubscription(sub, events, projections)
 		if !ok {
 			continue
 		}
@@ -581,7 +591,11 @@ func parseFilter(topic string, params map[string]any) (any, error) {
 	}
 }
 
-func payloadBatchForSubscription(sub subscription, events []hub.Event) (json.RawMessage, bool) {
+func payloadBatchForSubscription(sub subscription, events []hub.Event, projections *projectionCache) (json.RawMessage, bool) {
+	if projections != nil {
+		sub, events = projectSubscription(sub, events, projections)
+	}
+
 	items := make([]json.RawMessage, 0, len(events))
 	switch sub.topic {
 	case topicLocationUpdates:
@@ -710,7 +724,7 @@ func parseLocationFilter(params map[string]any) locationFilter {
 		CRS:          stringParam(params, "crs"),
 		ZoneID:       stringParam(params, "zone_id"),
 	}
-	filter.Floor = float32Param(params, "floor")
+	filter.Floor = float64Param(params, "floor")
 	filter.AccuracyLTE = float64Param(params, "accuracy")
 	return filter
 }
@@ -733,7 +747,7 @@ func parseMotionFilter(params map[string]any) motionFilter {
 		CRS:        stringParam(params, "crs"),
 		ZoneID:     stringParam(params, "zone_id"),
 	}
-	filter.Floor = float32Param(params, "floor")
+	filter.Floor = float64Param(params, "floor")
 	filter.AccuracyLTE = float64Param(params, "accuracy")
 	return filter
 }
@@ -746,7 +760,7 @@ func parseCollisionFilter(params map[string]any) collisionFilter {
 		CRS:           stringParam(params, "crs"),
 		ZoneID:        stringParam(params, "zone_id"),
 	}
-	filter.Floor = float32Param(params, "floor")
+	filter.Floor = float64Param(params, "floor")
 	return filter
 }
 
@@ -764,19 +778,6 @@ func stringParam(params map[string]any, key string) string {
 	}
 	value, _ := params[key].(string)
 	return strings.TrimSpace(value)
-}
-
-func float32Param(params map[string]any, key string) *float32 {
-	if params == nil {
-		return nil
-	}
-	switch v := params[key].(type) {
-	case float64:
-		out := float32(v)
-		return &out
-	default:
-		return nil
-	}
 }
 
 func float64Param(params map[string]any, key string) *float64 {
@@ -808,6 +809,9 @@ func matchLocation(filter locationFilter, location gen.Location) bool {
 	if filter.ZoneID != "" && filter.ZoneID != location.Source {
 		return false
 	}
+	if filter.Floor != nil && (location.Floor == nil || *filter.Floor != *location.Floor) {
+		return false
+	}
 	if filter.AccuracyLTE != nil && (location.Accuracy == nil || float64(*location.Accuracy) > *filter.AccuracyLTE) {
 		return false
 	}
@@ -815,6 +819,13 @@ func matchLocation(filter locationFilter, location gen.Location) bool {
 }
 
 func matchFence(filter fenceFilter, event gen.FenceEvent) bool {
+	objectType := "location_provider"
+	if event.TrackableId != nil {
+		objectType = "trackable"
+	}
+	if filter.ObjectType != "" && filter.ObjectType != objectType {
+		return false
+	}
 	if filter.FenceID != "" && filter.FenceID != event.FenceId.String() {
 		return false
 	}
@@ -846,6 +857,9 @@ func matchMotion(filter motionFilter, motion gen.TrackableMotion) bool {
 	if filter.ZoneID != "" && filter.ZoneID != motion.Location.Source {
 		return false
 	}
+	if filter.Floor != nil && (motion.Location.Floor == nil || *filter.Floor != *motion.Location.Floor) {
+		return false
+	}
 	if filter.AccuracyLTE != nil && (motion.Location.Accuracy == nil || float64(*motion.Location.Accuracy) > *filter.AccuracyLTE) {
 		return false
 	}
@@ -853,6 +867,13 @@ func matchMotion(filter motionFilter, motion gen.TrackableMotion) bool {
 }
 
 func matchCollision(filter collisionFilter, event gen.CollisionEvent) bool {
+	if filter.Floor != nil {
+		for _, c := range event.Collisions {
+			if c.Floor == nil || *c.Floor != *filter.Floor {
+				return false
+			}
+		}
+	}
 	if filter.CollisionType != "" && filter.CollisionType != string(event.CollisionType) {
 		return false
 	}

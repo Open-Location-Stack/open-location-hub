@@ -4,140 +4,209 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	pahomqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/eclipse/paho.golang/autopaho"
+	"github.com/eclipse/paho.golang/paho"
 	"github.com/formation-res/open-location-hub/internal/observability"
 	"go.uber.org/zap"
 )
 
 // MessageHandler handles a single inbound MQTT message.
-type MessageHandler func(ctx context.Context, topic string, payload []byte) error
+type MessageHandler func(context.Context, string, []byte) error
 
 type subscription struct {
 	filter  string
 	handler MessageHandler
 }
+type mqttConnection interface {
+	Publish(context.Context, *paho.Publish) (*paho.PublishResponse, error)
+	Subscribe(context.Context, *paho.Subscribe) (*paho.Suback, error)
+	Disconnect(context.Context) error
+}
 
-// Client manages MQTT connectivity, subscriptions, and publication for the
-// hub.
+// Client manages MQTT 5 connectivity, subscriptions and publication.
 type Client struct {
 	logger        *zap.Logger
 	BrokerURL     string
-	inner         pahomqtt.Client
+	inner         mqttConnection
+	router        *paho.StandardRouter
+	cancel        context.CancelFunc
+	dispatcher    *messageDispatcher
+	connected     atomic.Bool
 	mu            sync.RWMutex
 	subscriptions []subscription
 	onConnect     []func(context.Context)
 }
 
-// NewClient connects to the configured MQTT broker and prepares automatic
-// resubscription behavior.
-func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
-	c := &Client{
-		logger:    logger,
-		BrokerURL: brokerURL,
-	}
-	opts := pahomqtt.NewClientOptions().
-		AddBroker(brokerURL).
-		SetClientID(fmt.Sprintf("open-location-hub-%d", time.Now().UnixNano())).
-		SetAutoReconnect(true).
-		SetCleanSession(false).
-		SetResumeSubs(true).
-		SetOrderMatters(false)
-	opts.OnConnect = func(client pahomqtt.Client) {
-		c.logger.Info("mqtt connected", zap.String("broker", brokerURL))
-		observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "connect", "success")
-		c.resubscribe(client)
-		c.runOnConnectHooks(context.Background())
-	}
-	opts.OnConnectionLost = func(_ pahomqtt.Client, err error) {
-		observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "connection_lost", "failure")
-		c.logger.Warn("mqtt connection lost", zap.Any("context", context.Background()), zap.Error(err))
-	}
-	c.inner = pahomqtt.NewClient(opts)
-	token := c.inner.Connect()
-	if !token.WaitTimeout(15 * time.Second) {
-		return nil, fmt.Errorf("mqtt connect timed out")
-	}
-	if err := token.Error(); err != nil {
+// NewClient connects using MQTT 5, starts the bounded inbound handler pool,
+// and restores subscriptions after reconnection.
+func NewClient(logger *zap.Logger, brokerURL string, handlers HandlerConfig) (*Client, error) {
+	cfg, err := connectionConfig(brokerURL)
+	if err != nil {
 		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &Client{logger: logger, BrokerURL: brokerURL, router: paho.NewStandardRouter(), cancel: cancel}
+	c.dispatcher = newMessageDispatcher(ctx, logger, handlers)
+	cfg.ClientConfig = paho.ClientConfig{ClientID: fmt.Sprintf("open-location-hub-%d", time.Now().UnixNano()), Router: c.router}
+	cfg.OnConnectionUp = func(manager *autopaho.ConnectionManager, _ *paho.Connack) {
+		c.connected.Store(true)
+		observability.Global().RecordDependencyEvent(ctx, "mqtt", "connect", "success")
+		go func() { c.resubscribe(manager); c.runOnConnectHooks(ctx) }()
+	}
+	cfg.OnConnectionDown = func() bool {
+		c.connected.Store(false)
+		observability.Global().RecordDependencyEvent(ctx, "mqtt", "connection_lost", "failure")
+		return true
+	}
+	manager, err := autopaho.NewConnection(ctx, cfg)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	c.inner = manager
+	wait, stop := context.WithTimeout(ctx, 15*time.Second)
+	defer stop()
+	if err = manager.AwaitConnection(wait); err != nil {
+		cancel()
+		return nil, fmt.Errorf("mqtt connection failed: %w", err)
 	}
 	return c, nil
 }
 
-// AddOnConnectListener registers a callback that runs after successful broker
-// connection and resubscription.
+func connectionConfig(brokerURL string) (autopaho.ClientConfig, error) {
+	u, err := url.Parse(brokerURL)
+	if err != nil || u.Host == "" {
+		return autopaho.ClientConfig{}, fmt.Errorf("invalid MQTT broker URL")
+	}
+	switch u.Scheme {
+	case "tcp":
+		u.Scheme = "mqtt"
+	case "ssl":
+		u.Scheme = "tls"
+	case "mqtt", "tls", "mqtts", "ws", "wss":
+	default:
+		return autopaho.ClientConfig{}, fmt.Errorf("unsupported MQTT broker URL scheme")
+	}
+	cfg := autopaho.ClientConfig{KeepAlive: 30, CleanStartOnInitialConnection: true, SessionExpiryInterval: 120, ConnectTimeout: 10 * time.Second}
+	if u.User != nil {
+		cfg.ConnectUsername = u.User.Username()
+		password, _ := u.User.Password()
+		cfg.ConnectPassword = []byte(password)
+		u.User = nil
+	}
+	cfg.ServerUrls = []*url.URL{u}
+	return cfg, nil
+}
+
+// AddOnConnectListener registers a callback after connection and resubscription.
 func (c *Client) AddOnConnectListener(fn func(context.Context)) {
 	c.mu.Lock()
 	c.onConnect = append(c.onConnect, fn)
 	c.mu.Unlock()
-	if c.inner != nil && c.inner.IsConnected() {
+	if c.connected.Load() {
 		fn(context.Background())
 	}
 }
 
-// Close disconnects from the broker.
+// Close cancels inbound handlers, stops reconnection, and disconnects from the broker.
 func (c *Client) Close() error {
-	if c.inner != nil && c.inner.IsConnected() {
-		c.inner.Disconnect(250)
+	c.mu.RLock()
+	dispatcher := c.dispatcher
+	c.mu.RUnlock()
+	if dispatcher != nil {
+		dispatcher.cancel()
 	}
-	return nil
-}
-
-// Subscribe registers a handler for the supplied topic filter.
-func (c *Client) Subscribe(filter string, handler MessageHandler) error {
-	c.mu.Lock()
-	c.subscriptions = append(c.subscriptions, subscription{filter: filter, handler: handler})
-	c.mu.Unlock()
-	if c.inner == nil || !c.inner.IsConnected() {
+	if c.cancel != nil {
+		defer c.cancel()
+	}
+	c.connected.Store(false)
+	if c.inner == nil {
 		return nil
 	}
-	return c.subscribe(c.inner, filter, handler)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	return c.inner.Disconnect(ctx)
 }
 
-// PublishJSON marshals payload as JSON and publishes it with QoS 1.
+// Subscribe installs the handler before requesting broker delivery.
+func (c *Client) Subscribe(filter string, handler MessageHandler) error {
+	c.mu.Lock()
+	if c.router == nil {
+		c.router = paho.NewStandardRouter()
+	}
+	if c.dispatcher == nil {
+		c.dispatcher = newMessageDispatcher(context.Background(), c.logger, HandlerConfig{})
+	}
+	dispatcher := c.dispatcher
+	c.router.RegisterHandler(filter, func(msg *paho.Publish) {
+		handlerCtx := dispatcher.ctx
+		if msg.Properties != nil && msg.Properties.MessageExpiry != nil {
+			handlerCtx = context.WithValue(handlerCtx, expiryKey{}, time.Duration(*msg.Properties.MessageExpiry)*time.Second)
+		}
+		payload := append([]byte(nil), msg.Payload...)
+		dispatcher.submit(inboundMessage{ctx: handlerCtx, handler: handler, topic: msg.Topic, payload: payload})
+	})
+	c.subscriptions = append(c.subscriptions, subscription{filter, handler})
+	c.mu.Unlock()
+	if c.inner == nil || !c.connected.Load() {
+		return nil
+	}
+	return c.subscribe(c.inner, filter)
+}
+
+// PublishJSON marshals and publishes JSON with QoS 1.
 func (c *Client) PublishJSON(ctx context.Context, topic string, payload any, retained bool) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	return c.PublishRawJSON(ctx, topic, raw, retained)
+	return c.PublishRaw(ctx, topic, raw, retained)
 }
 
-// PublishRawJSON publishes a pre-marshaled JSON payload with QoS 1.
+// PublishRawJSON publishes pre-marshaled JSON with QoS 1.
 func (c *Client) PublishRawJSON(ctx context.Context, topic string, payload json.RawMessage, retained bool) error {
 	return c.PublishRaw(ctx, topic, payload, retained)
 }
 
-// PublishRaw publishes the provided byte payload with QoS 1.
-func (c *Client) PublishRaw(_ context.Context, topic string, payload []byte, retained bool) error {
+// PublishRaw publishes with QoS 1. Retained RPC availability expires after 120s
+// as required by OMLOX, so a stopped handler cannot remain advertised indefinitely.
+func (c *Client) PublishRaw(ctx context.Context, topic string, payload []byte, retained bool) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	packet := &paho.Publish{QoS: 1, Retain: retained, Topic: topic, Payload: payload}
+	if retained && strings.HasPrefix(topic, "/omlox/jsonrpc/rpc/available/") {
+		expiry := uint32(120)
+		packet.Properties = &paho.PublishProperties{MessageExpiry: &expiry}
+	}
 	start := time.Now()
-	token := c.inner.Publish(topic, 1, retained, payload)
-	if !token.WaitTimeout(10 * time.Second) {
-		observability.Global().RecordMQTTPublish(context.Background(), "timeout", time.Since(start))
-		return fmt.Errorf("mqtt publish timed out for %s", topic)
+	response, err := c.inner.Publish(ctx, packet)
+	if err == nil && response != nil && response.ReasonCode >= 0x80 {
+		err = fmt.Errorf("MQTT publish rejected: reason %d", response.ReasonCode)
 	}
-	err := token.Error()
+	status := "success"
 	if err != nil {
-		observability.Global().RecordMQTTPublish(context.Background(), "failure", time.Since(start))
-		return err
+		status = "failure"
 	}
-	observability.Global().RecordMQTTPublish(context.Background(), "success", time.Since(start))
-	return nil
+	observability.Global().RecordMQTTPublish(ctx, status, time.Since(start))
+	return err
 }
 
-func (c *Client) resubscribe(client pahomqtt.Client) {
+func (c *Client) resubscribe(client mqttConnection) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, sub := range c.subscriptions {
-		if err := c.subscribe(client, sub.filter, sub.handler); err != nil {
-			observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "subscribe", "failure")
-			c.logger.Warn("mqtt subscribe failed", zap.Any("context", context.Background()), zap.Error(err), zap.String("filter", sub.filter))
+	subs := append([]subscription(nil), c.subscriptions...)
+	c.mu.RUnlock()
+	for _, sub := range subs {
+		if err := c.subscribe(client, sub.filter); err != nil && c.logger != nil {
+			c.logger.Warn("mqtt subscribe failed", zap.Error(err), zap.String("filter", sub.filter))
 		}
 	}
 }
-
 func (c *Client) runOnConnectHooks(ctx context.Context) {
 	c.mu.RLock()
 	hooks := append([]func(context.Context){}, c.onConnect...)
@@ -146,18 +215,17 @@ func (c *Client) runOnConnectHooks(ctx context.Context) {
 		hook(ctx)
 	}
 }
-
-func (c *Client) subscribe(client pahomqtt.Client, filter string, handler MessageHandler) error {
-	token := client.Subscribe(filter, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
-		if err := handler(context.Background(), msg.Topic(), msg.Payload()); err != nil {
-			observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "handler", "failure")
-			c.logger.Warn("mqtt handler failed", zap.Any("context", context.Background()), zap.Error(err), zap.String("topic", msg.Topic()))
-		}
-	})
-	if !token.WaitTimeout(10 * time.Second) {
-		return fmt.Errorf("mqtt subscribe timed out for %s", filter)
+func (c *Client) subscribe(client mqttConnection, filter string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ack, err := client.Subscribe(ctx, &paho.Subscribe{Subscriptions: []paho.SubscribeOptions{{Topic: filter, QoS: 1}}})
+	if err != nil {
+		return err
 	}
-	return token.Error()
+	if ack == nil || len(ack.Reasons) != 1 || ack.Reasons[0] >= 0x80 {
+		return fmt.Errorf("MQTT subscription rejected for %s", filter)
+	}
+	return nil
 }
 
 // TopicLocationPub returns the OMLOX MQTT topic for provider-supplied
@@ -269,4 +337,12 @@ func TopicRPCResponseWildcard() string {
 // messages emitted by method handlers.
 func TopicRPCXCMDResponseBroadcast() string {
 	return "/omlox/jsonrpc/rpc/com.omlox.core.xcmd/broadcast"
+}
+
+type expiryKey struct{}
+
+// MessageExpiry returns the broker-supplied remaining lifetime of an MQTT 5 message.
+func MessageExpiry(ctx context.Context) (time.Duration, bool) {
+	expiry, ok := ctx.Value(expiryKey{}).(time.Duration)
+	return expiry, ok
 }

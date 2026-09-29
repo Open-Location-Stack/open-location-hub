@@ -144,7 +144,7 @@ The WebSocket connector publishes OMLOX wrapper messages shaped like:
       "position": { "type": "Point", "coordinates": [2.35, 48.85] },
       "crs": "EPSG:4326",
       "provider_id": "grand-dole-gtfs-demo",
-      "provider_type": "gtfs-rt",
+      "provider_type": "gps",
       "source": "gtfs-stop:stop-area-12345"
     }
   ],
@@ -157,7 +157,7 @@ The WebSocket connector publishes OMLOX wrapper messages shaped like:
 Runtime mapping details:
 
 - `provider_id` stays stable for the connector instance
-- `provider_type` defaults to `gtfs-rt`
+- `provider_type` defaults to `gps` (OMLOX technology; feed identity remains in `properties.connector`)
 - `source` is derived from the GTFS stop when present and falls back to the
   vehicle or entity ID otherwise
 - vehicle IDs are mapped to deterministic trackable UUIDs and upserted through

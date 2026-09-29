@@ -51,14 +51,14 @@ func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
 	}
 	decodeResponse(t, createResp, &zone)
 
-	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	createLocalResp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
 		"provider_id":   providerID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
+	assertStatusAndClose(t, createLocalResp, http.StatusNoContent)
 
 	body := waitForWSProvider(t, conn, providerID, 10*time.Second)
 	seenCRS := map[string]bool{}
@@ -72,7 +72,7 @@ func TestWebSocketReceivesLocationUpdatesFromREST(t *testing.T) {
 			seenCRS[*location.Crs] = true
 		}
 	}
-	if !seenProvider || !seenCRS["local"] {
+	if !seenProvider || !seenCRS["EPSG:4326"] || seenCRS["local"] {
 		t.Fatalf("unexpected ws body for %s: %+v", providerID, body)
 	}
 }

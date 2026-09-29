@@ -37,14 +37,14 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 	}
 	decodeResponse(t, createResp, &zone)
 
-	createLocalResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	createLocalResp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(5, 7),
 		"provider_id":   providerLocalID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatusAndClose(t, createLocalResp, http.StatusAccepted)
+	assertStatusAndClose(t, createLocalResp, http.StatusNoContent)
 
 	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerLocalID)], 10*time.Second)
 	wgsPublished := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326(providerLocalID)], 10*time.Second)
@@ -68,14 +68,14 @@ func TestCRSTransformationMQTTEndToEnd(t *testing.T) {
 	}
 	assertPointClose(t, localPublished.Position, roundTrip, 0.5)
 
-	createWGSResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	createWGSResp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "EPSG:4326",
 		"position":      pointPayload(0.50005, 0.50004),
 		"provider_id":   providerWGSID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatusAndClose(t, createWGSResp, http.StatusAccepted)
+	assertStatusAndClose(t, createWGSResp, http.StatusNoContent)
 
 	localFromWGS := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerWGSID)], 10*time.Second)
 	wgsFromWGS := waitForLocation(t, messages[mqtt.TopicLocationEPSG4326(providerWGSID)], 10*time.Second)
@@ -118,14 +118,14 @@ func TestCRSTransformationSuppressesUnavailableDerivedMQTTVariant(t *testing.T) 
 	}
 	decodeResponse(t, createResp, &zone)
 
-	publishResp := requestJSON(t, http.MethodPost, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
+	publishResp := requestJSON(t, http.MethodPut, appBaseURL+"/v2/providers/locations", token, []map[string]any{{
 		"crs":           "local",
 		"position":      pointPayload(3, 4),
 		"provider_id":   providerID,
 		"provider_type": "uwb",
 		"source":        zone.ID,
 	}})
-	assertStatusAndClose(t, publishResp, http.StatusAccepted)
+	assertStatusAndClose(t, publishResp, http.StatusNoContent)
 
 	localPublished := waitForLocation(t, messages[mqtt.TopicLocationLocal(providerID)], 10*time.Second)
 	if localPublished.Crs == nil || *localPublished.Crs != "local" {
@@ -199,10 +199,9 @@ func georeferencedZonePayload(lat, lon float64, incomplete bool) map[string]any 
 		payload["incomplete_configuration"] = true
 		return payload
 	}
-	payload["ground_control_points"] = []map[string]any{
-		{"local": pointPayload(0, 0), "wgs84": pointPayload(lon, lat)},
-		{"local": pointPayload(10, 0), "wgs84": pointPayload(lon+0.0001, lat)},
-		{"local": pointPayload(0, 10), "wgs84": pointPayload(lon, lat+0.0001)},
+	payload["ground_control_points"] = [][]float64{
+		{lon, lat}, {0, 0}, {lon + 0.0001, lat}, {10, 0},
+		{lon + 0.0001, lat + 0.0001}, {10, 10}, {lon, lat + 0.0001}, {0, 10},
 	}
 	return payload
 }

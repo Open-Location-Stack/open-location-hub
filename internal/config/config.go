@@ -24,6 +24,8 @@ type Config struct {
 	ResetHubID                            bool
 	PostgresURL                           string
 	MQTTBrokerURL                         string
+	MQTTHandlerWorkers                    int
+	MQTTHandlerBuffer                     int
 	WebSocketWriteTimeout                 time.Duration
 	WebSocketReadTimeout                  time.Duration
 	WebSocketPingInterval                 time.Duration
@@ -43,8 +45,6 @@ type Config struct {
 	RPCHandlerID                          string
 	CollisionsEnabled                     bool
 	CollisionStateTTL                     time.Duration
-	CollisionCollidingDebounce            time.Duration
-	CollisionDefaultRadiusMeters          float64
 	KalmanFilterEnabled                   bool
 	KalmanLocationMaxPoints               int
 	KalmanLocationMaxAge                  time.Duration
@@ -131,6 +131,8 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		HubLabel:                              strings.TrimSpace(envWithLookup(lookup, "HUB_LABEL", "")),
 		ResetHubID:                            boolEnvWithLookup(lookup, "RESET_HUB_ID", false),
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
+		MQTTHandlerWorkers:                    intEnvWithLookup(lookup, "MQTT_HANDLER_WORKERS", 4),
+		MQTTHandlerBuffer:                     intEnvWithLookup(lookup, "MQTT_HANDLER_BUFFER", 1024),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
 		WebSocketReadTimeout:                  durationEnvWithLookup(lookup, "WEBSOCKET_READ_TIMEOUT", time.Minute),
@@ -151,16 +153,14 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		RPCHandlerID:                          envWithLookup(lookup, "RPC_HANDLER_ID", "open-location-hub"),
 		CollisionsEnabled:                     boolEnvWithLookup(lookup, "COLLISIONS_ENABLED", false),
 		CollisionStateTTL:                     durationEnvWithLookup(lookup, "COLLISION_STATE_TTL", 2*time.Minute),
-		CollisionCollidingDebounce:            durationEnvWithLookup(lookup, "COLLISION_COLLIDING_DEBOUNCE", 5*time.Second),
-		CollisionDefaultRadiusMeters:          floatEnvWithLookup(lookup, "COLLISION_DEFAULT_RADIUS_METERS", 0.5),
 		KalmanFilterEnabled:                   boolEnvWithLookup(lookup, "KALMAN_FILTER_ENABLED", false),
 		KalmanLocationMaxPoints:               intEnvWithLookup(lookup, "KALMAN_LOCATION_MAX_POINTS", 8),
 		KalmanLocationMaxAge:                  durationEnvWithLookup(lookup, "KALMAN_LOCATION_MAX_AGE", 10*time.Second),
 		KalmanEmitMaxFrequencyHz:              floatEnvWithLookup(lookup, "KALMAN_EMIT_MAX_FREQUENCY_HZ", 0),
 		ProximityResolutionEntryConfidenceMin: floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN", 0),
-		ProximityResolutionExitGraceDuration:  durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 15*time.Second),
-		ProximityResolutionBoundaryGrace:      floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 2),
-		ProximityResolutionMinDwellDuration:   durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_MIN_DWELL_DURATION", 5*time.Second),
+		ProximityResolutionExitGraceDuration:  durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION", 0),
+		ProximityResolutionBoundaryGrace:      floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE", 0),
+		ProximityResolutionMinDwellDuration:   durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_MIN_DWELL_DURATION", 0),
 		ProximityResolutionPositionMode:       envWithLookup(lookup, "PROXIMITY_RESOLUTION_POSITION_MODE", "zone_position"),
 		ProximityResolutionFallbackRadius:     floatEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_FALLBACK_RADIUS", 0),
 		ProximityResolutionStaleStateTTL:      durationEnvWithLookup(lookup, "PROXIMITY_RESOLUTION_STALE_STATE_TTL", 10*time.Minute),
@@ -206,6 +206,12 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 			return Config{}, fmt.Errorf("HUB_ID must be a valid UUID: %w", err)
 		}
 	}
+	if cfg.MQTTHandlerWorkers <= 0 {
+		return Config{}, fmt.Errorf("MQTT_HANDLER_WORKERS must be > 0")
+	}
+	if cfg.MQTTHandlerBuffer <= 0 {
+		return Config{}, fmt.Errorf("MQTT_HANDLER_BUFFER must be > 0")
+	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")
 	}
@@ -245,12 +251,7 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	if cfg.CollisionStateTTL <= 0 {
 		return Config{}, fmt.Errorf("COLLISION_STATE_TTL must be > 0")
 	}
-	if cfg.CollisionCollidingDebounce < 0 {
-		return Config{}, fmt.Errorf("COLLISION_COLLIDING_DEBOUNCE must be >= 0")
-	}
-	if cfg.CollisionDefaultRadiusMeters <= 0 {
-		return Config{}, fmt.Errorf("COLLISION_DEFAULT_RADIUS_METERS must be > 0")
-	}
+
 	if cfg.KalmanLocationMaxPoints <= 1 {
 		return Config{}, fmt.Errorf("KALMAN_LOCATION_MAX_POINTS must be > 1")
 	}
@@ -263,8 +264,8 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	if cfg.ProximityResolutionEntryConfidenceMin < 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_ENTRY_CONFIDENCE_MIN must be >= 0")
 	}
-	if cfg.ProximityResolutionExitGraceDuration <= 0 {
-		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION must be > 0")
+	if cfg.ProximityResolutionExitGraceDuration < 0 {
+		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_EXIT_GRACE_DURATION must be >= 0")
 	}
 	if cfg.ProximityResolutionBoundaryGrace < 0 {
 		return Config{}, fmt.Errorf("PROXIMITY_RESOLUTION_BOUNDARY_GRACE_DISTANCE must be >= 0")

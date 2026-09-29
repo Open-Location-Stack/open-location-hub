@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/dhconnelly/rtreego"
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/transform"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -31,6 +33,8 @@ type metadataSnapshot struct {
 	fencesByID             map[string]gen.Fence
 	fenceSignatures        map[string]string
 	fenceIndexes           map[string]*fenceSpatialIndex
+	worldFencesByID        map[string]gen.Fence
+	worldFenceIndexes      map[string]*fenceSpatialIndex
 	trackables             []gen.Trackable
 	trackablesByID         map[string]gen.Trackable
 	trackablesByProviderID map[string][]gen.Trackable
@@ -63,6 +67,7 @@ func (f indexedFence) Bounds() rtreego.Rect {
 // MetadataCache keeps an immutable in-memory metadata snapshot used by the
 // ingest and eventing hot path.
 type MetadataCache struct {
+	writeMu  sync.Mutex
 	mu       sync.RWMutex
 	queries  sqlcgen.Querier
 	snapshot metadataSnapshot
@@ -220,9 +225,7 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		item := record.Trackable
 		snapshot.trackables = append(snapshot.trackables, item)
 		snapshot.trackablesByID[item.Id.String()] = item
-		for _, providerID := range stringSliceValue(item.LocationProviders) {
-			snapshot.trackablesByProviderID[providerID] = append(snapshot.trackablesByProviderID[providerID], item)
-		}
+		indexTrackableProviders(snapshot.trackablesByProviderID, item)
 		snapshot.trackableSignatures[item.Id.String()] = record.Signature
 	}
 	for _, record := range providers {
@@ -232,7 +235,37 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		snapshot.providerSignatures[item.Id] = record.Signature
 	}
 	snapshot.fenceIndexes = buildFenceIndexes(snapshot.fences)
+	snapshot.buildWorldFenceIndexes()
 	return snapshot
+}
+
+// Rebuild transformed geometry only when metadata changes. Fences in different
+// local zones then share a geographic index without per-observation scans.
+func (s *metadataSnapshot) buildWorldFenceIndexes() {
+	s.worldFencesByID = make(map[string]gen.Fence, len(s.fences))
+	projector := s.fenceProjector()
+	for _, fence := range s.fences {
+		projected, err := projector.ProjectFence(context.Background(), fence, "EPSG:4326", "")
+		if err != nil {
+			continue
+		}
+		s.worldFencesByID[fence.Id.String()] = projected
+	}
+	s.rebuildWorldFenceIndex()
+}
+
+func (s *metadataSnapshot) fenceProjector() *Service {
+	return &Service{metadata: &MetadataCache{snapshot: *s}, transformCache: transform.NewCache(), crsTransformer: transform.NewCRSTransformer()}
+}
+
+func (s *metadataSnapshot) rebuildWorldFenceIndex() {
+	world := make([]gen.Fence, 0, len(s.worldFencesByID))
+	for _, fence := range s.fences {
+		if projected, ok := s.worldFencesByID[fence.Id.String()]; ok {
+			world = append(world, projected)
+		}
+	}
+	s.worldFenceIndexes = buildFenceIndexes(world)
 }
 
 func payloadSignature(payload []byte) string {
@@ -244,6 +277,13 @@ func (c *MetadataCache) current() metadataSnapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.snapshot
+}
+
+// Writers serialize preparation; readers only wait for the snapshot swap.
+func (c *MetadataCache) publish(next metadataSnapshot) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.snapshot = next
 }
 
 func (c *MetadataCache) ListZones() []gen.Zone {
@@ -311,9 +351,9 @@ func (c *MetadataCache) ProviderByID(id string) (gen.LocationProvider, bool) {
 }
 
 func (c *MetadataCache) UpsertZone(item gen.Zone, signature string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.zones = upsertByZoneID(next.zones, item)
 	next.zonesByID = cloneZoneMap(next.zonesByID)
 	next.zonesByForeignID = cloneZoneMap(next.zonesByForeignID)
@@ -329,13 +369,14 @@ func (c *MetadataCache) UpsertZone(item gen.Zone, signature string) {
 	}
 	next.zoneSignatures[item.Id.String()] = signature
 	next.fenceIndexes = buildFenceIndexes(next.fences)
-	c.snapshot = next
+	next.buildWorldFenceIndexes()
+	c.publish(next)
 }
 
 func (c *MetadataCache) DeleteZone(id openapi_types.UUID) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.zones = removeZoneByID(next.zones, id)
 	next.zonesByID = cloneZoneMap(next.zonesByID)
 	next.zonesByForeignID = cloneZoneMap(next.zonesByForeignID)
@@ -348,39 +389,50 @@ func (c *MetadataCache) DeleteZone(id openapi_types.UUID) {
 	}
 	delete(next.zoneSignatures, id.String())
 	next.fenceIndexes = buildFenceIndexes(next.fences)
-	c.snapshot = next
+	next.buildWorldFenceIndexes()
+	c.publish(next)
 }
 
 func (c *MetadataCache) UpsertFence(item gen.Fence, signature string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.fences = upsertByFenceID(next.fences, item)
 	next.fencesByID = cloneFenceMap(next.fencesByID)
 	next.fenceSignatures = cloneStringMap(next.fenceSignatures)
 	next.fencesByID[item.Id.String()] = item
 	next.fenceSignatures[item.Id.String()] = signature
 	next.fenceIndexes = buildFenceIndexes(next.fences)
-	c.snapshot = next
+	next.worldFencesByID = cloneFenceMap(next.worldFencesByID)
+	if projected, err := next.fenceProjector().ProjectFence(context.Background(), item, "EPSG:4326", ""); err == nil {
+		next.worldFencesByID[item.Id.String()] = projected
+	} else {
+		delete(next.worldFencesByID, item.Id.String())
+	}
+	next.rebuildWorldFenceIndex()
+	c.publish(next)
 }
 
 func (c *MetadataCache) DeleteFence(id openapi_types.UUID) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.fences = removeFenceByID(next.fences, id)
 	next.fencesByID = cloneFenceMap(next.fencesByID)
 	next.fenceSignatures = cloneStringMap(next.fenceSignatures)
 	delete(next.fencesByID, id.String())
 	delete(next.fenceSignatures, id.String())
 	next.fenceIndexes = buildFenceIndexes(next.fences)
-	c.snapshot = next
+	next.worldFencesByID = cloneFenceMap(next.worldFencesByID)
+	delete(next.worldFencesByID, id.String())
+	next.rebuildWorldFenceIndex()
+	c.publish(next)
 }
 
 func (c *MetadataCache) UpsertTrackable(item gen.Trackable, signature string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.trackables = upsertByTrackableID(next.trackables, item)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
 	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
@@ -392,17 +444,15 @@ func (c *MetadataCache) UpsertTrackable(item gen.Trackable, signature string) {
 			delete(next.trackablesByProviderID, providerID)
 		}
 	}
-	for _, providerID := range stringSliceValue(item.LocationProviders) {
-		next.trackablesByProviderID[providerID] = append(next.trackablesByProviderID[providerID], item)
-	}
+	indexTrackableProviders(next.trackablesByProviderID, item)
 	next.trackableSignatures[item.Id.String()] = signature
-	c.snapshot = next
+	c.publish(next)
 }
 
 func (c *MetadataCache) DeleteTrackable(id openapi_types.UUID) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.trackables = removeTrackableByID(next.trackables, id)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
 	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
@@ -415,42 +465,42 @@ func (c *MetadataCache) DeleteTrackable(id openapi_types.UUID) {
 		}
 	}
 	delete(next.trackableSignatures, id.String())
-	c.snapshot = next
+	c.publish(next)
 }
 
 func (c *MetadataCache) UpsertProvider(item gen.LocationProvider, signature string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.providers = upsertByProviderID(next.providers, item)
 	next.providersByID = cloneProviderMap(next.providersByID)
 	next.providerSignatures = cloneStringMap(next.providerSignatures)
 	next.providersByID[item.Id] = item
 	next.providerSignatures[item.Id] = signature
-	c.snapshot = next
+	c.publish(next)
 }
 
 func (c *MetadataCache) DeleteProvider(id string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	next := c.snapshot
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	next := c.current()
 	next.providers = removeProviderByID(next.providers, id)
 	next.providersByID = cloneProviderMap(next.providersByID)
 	next.providerSignatures = cloneStringMap(next.providerSignatures)
 	delete(next.providersByID, id)
 	delete(next.providerSignatures, id)
-	c.snapshot = next
+	c.publish(next)
 }
 
 func (c *MetadataCache) Reconcile(ctx context.Context, now time.Time) ([]MetadataChange, error) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	next, err := loadMetadataSnapshot(ctx, c.queries)
 	if err != nil {
 		return nil, err
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	changes := diffMetadataSnapshots(c.snapshot, next, now)
-	c.snapshot = next
+	changes := diffMetadataSnapshots(c.current(), next, now)
+	c.publish(next)
 	return changes, nil
 }
 
@@ -617,6 +667,10 @@ func buildFenceIndexes(fences []gen.Fence) map[string]*fenceSpatialIndex {
 }
 
 func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, error) {
+	return s.fenceCandidatesWithRadius(location, 0)
+}
+
+func (s metadataSnapshot) fenceCandidatesWithRadius(location gen.Location, radius float64) ([]gen.Fence, error) {
 	scopeKey, ok, err := s.locationFenceScopeKey(location)
 	if err != nil {
 		return nil, err
@@ -632,7 +686,16 @@ func (s metadataSnapshot) fenceCandidates(location gen.Location) ([]gen.Fence, e
 	if err != nil {
 		return nil, nil
 	}
-	results := index.tree.SearchIntersect(rtreego.Point{point[0], point[1]}.ToRect(0))
+	dx, dy := collisionMetersToCoordinateOffsets(locationCRS(location), point, radius)
+	// The R-tree uses strict rectangle intersection. Expand by one ULP so
+	// a single touching point remains a candidate as required by section 9.3.
+	minX, minY := math.Nextafter(point[0]-dx, math.Inf(-1)), math.Nextafter(point[1]-dy, math.Inf(-1))
+	maxX, maxY := math.Nextafter(point[0]+dx, math.Inf(1)), math.Nextafter(point[1]+dy, math.Inf(1))
+	query, err := rtreego.NewRect(rtreego.Point{minX, minY}, []float64{maxX - minX, maxY - minY})
+	if err != nil {
+		return nil, err
+	}
+	results := index.tree.SearchIntersect(query)
 	fences := make([]gen.Fence, 0, len(results))
 	for _, spatial := range results {
 		entry, ok := spatial.(indexedFence)
@@ -705,9 +768,17 @@ func fenceBoundingRect(fence gen.Fence) (rtreego.Rect, bool) {
 				if fence.Radius != nil {
 					radius = float64(*fence.Radius)
 				}
+				crs := stringPtrValue(fence.Crs)
+				if crs == "" {
+					crs = "EPSG:4326"
+				}
+				dx, dy := collisionMetersToCoordinateOffsets(crs, center, radius)
+				if radius == 0 {
+					return rtreego.Point{center[0], center[1]}.ToRect(0), true
+				}
 				rect, err := rtreego.NewRect(
-					rtreego.Point{center[0] - radius, center[1] - radius},
-					[]float64{radius * 2, radius * 2},
+					rtreego.Point{center[0] - dx, center[1] - dy},
+					[]float64{dx * 2, dy * 2},
 				)
 				if err != nil {
 					return rtreego.Rect{}, false
@@ -794,4 +865,15 @@ func cloneProviderMap(in map[string]gen.LocationProvider) map[string]gen.Locatio
 		out[key] = value
 	}
 	return out
+}
+
+func indexTrackableProviders(index map[string][]gen.Trackable, item gen.Trackable) {
+	seen := make(map[string]struct{}, len(stringSliceValue(item.LocationProviders)))
+	for _, id := range stringSliceValue(item.LocationProviders) {
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		index[id] = append(index[id], item)
+	}
 }

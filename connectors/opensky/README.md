@@ -108,7 +108,7 @@ uv run --project scripts python scripts/check_fence_alignment.py --env-file conn
 - one OpenSky state vector becomes one OMLOX `Location`
 - aircraft `icao24` identifiers become deterministic hub `Trackable` IDs
 - `provider_id` defaults to `opensky-demo`
-- `provider_type` defaults to `adsb`
+- `provider_type` defaults to `unknown` (OMLOX technology; feed identity remains in `properties.connector`)
 - `source` is `opensky:<icao24>`
 - callsign, country, on-ground state, altitude, and squawk go into `Location.properties`
 

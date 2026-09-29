@@ -222,7 +222,7 @@ Hub behavior:
 - collision events must be sent immediately
 - all collision events are hub-generated
 - current repository behavior is bounded to single-hub trackable-versus-trackable collision evaluation in WGS84 on the latest normalized motion state
-- collision thresholds are meter-based and use `Trackable.radius` when present, otherwise `COLLISION_DEFAULT_RADIUS_METERS`
+- collision thresholds are meter-based and use `Trackable.radius` when present, otherwise zero
 - WGS84 collision checks use a short-range planar approximation instead of geodesic math so evaluation stays cheap on the runtime hot path
 - collision evaluation is enabled only when `COLLISIONS_ENABLED=true`
 
@@ -376,8 +376,12 @@ The repository WebSocket surface covers:
 
 Current repository behavior notes:
 - authorization is evaluated per WebSocket message using dedicated WebSocket topic permissions from the auth registry
-- outbound delivery is protected by a per-connection buffer; slow subscribers are disconnected instead of blocking shared fan-out
-- duplicate subscriptions are allowed
+- outbound delivery uses bounded per-connection buffers; coalescible location/motion messages are replaced by newer pending output, and non-coalescible messages can be dropped under overload
+- duplicate subscriptions are allowed, with IDs allocated uniquely across connections during hub runtime
+- location/motion subscriptions default to a single EPSG:4326 variant; `crs=local` without a zone returns the original observation, and a target zone or named CRS projects position and geometry
+- collision projections transform every participant and the intersection boundary
+- floor filters and fence `object_type` filters are applied
+- invalid projection requests fail at subscription time with `10002`
 
 ## Reference implementation notes
 

@@ -228,7 +228,7 @@ def prepare_location_for_replay(
     replay_timestamp: datetime,
     synthetic: bool,
 ) -> dict[str, Any]:
-    replay_location = dict(location)
+    replay_location = normalize_technology(location)
     replay_location["timestamp_generated"] = replay_timestamp.astimezone(UTC).isoformat()
     raw_properties = replay_location.get("properties")
     properties = dict(raw_properties) if isinstance(raw_properties, dict) else {}
@@ -279,3 +279,16 @@ def parse_timestamp(raw_value: Any) -> datetime | None:
 
 def interpolate_float(previous: float, current: float, fraction: float) -> float:
     return previous + ((current - previous) * fraction)
+
+
+def normalize_technology(location: dict[str, Any]) -> dict[str, Any]:
+    """Translate vendor feed labels without changing the original recording."""
+    result = dict(location)
+    technology = result.get("provider_type")
+    if technology not in {"uwb", "gps", "wifi", "rfid", "ibeacon", "virtual", "unknown"}:
+        properties = dict(result.get("properties") or {})
+        if technology is not None:
+            properties["upstream_provider_type"] = technology
+        result["properties"] = properties
+        result["provider_type"] = "unknown"
+    return result

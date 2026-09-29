@@ -57,7 +57,7 @@ def fetch_fences(http_url: str, token: str | None) -> list[dict[str, Any]]:
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    response = requests.get(f"{http_url.rstrip('/')}/v2/fences", headers=headers, timeout=30)
+    response = requests.get(f"{http_url.rstrip('/')}/v2/fences/summary", headers=headers, timeout=30)
     response.raise_for_status()
     return response.json()
 

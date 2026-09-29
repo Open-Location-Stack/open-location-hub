@@ -18,7 +18,7 @@ import (
 const wgs84 = "EPSG:4326"
 
 var (
-	errInsufficientGroundControlPoints = errors.New("zone requires at least 2 valid ground control points")
+	errInsufficientGroundControlPoints = errors.New("zone requires at least 4 valid ground control points")
 	errDegenerateTransform             = errors.New("zone ground control points produce a degenerate transform")
 )
 
@@ -106,7 +106,7 @@ func (t *LocalTransformer) ProjectedCRS() string {
 // NewLocalTransformer fits a local-to-WGS84 transform from the zone's ground
 // control points.
 func NewLocalTransformer(zone gen.Zone) (*LocalTransformer, error) {
-	if zone.GroundControlPoints == nil || len(*zone.GroundControlPoints) < 2 {
+	if zone.GroundControlPoints == nil || len(*zone.GroundControlPoints) < 8 {
 		return nil, errInsufficientGroundControlPoints
 	}
 	gcps, err := validGroundControlPoints(*zone.GroundControlPoints)
@@ -245,11 +245,32 @@ func zoneSignature(zone gen.Zone) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func validGroundControlPoints(gcps []gen.GroundControlPoint) ([]gen.GroundControlPoint, error) {
-	if len(gcps) < 2 {
+type controlPoint struct {
+	Local gen.Point
+	Wgs84 gen.Point
+}
+
+func validGroundControlPoints(coordinates []gen.GroundControlPoint) ([]controlPoint, error) {
+	if len(coordinates) < 8 || len(coordinates)%2 != 0 {
 		return nil, errInsufficientGroundControlPoints
 	}
-	out := make([]gen.GroundControlPoint, 0, len(gcps))
+	gcps := make([]controlPoint, 0, len(coordinates)/2)
+	for i := 0; i < len(coordinates); i += 2 {
+		w, l := coordinates[i], coordinates[i+1]
+		if len(w) != 2 || len(l) != 2 || !finitePair(w) || !finitePair(l) || w[0] < -180 || w[0] > 180 || w[1] < -90 || w[1] > 90 {
+			return nil, errors.New("ground_control_points require alternating valid WGS84 and local coordinate pairs")
+		}
+		wp, err := pointFrom2D(Point2D{X: w[0], Y: w[1]}, 0, false)
+		if err != nil {
+			return nil, err
+		}
+		lp, err := pointFrom2D(Point2D{X: l[0], Y: l[1]}, 0, false)
+		if err != nil {
+			return nil, err
+		}
+		gcps = append(gcps, controlPoint{Wgs84: wp, Local: lp})
+	}
+	out := make([]controlPoint, 0, len(gcps))
 	seenLocal := map[string]struct{}{}
 	seenWGS84 := map[string]struct{}{}
 	for _, gcp := range gcps {
@@ -276,7 +297,7 @@ func validGroundControlPoints(gcps []gen.GroundControlPoint) ([]gen.GroundContro
 	return out, nil
 }
 
-func projectedCRSForGroundControlPoints(gcps []gen.GroundControlPoint) (string, error) {
+func projectedCRSForGroundControlPoints(gcps []controlPoint) (string, error) {
 	if len(gcps) == 0 {
 		return "", errInsufficientGroundControlPoints
 	}
@@ -318,7 +339,7 @@ func projectedCRSForLonLat(lon, lat float64) string {
 	return fmt.Sprintf("EPSG:%d", 32700+zone)
 }
 
-func fitSimilarity(gcps []gen.GroundControlPoint, toProjected *proj.PJ) (float64, float64, float64, float64, error) {
+func fitSimilarity(gcps []controlPoint, toProjected *proj.PJ) (float64, float64, float64, float64, error) {
 	rows := len(gcps) * 2
 	design := mat.NewDense(rows, 4, nil)
 	observation := mat.NewDense(rows, 1, nil)
@@ -404,12 +425,12 @@ func pointTo2D(point gen.Point) (Point2D, float64, bool, error) {
 func pointFrom2D(point Point2D, z float64, hasZ bool) (gen.Point, error) {
 	out := gen.Point{Type: "Point"}
 	if hasZ {
-		if err := out.Coordinates.FromGeoJsonPosition3D([]float32{float32(point.X), float32(point.Y), float32(z)}); err != nil {
+		if err := out.Coordinates.FromGeoJsonPosition3D([]float64{float64(point.X), float64(point.Y), float64(z)}); err != nil {
 			return gen.Point{}, err
 		}
 		return out, nil
 	}
-	if err := out.Coordinates.FromGeoJsonPosition2D([]float32{float32(point.X), float32(point.Y)}); err != nil {
+	if err := out.Coordinates.FromGeoJsonPosition2D([]float64{float64(point.X), float64(point.Y)}); err != nil {
 		return gen.Point{}, err
 	}
 	return out, nil
@@ -421,4 +442,8 @@ func clonePoint(point gen.Point) (gen.Point, error) {
 		return gen.Point{}, err
 	}
 	return pointFrom2D(xy, z, hasZ)
+}
+
+func finitePair(pair []float64) bool {
+	return !math.IsNaN(pair[0]) && !math.IsNaN(pair[1]) && !math.IsInf(pair[0], 0) && !math.IsInf(pair[1], 0)
 }

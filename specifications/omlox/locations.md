@@ -27,7 +27,7 @@ Optional (selected):
 
 ## Ingestion endpoints
 
-- `POST /v2/providers/locations` (REST)
+- `PUT /v2/providers/locations` (REST)
 - WebSocket topic `location_updates` via `/v2/ws/socket`
 - MQTT optional: `/omlox/json/location_updates/pub/{provider_id}`
 
@@ -41,3 +41,11 @@ Optional (selected):
 - If a requested derived variant cannot be produced safely, the hub suppresses that variant rather than publishing incorrect coordinates.
 - When optional Kalman normalization is enabled, the hub derives OMLOX-compatible `course` and `speed` values from the normalized track and publishes hub-specific derived metrics such as vertical speed only in `properties`.
 - Kalman-specific metadata must remain in `properties`; the hub does not add non-OMLOX top-level `Location` fields for this behavior.
+
+
+Omitted `timestamp_generated` is set to hub UTC time. Omitted `floor` inherits
+from the source zone, or defaults to zero. Omitted `crs` means `local`, and omitted
+`elevation_ref` means `floor`. Local input must resolve its source by zone ID or
+unique `foreign_id`; an unknown local source is rejected. An incomplete known
+zone permits native local delivery while geographic projection is unavailable.
+Supported named projections are WGS84, all northern/southern UTM zones, and UPS.

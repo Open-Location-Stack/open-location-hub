@@ -41,7 +41,7 @@ func TestKalmanDecisionStageRetainsIndependentTrackStatePerTrackable(t *testing.
 		KalmanLocationMaxAge:    10 * time.Second,
 	}, func() time.Time { return now })
 	crs := "local"
-	location := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{10, 20})
+	location := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{10, 20})
 	trackables := []string{"trackable-a", "trackable-b"}
 	location.Trackables = &trackables
 
@@ -71,7 +71,7 @@ func TestKalmanDecisionStageDerivesCourseAndSpeed(t *testing.T) {
 	crs := "local"
 	trackables := []string{"trackable-a"}
 
-	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{0, 0})
+	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{0, 0})
 	first.Trackables = &trackables
 	firstTime := now
 	first.TimestampGenerated = &firstTime
@@ -84,7 +84,7 @@ func TestKalmanDecisionStageDerivesCourseAndSpeed(t *testing.T) {
 	}
 
 	now = now.Add(time.Second)
-	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{10, 0})
+	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{10, 0})
 	second.Trackables = &trackables
 	second.TimestampGenerated = &now
 	results, err = stage.Process(context.Background(), second)
@@ -114,7 +114,7 @@ func TestKalmanDecisionStageDerivesVerticalSpeedIntoProperties(t *testing.T) {
 	crs := "local"
 	trackables := []string{"trackable-a"}
 
-	first := testLocationWithCoordinates3D(t, &crs, "zone-a", [3]float32{0, 0, 1})
+	first := testLocationWithCoordinates3D(t, &crs, "zone-a", [3]float64{0, 0, 1})
 	first.Trackables = &trackables
 	first.TimestampGenerated = &now
 	if _, err := stage.Process(context.Background(), first); err != nil {
@@ -122,7 +122,7 @@ func TestKalmanDecisionStageDerivesVerticalSpeedIntoProperties(t *testing.T) {
 	}
 
 	now = now.Add(2 * time.Second)
-	second := testLocationWithCoordinates3D(t, &crs, "zone-a", [3]float32{0, 0, 5})
+	second := testLocationWithCoordinates3D(t, &crs, "zone-a", [3]float64{0, 0, 5})
 	second.Trackables = &trackables
 	second.TimestampGenerated = &now
 	results, err := stage.Process(context.Background(), second)
@@ -150,7 +150,7 @@ func TestKalmanDecisionStageResetsWhenSamplesGoStale(t *testing.T) {
 	crs := "local"
 	trackables := []string{"trackable-a"}
 
-	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{0, 0})
+	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{0, 0})
 	first.Trackables = &trackables
 	first.TimestampGenerated = &now
 	if _, err := stage.Process(context.Background(), first); err != nil {
@@ -158,7 +158,7 @@ func TestKalmanDecisionStageResetsWhenSamplesGoStale(t *testing.T) {
 	}
 
 	now = now.Add(3 * time.Second)
-	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{10, 0})
+	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{10, 0})
 	second.Trackables = &trackables
 	second.TimestampGenerated = &now
 	results, err := stage.Process(context.Background(), second)
@@ -183,7 +183,7 @@ func TestKalmanDecisionStageAppliesEmitFrequencyOnlyToPublication(t *testing.T) 
 	crs := "local"
 	trackables := []string{"trackable-a"}
 
-	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{0, 0})
+	first := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{0, 0})
 	first.Trackables = &trackables
 	first.TimestampGenerated = &now
 	if _, err := stage.Process(context.Background(), first); err != nil {
@@ -191,7 +191,7 @@ func TestKalmanDecisionStageAppliesEmitFrequencyOnlyToPublication(t *testing.T) 
 	}
 
 	now = now.Add(100 * time.Millisecond)
-	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float32{1, 0})
+	second := testLocationWithCoordinates(t, &crs, "zone-a", [2]float64{1, 0})
 	second.Trackables = &trackables
 	second.TimestampGenerated = &now
 	results, err := stage.Process(context.Background(), second)
@@ -220,7 +220,7 @@ func TestKalmanDecisionStageKeepsThrottleStateAcrossAlternatingCRS(t *testing.T)
 	localCRS := "local"
 	wgs84CRS := "EPSG:4326"
 
-	firstLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{0, 0})
+	firstLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float64{0, 0})
 	firstLocal.Trackables = &trackables
 	firstLocal.TimestampGenerated = &now
 	localResults, err := stage.Process(context.Background(), firstLocal)
@@ -232,7 +232,7 @@ func TestKalmanDecisionStageKeepsThrottleStateAcrossAlternatingCRS(t *testing.T)
 	}
 
 	now = now.Add(100 * time.Millisecond)
-	firstWGS84 := testLocationWithCoordinates(t, &wgs84CRS, "zone-a", [2]float32{8.5, 47.3})
+	firstWGS84 := testLocationWithCoordinates(t, &wgs84CRS, "zone-a", [2]float64{8.5, 47.3})
 	firstWGS84.Trackables = &trackables
 	firstWGS84.TimestampGenerated = &now
 	wgsResults, err := stage.Process(context.Background(), firstWGS84)
@@ -244,7 +244,7 @@ func TestKalmanDecisionStageKeepsThrottleStateAcrossAlternatingCRS(t *testing.T)
 	}
 
 	now = now.Add(100 * time.Millisecond)
-	secondLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float32{1, 0})
+	secondLocal := testLocationWithCoordinates(t, &localCRS, "zone-a", [2]float64{1, 0})
 	secondLocal.Trackables = &trackables
 	secondLocal.TimestampGenerated = &now
 	localResults, err = stage.Process(context.Background(), secondLocal)

@@ -35,7 +35,7 @@ def main() -> int:
     gtfs_static_url = require_env("GTFS_STATIC_URL")
     gtfs_rt_url = require_env("GTFS_RT_URL")
     provider_id = os.getenv("GTFS_PROVIDER_ID", "gtfs-demo")
-    provider_type = os.getenv("GTFS_PROVIDER_TYPE", "gtfs-rt")
+    provider_type = os.getenv("GTFS_PROVIDER_TYPE", "gps")
     provider_name = os.getenv("GTFS_PROVIDER_NAME", "GTFS Demonstrator")
     route_filter = os.getenv("GTFS_ROUTE_FILTER") or None
     poll_interval = float(os.getenv("GTFS_POLL_INTERVAL_SECONDS", "15"))
