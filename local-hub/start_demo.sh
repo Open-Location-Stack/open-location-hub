@@ -56,6 +56,20 @@ render_signoz_compose() {
 
 render_signoz_compose
 
+clickhouse_default_config() {
+  local target_dir="$2"
+  local ref="$1/deploy/common/clickhouse"
+  if [[ -d "$target_dir/config.xml" ]] || [[ ! -f "$target_dir/config.xml" ]]; then
+    # we can asume the config is not available or corrupt (cluster.xml config.xml custom-function.xml users.xml)
+    rm -rf "$target_dir"
+    cp -r "$ref" "$target_dir"
+  fi
+}
+
+CLOCKHOUSE_COMMON_DIR="$SCRIPT_DIR/common/clickhouse"
+
+clickhouse_default_config "$SIGNOZ_DIR" "$CLOCKHOUSE_COMMON_DIR"
+
 SIGNOZ_ADMIN_NAME="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_NAME=/{print substr($0, index($0,$2))}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_EMAIL="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_EMAIL=/{print $2}' "$ENV_FILE" | tail -n1)"
 SIGNOZ_ADMIN_PASSWORD="$(awk -F= '/^DEMO_SIGNOZ_ADMIN_PASSWORD=/{print $2}' "$ENV_FILE" | tail -n1)"
