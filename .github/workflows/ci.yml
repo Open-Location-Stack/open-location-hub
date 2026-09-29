@@ -9,12 +9,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -25,16 +24,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends $APT_PACKAGES
 
       - name: Cache Go tool binaries
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
-
-      - name: Cache SigNoz checkout
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/open-location/signoz/${{ env.SIGNOZ_REF }}
-          key: ${{ runner.os }}-signoz-checkout-${{ env.SIGNOZ_REF }}
+          key: ${{ runner.os }}-${{ runner.arch }}-go-tools-${{ hashFiles('justfile', 'go.mod') }}
 
       - name: Bootstrap tools
         run: just bootstrap
@@ -47,18 +40,20 @@ jobs:
       - name: Lint
         run: just lint
 
+      - name: Build
+        run: just build
+
       - name: Tests
         run: just test
 
   race:
     runs-on: ubuntu-latest
     env:
-      SIGNOZ_REF: v0.117.1
       APT_PACKAGES: just pkg-config libproj-dev proj-data
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -69,19 +64,35 @@ jobs:
           sudo apt-get install -y --no-install-recommends $APT_PACKAGES
 
       - name: Cache Go tool binaries
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ~/go/bin
-          key: ${{ runner.os }}-go-tools-${{ hashFiles('Justfile') }}
-
-      - name: Cache SigNoz checkout
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/open-location/signoz/${{ env.SIGNOZ_REF }}
-          key: ${{ runner.os }}-signoz-checkout-${{ env.SIGNOZ_REF }}
+          key: ${{ runner.os }}-${{ runner.arch }}-go-tools-${{ hashFiles('justfile', 'go.mod') }}
 
       - name: Bootstrap tools
         run: just bootstrap
 
       - name: Race tests
         run: just test-race
+
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.19"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install just
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends just
+
+      - name: Check Python dependencies and connectors
+        run: just check-python

@@ -37,7 +37,7 @@ laptop development.
 
 ## Build Dependencies
 
-The hub uses native CRS transformation support via PROJ, so local builds need the Go toolchain and PROJ development libraries.
+The hub uses native CRS transformation support via PROJ, so local builds need Go 1.27.1 or newer and PROJ development libraries.
 
 macOS with Homebrew:
 - `brew install just pkgconf proj`
@@ -48,7 +48,8 @@ Debian/Ubuntu:
 - `sudo apt-get install -y golang-go just build-essential pkg-config libproj-dev proj-data`
 
 Notes:
-- `just bootstrap` installs the pinned Go code generators used by this repository
+- `just bootstrap` installs the pinned Go code generators and analysis tools used by this repository
+- Python demos require Python 3.12 or newer and `uv`; `just check-python` validates their locked environments
 - Docker builds install the required PROJ packages inside the image
 - Linux and Docker workflows are the validated CRS execution paths in this repository
 - direct `go test` and `go build` invocations use `PKG_CONFIG="$PWD/tools/bin/pkg-config"` when `pkg-config` is not globally available

@@ -58,6 +58,41 @@ The lint stack now verifies:
 - `go mod tidy` leaves [go.mod](../go.mod) and [go.sum](../go.sum) unchanged
 - `just generate` leaves [internal/httpapi/gen/api.gen.go](../internal/httpapi/gen/api.gen.go) and [internal/storage/postgres/sqlcgen](../internal/storage/postgres/sqlcgen) unchanged
 
+## Dependency validation
+
+CI reads Go 1.27.1 from `go.mod`. Its tool cache includes the runner architecture,
+`go.mod`, and the lowercase `justfile`, so changes to the toolchain or pinned
+bootstrap tools invalidate cached binaries. Both Go jobs use the same pins.
+The verification job also runs `just build` explicitly. SigNoz is a local demo
+service and is not part of the integration suite or its CI caches.
+
+Run Python dependency checks with:
+
+```bash
+just check-python
+UV_PYTHON=3.12 just check-python
+```
+
+This checks all five `uv.lock` files against their manifests, installs the locked
+dependencies, compiles connector scripts, checks imports and GTFS protobuf
+serialization, and runs the UWB simulator tests. CI covers Python 3.12 and 3.14.
+After editing Python requirements, run `uv lock --project <directory>` before
+validation. Use `uv lock --upgrade --project <directory>` for a dependency refresh.
+
+Container builds use Go 1.27.1 and Alpine 3.24 for both build and runtime stages.
+Integration fixtures use PostgreSQL 17.11, Valkey 9.1.2, Mosquitto 2.1.2, Dex
+2.45.1, and Python 3.14.6. PostgreSQL stays on major 17 to preserve compatibility
+with existing local and deployed data directories; a major upgrade needs a
+separate data migration. The deployment collector is pinned to 0.161.0.
+SigNoz stays at 0.117.1: its 0.143.0 source tree no longer includes the
+`deploy/docker/docker-compose.yaml` consumed by the launcher. Updating it needs
+a deployment-source migration and validation of the admin/dashboard bootstrap.
+
+The September 2026 scan reports no reachable vulnerable symbols. It also reports
+[GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443) in the imported gRPC 1.84.0
+package; the reported fix is a development version. Keep the latest stable gRPC
+release until a stable fix is available, and rerun `govulncheck` when updating it.
+
 ## Integration tests
 Run integration tests with Docker/Testcontainers:
 
@@ -84,6 +119,6 @@ The integration suite now also includes shared-hub scenario coverage for high-tr
 - CRS builds require PROJ headers/libs plus a `pkg-config`-compatible binary.
 - On macOS, PROJ installation currently relies on the repo-local `tools/bin/pkg-config` shim, so CRS behavior is not treated as a verified host-native path there.
 - Linux and Docker builds install native PROJ packages and are the expected path for CRS behavior and its test coverage.
-- GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly and caches apt archives to reduce repeated package download cost.
+- GitHub Actions Ubuntu runners also need native PROJ packages before `just lint`, `just check`, or `just build`; the CI workflow installs `pkg-config`, `libproj-dev`, and `proj-data` explicitly.
 - direct `go test` or `go build` runs should export `PKG_CONFIG="$PWD/tools/bin/pkg-config"` if `pkg-config` is not already available globally.
 - Auth setup, Dex fixtures, and permission examples are documented in [docs/auth.md](../docs/auth.md).

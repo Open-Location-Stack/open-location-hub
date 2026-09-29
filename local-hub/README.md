@@ -110,6 +110,16 @@ SigNoz deploy checkout defaults to:
 - `reader@example.com` / `testpass123`
 - `owner@example.com` / `testpass123`
 
+## Dependency upgrades
+
+The stack uses PostgreSQL 17.11, Mosquitto 2.1.2, Dex 2.45.1, and SigNoz
+0.117.1. SigNoz 0.143.0 no longer ships the deployment compose file expected by
+the launcher, so its upgrade requires a deployment-source migration and bootstrap
+validation. Existing `demo.env` files retain their `DEMO_SIGNOZ_REF` override; update
+it deliberately when upgrading an existing telemetry store. Back up persisted
+state before upgrading services. PostgreSQL remains on major 17; changing its
+major version requires a data migration rather than just changing the image tag.
+
 ## Default SigNoz UI User
 
 - `admin@local.test` / `SignozAdmin123!`

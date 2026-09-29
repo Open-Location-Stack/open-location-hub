@@ -1,6 +1,6 @@
 services:
   dex:
-    image: ghcr.io/dexidp/dex:v2.43.1
+    image: ghcr.io/dexidp/dex:v2.45.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes:
       - ./tools/dex/config.yaml:/etc/dex/config.yaml:ro
@@ -13,7 +13,7 @@ services:
       retries: 20
 
   postgres:
-    image: postgres:17
+    image: postgres:17.11
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-openrtls}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -27,7 +27,7 @@ services:
       retries: 10
 
   mosquitto:
-    image: eclipse-mosquitto:2.0
+    image: eclipse-mosquitto:2.1.2-alpine
     ports:
       - "${MQTT_PORT:-1883}:1883"
       - "${MQTT_WS_PORT:-9001}:9001"

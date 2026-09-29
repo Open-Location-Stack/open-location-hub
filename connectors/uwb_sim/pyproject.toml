@@ -5,7 +5,7 @@ description = "Mock multi-floor UWB simulator for Open Location Hub"
 requires-python = ">=3.12"
 dependencies = [
   "requests>=2.33.0",
-  "websocket-client>=1.9.0",
+  "websocket-client>=1.9.2",
 ]
 
 [tool.uv]

@@ -126,13 +126,13 @@ func startIntegrationSuite() (*integrationSuite, error) {
 		return nil, err
 	}
 
-	suite.valkey, err = redis.Run(ctx, "valkey/valkey:8-alpine", tcnetwork.WithNetwork([]string{"valkey"}, network))
+	suite.valkey, err = redis.Run(ctx, "valkey/valkey:9.1.2-alpine", tcnetwork.WithNetwork([]string{"valkey"}, network))
 	if err != nil {
 		return nil, fmt.Errorf("docker/valkey unavailable: %w", err)
 	}
 
 	mqReq := testcontainers.ContainerRequest{
-		Image:        "eclipse-mosquitto:2.0",
+		Image:        "eclipse-mosquitto:2.1.2-alpine",
 		ExposedPorts: []string{"1883/tcp"},
 		Networks:     []string{network.Name},
 		NetworkAliases: map[string][]string{
@@ -151,7 +151,7 @@ func startIntegrationSuite() (*integrationSuite, error) {
 	}
 
 	dexReq := testcontainers.ContainerRequest{
-		Image:        "ghcr.io/dexidp/dex:v2.43.1",
+		Image:        "ghcr.io/dexidp/dex:v2.45.1",
 		ExposedPorts: []string{"5556/tcp"},
 		Networks:     []string{network.Name},
 		NetworkAliases: map[string][]string{
@@ -173,7 +173,7 @@ func startIntegrationSuite() (*integrationSuite, error) {
 	}
 
 	sinkReq := testcontainers.ContainerRequest{
-		Image:        "python:3.13-alpine",
+		Image:        "python:3.14.6-alpine3.24",
 		ExposedPorts: []string{"8080/tcp"},
 		Networks:     []string{network.Name},
 		NetworkAliases: map[string][]string{
@@ -302,7 +302,7 @@ func shutdownPartialSuite(suite *integrationSuite) error {
 
 func startSuitePostgres(ctx context.Context, networkName string) (testcontainers.Container, error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17",
+		Image:        "postgres:17.11",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_DB":       "openrtls",

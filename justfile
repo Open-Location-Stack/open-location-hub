@@ -1,18 +1,18 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 proj-env := 'PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config"'
-staticcheck-version := "v0.7.0"
-govulncheck-version := "v1.3.0"
+staticcheck-version := "v0.8.1"
+govulncheck-version := "v1.8.0"
 
 bootstrap:
-	@if ! command -v oapi-codegen >/dev/null || ! oapi-codegen -version 2>/dev/null | grep -q "v2.7.0"; then \
-		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0; \
+	@if ! command -v oapi-codegen >/dev/null || ! oapi-codegen -version 2>/dev/null | grep -q "v2.8.0"; then \
+		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0; \
 	fi
 	@if ! command -v sqlc >/dev/null || ! sqlc version 2>/dev/null | grep -q "v1.31.1"; then \
 		go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1; \
 	fi
-	@if ! command -v goose >/dev/null || ! goose -version 2>/dev/null | grep -q "v3.27.1"; then \
-		go install github.com/pressly/goose/v3/cmd/goose@v3.27.1; \
+	@if ! command -v goose >/dev/null || ! goose -version 2>/dev/null | grep -q "v3.28.0"; then \
+		go install github.com/pressly/goose/v3/cmd/goose@v3.28.0; \
 	fi
 	@if ! command -v staticcheck >/dev/null || ! staticcheck -version 2>/dev/null | grep -q "{{staticcheck-version}}"; then \
 		go install honnef.co/go/tools/cmd/staticcheck@{{staticcheck-version}}; \
@@ -97,3 +97,13 @@ build:
 	{{proj-env}} go build $packages
 
 check: fmt lint build test
+
+# Validate every locked Python environment; UV_PYTHON selects the interpreter.
+check-python:
+	@for project in scripts connectors/opensky connectors/gtfs connectors/uwb_sim connectors/replay; do \
+		uv sync --locked --project "$project"; \
+		uv run --locked --project "$project" python -m compileall -q "$project" -x '/[.]venv/'; \
+		uv run --locked --project "$project" python -c 'import requests, websocket'; \
+	done
+	uv run --locked --directory connectors/gtfs python -c 'import gtfs_support, connector_mqtt; from google.transit import gtfs_realtime_pb2; feed = gtfs_realtime_pb2.FeedMessage(); feed.header.gtfs_realtime_version = "2.0"; gtfs_realtime_pb2.FeedMessage.FromString(feed.SerializeToString())'
+	uv run --locked --directory connectors/uwb_sim python -m unittest discover -p 'test_*.py'

@@ -195,7 +195,7 @@ func ensurePostgresDatabase(t *testing.T, ctx context.Context, pg testcontainers
 
 func startPostgres(t *testing.T, ctx context.Context, networkName string) (testcontainers.Container, error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17",
+		Image:        "postgres:17.11",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_DB":       "openrtls",

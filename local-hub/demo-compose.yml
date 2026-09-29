@@ -1,6 +1,6 @@
 services:
   dex:
-    image: ghcr.io/dexidp/dex:v2.43.1
+    image: ghcr.io/dexidp/dex:v2.45.1
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes:
       - ../tools/dex/config.yaml:/etc/dex/config.yaml:ro
@@ -13,7 +13,7 @@ services:
       retries: 20
 
   postgres:
-    image: postgres:17
+    image: postgres:17.11
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-openrtls}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -29,7 +29,7 @@ services:
       retries: 20
 
   mosquitto:
-    image: eclipse-mosquitto:2.0
+    image: eclipse-mosquitto:2.1.2-alpine
     ports:
       - "${DEMO_MQTT_PORT:-1883}:1883"
       - "${DEMO_MQTT_WS_PORT:-9001}:9001"
@@ -42,11 +42,11 @@ services:
       retries: 10
 
   migrate:
-    image: golang:1.26.4-alpine
+    image: golang:1.27.1-alpine3.24
     working_dir: /workspace
     entrypoint: ["/bin/sh", "-lc"]
     command:
-      - 'apk add --no-cache build-base && /usr/local/go/bin/go install github.com/pressly/goose/v3/cmd/goose@v3.27.0 && /go/bin/goose -dir migrations postgres "$$POSTGRES_URL" up'
+      - 'apk add --no-cache build-base && /usr/local/go/bin/go install github.com/pressly/goose/v3/cmd/goose@v3.28.0 && /go/bin/goose -dir migrations postgres "$$POSTGRES_URL" up'
     environment:
       POSTGRES_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-openrtls}?sslmode=disable
     volumes:
