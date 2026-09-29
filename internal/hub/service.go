@@ -667,7 +667,7 @@ func (s *Service) GetProviderLocation(ctx context.Context, id string) (gen.Locat
 	if _, ok := s.providerByID(ctx, id); !ok {
 		return gen.Location{}, notFound("provider not found")
 	}
-	location, ok := latestLocationForProvider(s.processingState().ListLatestLocations(), id)
+	location, ok := s.processingState().GetLatestProviderLocation(id)
 	if !ok {
 		return gen.Location{}, notFound("provider location not found")
 	}
@@ -2555,21 +2555,6 @@ func latestLocationKey(providerID, source string) string {
 
 func latestTrackableLocationKey(trackableID string) string {
 	return fmt.Sprintf("hub:trackable:%s:location", trackableID)
-}
-
-func latestLocationForProvider(locations []gen.Location, providerID string) (gen.Location, bool) {
-	var latest gen.Location
-	found := false
-	for _, location := range locations {
-		if location.ProviderId != providerID {
-			continue
-		}
-		if !found || locationTime(location).After(locationTime(latest)) {
-			latest = location
-			found = true
-		}
-	}
-	return latest, found
 }
 
 func locationAssociatedWithTrackable(location gen.Location, trackableID string) bool {

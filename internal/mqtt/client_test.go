@@ -3,10 +3,11 @@ package mqtt
 import (
 	"context"
 	"errors"
-	"github.com/eclipse/paho.golang/packets"
-	"github.com/eclipse/paho.golang/paho"
 	"testing"
 	"time"
+
+	"github.com/eclipse/paho.golang/packets"
+	"github.com/eclipse/paho.golang/paho"
 )
 
 type fakeConnection struct {
@@ -56,6 +57,7 @@ func TestBrokerFailuresAreReturned(t *testing.T) {
 		reason byte
 	}{{errors.New("broker failure"), 0}, {nil, 0x87}} {
 		c := &Client{inner: &fakeConnection{err: tc.err, reason: tc.reason}}
+		defer c.Close()
 		c.connected.Store(true)
 		if c.PublishRaw(context.Background(), "topic", nil, false) == nil {
 			t.Fatal("expected publish failure")

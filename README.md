@@ -52,7 +52,7 @@ Debian/Ubuntu:
 
 Notes:
 - `just bootstrap` installs the pinned Go code generators and analysis tools used by this repository
-- Python demos require Python 3.12 or newer and `uv`; `just check-python` validates their locked environments
+- Python demos use Python 3.14.7 (selected by `.python-version`) and `uv`; `just check-python` validates their locked environments
 - Docker builds install the required PROJ packages inside the image
 - Linux and Docker workflows are the validated CRS execution paths in this repository
 - direct `go test` and `go build` invocations use `PKG_CONFIG="$PWD/tools/bin/pkg-config"` when `pkg-config` is not globally available

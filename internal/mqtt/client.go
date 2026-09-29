@@ -36,20 +36,23 @@ type Client struct {
 	inner         mqttConnection
 	router        *paho.StandardRouter
 	cancel        context.CancelFunc
+	dispatcher    *messageDispatcher
 	connected     atomic.Bool
 	mu            sync.RWMutex
 	subscriptions []subscription
 	onConnect     []func(context.Context)
 }
 
-// NewClient connects using MQTT 5 and restores subscriptions after reconnection.
-func NewClient(logger *zap.Logger, brokerURL string) (*Client, error) {
+// NewClient connects using MQTT 5, starts the bounded inbound handler pool,
+// and restores subscriptions after reconnection.
+func NewClient(logger *zap.Logger, brokerURL string, handlers HandlerConfig) (*Client, error) {
 	cfg, err := connectionConfig(brokerURL)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{logger: logger, BrokerURL: brokerURL, router: paho.NewStandardRouter(), cancel: cancel}
+	c.dispatcher = newMessageDispatcher(ctx, logger, handlers)
 	cfg.ClientConfig = paho.ClientConfig{ClientID: fmt.Sprintf("open-location-hub-%d", time.Now().UnixNano()), Router: c.router}
 	cfg.OnConnectionUp = func(manager *autopaho.ConnectionManager, _ *paho.Connack) {
 		c.connected.Store(true)
@@ -111,8 +114,14 @@ func (c *Client) AddOnConnectListener(fn func(context.Context)) {
 	}
 }
 
-// Close stops reconnection and disconnects from the broker.
+// Close cancels inbound handlers, stops reconnection, and disconnects from the broker.
 func (c *Client) Close() error {
+	c.mu.RLock()
+	dispatcher := c.dispatcher
+	c.mu.RUnlock()
+	if dispatcher != nil {
+		dispatcher.cancel()
+	}
 	if c.cancel != nil {
 		defer c.cancel()
 	}
@@ -131,22 +140,17 @@ func (c *Client) Subscribe(filter string, handler MessageHandler) error {
 	if c.router == nil {
 		c.router = paho.NewStandardRouter()
 	}
+	if c.dispatcher == nil {
+		c.dispatcher = newMessageDispatcher(context.Background(), c.logger, HandlerConfig{})
+	}
+	dispatcher := c.dispatcher
 	c.router.RegisterHandler(filter, func(msg *paho.Publish) {
-		handlerCtx := context.Background()
+		handlerCtx := dispatcher.ctx
 		if msg.Properties != nil && msg.Properties.MessageExpiry != nil {
 			handlerCtx = context.WithValue(handlerCtx, expiryKey{}, time.Duration(*msg.Properties.MessageExpiry)*time.Second)
 		}
 		payload := append([]byte(nil), msg.Payload...)
-		topic := msg.Topic
-		// RPC handlers may publish responses. Never block Paho's receive callback.
-		go func() {
-			if err := handler(handlerCtx, topic, payload); err != nil {
-				observability.Global().RecordDependencyEvent(context.Background(), "mqtt", "handler", "failure")
-				if c.logger != nil {
-					c.logger.Warn("mqtt handler failed", zap.Error(err), zap.String("topic", topic))
-				}
-			}
-		}()
+		dispatcher.submit(inboundMessage{ctx: handlerCtx, handler: handler, topic: msg.Topic, payload: payload})
 	})
 	c.subscriptions = append(c.subscriptions, subscription{filter, handler})
 	c.mu.Unlock()

@@ -70,18 +70,20 @@ Run Python dependency checks with:
 
 ```bash
 just check-python
-UV_PYTHON=3.12 just check-python
 ```
 
 This checks all five `uv.lock` files against their manifests, installs the locked
 dependencies, compiles connector scripts, checks imports and GTFS protobuf
-serialization, and runs the UWB simulator tests. CI covers Python 3.12 and 3.14.
+serialization, and runs the UWB simulator, GTFS, and replay tests. Python 3.14 is
+the only supported minor version. CI and `.python-version` select its current
+stable patch, 3.14.7; manifests require `>=3.14.7,<3.15`. Update these pins together
+when adopting a newer Python release.
 After editing Python requirements, run `uv lock --project <directory>` before
 validation. Use `uv lock --upgrade --project <directory>` for a dependency refresh.
 
 Container builds use Go 1.27.1 and Alpine 3.24 for both build and runtime stages.
 Integration fixtures use PostgreSQL 17.11, Valkey 9.1.2, Mosquitto 2.1.2, Dex
-2.45.1, and Python 3.14.6. PostgreSQL stays on major 17 to preserve compatibility
+2.45.1, and Python 3.14.7. PostgreSQL stays on major 17 to preserve compatibility
 with existing local and deployed data directories; a major upgrade needs a
 separate data migration. The deployment collector is pinned to 0.161.0.
 SigNoz stays at 0.117.1: its 0.143.0 source tree no longer includes the
@@ -157,3 +159,13 @@ cross-connection WebSocket subscription IDs. A local MQTT 5 client reads a retai
 RPC announcement from Mosquitto and asserts its remaining expiry is at most 120
 seconds. CLI HTTP tests and the seven plugfest Node tests provide offline adapter
 coverage; they do not connect to vendor hubs.
+
+## Queue and lookup regression coverage
+
+`just test-unit` includes deterministic `testing/synctest` checks for idle event-bus
+flush recovery, MQTT worker and queue bounds, handler cancellation, and copied
+message payloads. Concurrent subscribe/emit/unsubscribe and metadata snapshot
+writes are exercised under `just test-unit -race`. Lookup tests cover multiple
+provider sources, stale observations, expiry, deletion, and changed trackable
+assignments. WebSocket tests assert that unrelated events are filtered before
+projection and matching subscriptions share projection work within a batch.

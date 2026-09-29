@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"encoding/json"
 	"math"
 	"strconv"
 	"strings"
@@ -26,12 +25,11 @@ func validDuration(name string, value *gen.PositiveOrMinusOne) error {
 	if value == nil {
 		return nil
 	}
-	raw, err := json.Marshal(value)
+	n, err := value.AsPositiveNumber()
 	if err != nil {
 		return badRequest(name + " must be nonnegative or -1")
 	}
-	var n float64
-	if json.Unmarshal(raw, &n) != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 && n != -1 {
+	if math.IsNaN(n) || math.IsInf(n, 0) || n < 0 && n != -1 {
 		return badRequest(name + " must be nonnegative or -1")
 	}
 	return nil
@@ -40,8 +38,11 @@ func validateExitSettings(tolerance *float64, timeout, toleranceTimeout, delay *
 	if err := nonnegative("exit_tolerance", tolerance); err != nil {
 		return err
 	}
-	for name, value := range map[string]*gen.PositiveOrMinusOne{"timeout": timeout, "tolerance_timeout": toleranceTimeout, "exit_delay": delay} {
-		if err := validDuration(name, value); err != nil {
+	for _, field := range []struct {
+		name  string
+		value *gen.PositiveOrMinusOne
+	}{{"timeout", timeout}, {"tolerance_timeout", toleranceTimeout}, {"exit_delay", delay}} {
+		if err := validDuration(field.name, field.value); err != nil {
 			return err
 		}
 	}
@@ -51,9 +52,9 @@ func validatePoint(point gen.Point, geographic bool) error {
 	if point.Type != "Point" {
 		return badRequest("geometry must be a Point")
 	}
-	var coords []float64
-	raw, err := json.Marshal(point.Coordinates)
-	if err != nil || json.Unmarshal(raw, &coords) != nil || (len(coords) != 2 && len(coords) != 3) {
+	// Both generated position variants decode to []float64; enforce length here.
+	coords, err := point.Coordinates.AsGeoJsonPosition3D()
+	if err != nil || (len(coords) != 2 && len(coords) != 3) {
 		return badRequest("point must contain two or three coordinates")
 	}
 	for _, v := range coords {

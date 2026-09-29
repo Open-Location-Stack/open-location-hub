@@ -260,8 +260,12 @@ func (h *Hub) broadcastBatch(events []hub.Event) {
 		conns = append(conns, conn)
 	}
 	h.mu.RUnlock()
+	var projections *projectionCache
+	if h.service != nil {
+		projections = newProjectionCache(h.service)
+	}
 	for _, conn := range conns {
-		conn.deliverBatch(events)
+		conn.deliverBatch(events, projections)
 	}
 }
 
@@ -463,7 +467,7 @@ func (c *connection) authenticate(params map[string]any, subscribe bool, topic s
 	return principal, nil
 }
 
-func (c *connection) deliverBatch(events []hub.Event) {
+func (c *connection) deliverBatch(events []hub.Event, projections *projectionCache) {
 	start := time.Now()
 	c.mu.RLock()
 	subs := make([]subscription, 0, len(c.subs))
@@ -472,7 +476,7 @@ func (c *connection) deliverBatch(events []hub.Event) {
 	}
 	c.mu.RUnlock()
 	for _, sub := range subs {
-		payload, ok := payloadBatchForSubscription(sub, events, c.hub.service)
+		payload, ok := payloadBatchForSubscription(sub, events, projections)
 		if !ok {
 			continue
 		}
@@ -587,9 +591,9 @@ func parseFilter(topic string, params map[string]any) (any, error) {
 	}
 }
 
-func payloadBatchForSubscription(sub subscription, events []hub.Event, services ...*hub.Service) (json.RawMessage, bool) {
-	if len(services) > 0 && services[0] != nil {
-		sub, events = projectSubscription(sub, events, services[0])
+func payloadBatchForSubscription(sub subscription, events []hub.Event, projections *projectionCache) (json.RawMessage, bool) {
+	if projections != nil {
+		sub, events = projectSubscription(sub, events, projections)
 	}
 
 	items := make([]json.RawMessage, 0, len(events))

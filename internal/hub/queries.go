@@ -128,6 +128,13 @@ func (s *Service) ListProviderTrackables(ctx context.Context, id gen.ProviderId)
 	if _, err := s.GetProvider(ctx, id); err != nil {
 		return nil, err
 	}
+	if cache := s.metadataCache(); cache != nil {
+		out := cache.TrackablesByProviderID(id)
+		if out == nil {
+			out = []gen.Trackable{}
+		}
+		return out, nil
+	}
 	all, err := s.ListTrackables(ctx)
 	if err != nil {
 		return nil, err

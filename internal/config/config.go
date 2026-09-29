@@ -24,6 +24,8 @@ type Config struct {
 	ResetHubID                            bool
 	PostgresURL                           string
 	MQTTBrokerURL                         string
+	MQTTHandlerWorkers                    int
+	MQTTHandlerBuffer                     int
 	WebSocketWriteTimeout                 time.Duration
 	WebSocketReadTimeout                  time.Duration
 	WebSocketPingInterval                 time.Duration
@@ -129,6 +131,8 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		HubLabel:                              strings.TrimSpace(envWithLookup(lookup, "HUB_LABEL", "")),
 		ResetHubID:                            boolEnvWithLookup(lookup, "RESET_HUB_ID", false),
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
+		MQTTHandlerWorkers:                    intEnvWithLookup(lookup, "MQTT_HANDLER_WORKERS", 4),
+		MQTTHandlerBuffer:                     intEnvWithLookup(lookup, "MQTT_HANDLER_BUFFER", 1024),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
 		WebSocketReadTimeout:                  durationEnvWithLookup(lookup, "WEBSOCKET_READ_TIMEOUT", time.Minute),
@@ -201,6 +205,12 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		if _, err := uuid.Parse(cfg.HubID); err != nil {
 			return Config{}, fmt.Errorf("HUB_ID must be a valid UUID: %w", err)
 		}
+	}
+	if cfg.MQTTHandlerWorkers <= 0 {
+		return Config{}, fmt.Errorf("MQTT_HANDLER_WORKERS must be > 0")
+	}
+	if cfg.MQTTHandlerBuffer <= 0 {
+		return Config{}, fmt.Errorf("MQTT_HANDLER_BUFFER must be > 0")
 	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")

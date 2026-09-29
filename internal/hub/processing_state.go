@@ -49,6 +49,7 @@ type ProcessingState struct {
 	now                     func() time.Time
 	dedup                   map[string]time.Time
 	latestLocations         map[string]expiringLocation
+	providerLocationKeys    map[string]map[string]struct{}
 	trackableCandidates     map[string]map[string]expiringLocation
 	trackableInputs         map[string]expiringLocation
 	latestTrackableLocation map[string]expiringLocation
@@ -70,6 +71,7 @@ func NewProcessingState(now func() time.Time) *ProcessingState {
 		now:                     now,
 		dedup:                   map[string]time.Time{},
 		latestLocations:         map[string]expiringLocation{},
+		providerLocationKeys:    map[string]map[string]struct{}{},
 		trackableCandidates:     map[string]map[string]expiringLocation{},
 		trackableInputs:         map[string]expiringLocation{},
 		latestTrackableLocation: map[string]expiringLocation{},
@@ -106,8 +108,49 @@ func (s *ProcessingState) SetLatestLocation(key string, value gen.Location, ttl 
 	if old, ok := s.latestLocations[key]; ok && old.expiresAt.After(now) && candidateTime(item).Before(candidateTime(old)) {
 		return false
 	}
+	if old, ok := s.latestLocations[key]; ok && old.value.ProviderId != value.ProviderId {
+		s.deleteLatestLocationLocked(key)
+	}
 	s.latestLocations[key] = item
+	keys := s.providerLocationKeys[value.ProviderId]
+	if keys == nil {
+		keys = make(map[string]struct{})
+		s.providerLocationKeys[value.ProviderId] = keys
+	}
+	keys[key] = struct{}{}
 	return true
+}
+
+// GetLatestProviderLocation returns the newest unexpired observation across a
+// provider's sources without scanning other providers' locations.
+func (s *ProcessingState) GetLatestProviderLocation(providerID string) (gen.Location, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := s.nowUTC()
+	var latest gen.Location
+	found := false
+	for key := range s.providerLocationKeys[providerID] {
+		item := s.latestLocations[key]
+		if item.expiresAt.After(now) && (!found || locationTime(item.value).After(locationTime(latest))) {
+			latest = item.value
+			found = true
+		}
+	}
+	return latest, found
+}
+
+// Caller holds mu. All removals keep the provider index in step with state.
+func (s *ProcessingState) deleteLatestLocationLocked(key string) {
+	item, ok := s.latestLocations[key]
+	if !ok {
+		return
+	}
+	delete(s.latestLocations, key)
+	keys := s.providerLocationKeys[item.value.ProviderId]
+	delete(keys, key)
+	if len(keys) == 0 {
+		delete(s.providerLocationKeys, item.value.ProviderId)
+	}
 }
 
 func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
@@ -115,7 +158,7 @@ func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
 	defer s.mu.Unlock()
 	item, ok := s.latestLocations[key]
 	if !ok || !item.expiresAt.After(s.nowUTC()) {
-		delete(s.latestLocations, key)
+		s.deleteLatestLocationLocked(key)
 		return gen.Location{}, false
 	}
 	return item.value, true
@@ -124,7 +167,7 @@ func (s *ProcessingState) GetLatestLocation(key string) (gen.Location, bool) {
 func (s *ProcessingState) DeleteLatestLocation(key string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.latestLocations, key)
+	s.deleteLatestLocationLocked(key)
 }
 
 func (s *ProcessingState) ListLatestLocations() []gen.Location {
@@ -134,7 +177,7 @@ func (s *ProcessingState) ListLatestLocations() []gen.Location {
 	locations := make([]gen.Location, 0, len(s.latestLocations))
 	for key, item := range s.latestLocations {
 		if !item.expiresAt.After(now) {
-			delete(s.latestLocations, key)
+			s.deleteLatestLocationLocked(key)
 			continue
 		}
 		locations = append(locations, item.value)
@@ -470,7 +513,7 @@ func (s *ProcessingState) SweepExpired() {
 	}
 	for key, item := range s.latestLocations {
 		if !item.expiresAt.After(now) {
-			delete(s.latestLocations, key)
+			s.deleteLatestLocationLocked(key)
 		}
 	}
 	for id, candidates := range s.trackableCandidates {

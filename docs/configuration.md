@@ -16,6 +16,8 @@ Runtime lifecycle behavior:
 - `RESET_HUB_ID` (`true`/`false`, default `false`; when `true`, overwrite stored hub metadata with explicitly supplied env values)
 - `POSTGRES_URL` (default `postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable`)
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
+- `MQTT_HANDLER_WORKERS` (positive integer, default `4`)
+- `MQTT_HANDLER_BUFFER` (positive integer, default `1024`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_READ_TIMEOUT` (duration, default `1m`)
 - `WEBSOCKET_PING_INTERVAL` (duration, default `30s`)
@@ -56,6 +58,9 @@ HTTP request decoding behavior:
 - `KALMAN_EMIT_MAX_FREQUENCY_HZ` (number, default `0`; `0` means unlimited)
 
 Stateful ingest behavior:
+- inbound MQTT handlers share a bounded queue and worker pool; `MQTT_HANDLER_WORKERS` limits active callbacks and `MQTT_HANDLER_BUFFER` limits queued messages
+- a full MQTT handler queue drops new work, records a runtime drop with `stage=mqtt_handler` and `reason=queue_full`, and logs the first and every hundredth drop; QoS 1 acknowledgment does not guarantee application processing after a queue drop
+- MQTT client shutdown cancels active handler contexts and abandons queued messages
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed in the in-memory processing state before fan-out work
 - latest provider-source location state, trackable latest-location state, proximity hysteresis state, fence membership state, and collision pair state are all kept in process memory with the configured expiry semantics
 - metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`

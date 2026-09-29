@@ -67,7 +67,7 @@ func TestRunStartsAndShutsDownServerGracefully(t *testing.T) {
 		},
 	}
 
-	rt.newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+	rt.newMQTT = func(*zap.Logger, string, mqtt.HandlerConfig) (mqttRuntimeClient, error) {
 		return fakeMQTTClient, nil
 	}
 	rt.newHTTPServer = func(_ string, handler http.Handler) httpServer {
@@ -162,7 +162,7 @@ func TestRunRegistersPprofRoutesWhenEnabled(t *testing.T) {
 			probeDone <- nil
 		},
 	}
-	rt.newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+	rt.newMQTT = func(*zap.Logger, string, mqtt.HandlerConfig) (mqttRuntimeClient, error) {
 		return fakeMQTTClient, nil
 	}
 	rt.newHTTPServer = func(_ string, handler http.Handler) httpServer {
@@ -210,7 +210,7 @@ func TestRunReturnsMQTTSubscriptionFailure(t *testing.T) {
 	rt := stubRuntimeForTest(t)
 
 	wantErr := errors.New("subscribe failed")
-	rt.newMQTT = func(*zap.Logger, string) (mqttRuntimeClient, error) {
+	rt.newMQTT = func(*zap.Logger, string, mqtt.HandlerConfig) (mqttRuntimeClient, error) {
 		return &fakeRuntimeMQTT{subscribeErrByFilter: map[string]error{
 			mqtt.TopicProximityWildcard(): wantErr,
 		}}, nil
@@ -339,7 +339,7 @@ func stubRuntimeForTest(t *testing.T) runtimeDeps {
 		openQueries: func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error) {
 			return nil, runtimeCloserFunc(func() error { return nil }), nil
 		},
-		newMQTT: func(*zap.Logger, string) (mqttRuntimeClient, error) {
+		newMQTT: func(*zap.Logger, string, mqtt.HandlerConfig) (mqttRuntimeClient, error) {
 			return &fakeRuntimeMQTT{}, nil
 		},
 		newAuthenticator: func(context.Context, config.AuthConfig) (auth.Authenticator, error) {

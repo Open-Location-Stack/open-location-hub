@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -546,4 +547,67 @@ func mustProviderRows(t *testing.T, items ...gen.LocationProvider) []sqlcgen.Pro
 
 func stringPtrValueRef(value string) *string {
 	return &value
+}
+
+func TestConcurrentMetadataWritersPublishCompleteImmutableSnapshots(t *testing.T) {
+	cache := &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)}
+	original := cache.current()
+	var workers sync.WaitGroup
+	for range 16 {
+		fence := testPointFence(t, uuid.New(), [2]float64{13, 52}, 5)
+		workers.Go(func() {
+			cache.UpsertFence(fence, fence.Id.String())
+			for range 20 {
+				snapshot := cache.current()
+				if len(snapshot.fencesByID) != len(snapshot.worldFencesByID) {
+					t.Error("reader observed partially built metadata")
+				}
+				if _, ok := snapshot.fencesByID[fence.Id.String()]; !ok {
+					t.Error("concurrent writer lost a completed write")
+				}
+			}
+		})
+	}
+	workers.Wait()
+	if len(cache.ListFences()) != 16 {
+		t.Fatal("concurrent fence writes were lost")
+	}
+	if len(original.fences) != 0 || len(original.worldFencesByID) != 0 {
+		t.Fatal("an old snapshot was mutated")
+	}
+}
+
+func TestFenceMutationRefreshesWorldIndexAndPreservesPriorSnapshot(t *testing.T) {
+	cache := &MetadataCache{snapshot: newMetadataSnapshot(nil, nil, nil, nil)}
+	service := &Service{metadata: cache}
+	fence := testPointFence(t, uuid.New(), [2]float64{13, 52}, 5)
+	other := testPointFence(t, uuid.New(), [2]float64{15, 52}, 5)
+	cache.UpsertFence(fence, "first")
+	cache.UpsertFence(other, "other")
+	before := cache.current()
+	fence = testPointFence(t, fence.Id, [2]float64{14, 52}, 5)
+	cache.UpsertFence(fence, "moved")
+	crs := "EPSG:4326"
+	for _, tc := range []struct {
+		x     float64
+		count int
+	}{{13, 0}, {14, 1}, {15, 1}} {
+		matches, err := service.fenceCandidatesForLocation(context.Background(), testLocationWithCoordinates(t, &crs, "", [2]float64{tc.x, 52}))
+		if err != nil || len(matches) != tc.count {
+			t.Fatalf("world candidates at %g: %d, %v", tc.x, len(matches), err)
+		}
+	}
+	oldPoint, err := before.worldFencesByID[fence.Id.String()].Region.AsPoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	coords, _ := oldPoint.Coordinates.AsGeoJsonPosition2D()
+	if coords[0] != 13 {
+		t.Fatal("old world geometry was mutated")
+	}
+	cache.DeleteFence(fence.Id)
+	matches, err := service.fenceCandidatesForLocation(context.Background(), testLocationWithCoordinates(t, &crs, "", [2]float64{14, 52}))
+	if err != nil || len(matches) != 0 {
+		t.Fatal("deleted fence remained in world index")
+	}
 }

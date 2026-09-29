@@ -173,7 +173,7 @@ func startIntegrationSuite() (*integrationSuite, error) {
 	}
 
 	sinkReq := testcontainers.ContainerRequest{
-		Image:        "python:3.14.6-alpine3.24",
+		Image:        "python:3.14.7-alpine3.24",
 		ExposedPorts: []string{"8080/tcp"},
 		Networks:     []string{network.Name},
 		NetworkAliases: map[string][]string{

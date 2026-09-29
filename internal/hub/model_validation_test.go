@@ -83,3 +83,32 @@ func TestFenceSubdivisionPreservesMetadataAndBoundsEdgeLength(t *testing.T) {
 		t.Fatal("subdivision must preserve a point region")
 	}
 }
+
+func TestExitValidationReportsFieldsInStableOrder(t *testing.T) {
+	var invalid gen.PositiveOrMinusOne
+	if err := invalid.FromPositiveNumber(-2); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateExitSettings(nil, &invalid, &invalid, &invalid); err == nil || err.Error() != "timeout must be nonnegative or -1" {
+		t.Fatalf("unexpected first validation error: %v", err)
+	}
+}
+
+func TestPointValidationChecksDecodedCoordinateDimensions(t *testing.T) {
+	for _, tc := range []struct {
+		raw   string
+		valid bool
+	}{
+		{`[13,52]`, true}, {`[13,52,4]`, true}, {`[13]`, false},
+		{`[13,52,4,5]`, false}, {`[181,52]`, false}, {`[13,"52"]`, false},
+	} {
+		var coords gen.GeoJsonPosition
+		if err := json.Unmarshal([]byte(tc.raw), &coords); err != nil {
+			t.Fatal(err)
+		}
+		err := validatePoint(gen.Point{Type: "Point", Coordinates: coords}, true)
+		if (err == nil) != tc.valid {
+			t.Fatalf("coordinates %s: %v", tc.raw, err)
+		}
+	}
+}

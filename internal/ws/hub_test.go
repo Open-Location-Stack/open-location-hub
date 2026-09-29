@@ -119,7 +119,7 @@ func TestPayloadBatchForSubscriptionBuildsJSONArrayFromCachedItems(t *testing.T)
 		Kind:    hub.EventLocation,
 		Scope:   hub.ScopeLocal,
 		Payload: hub.LocationEnvelope{Location: location},
-	}})
+	}}, nil)
 	if !ok {
 		t.Fatal("expected payload batch")
 	}

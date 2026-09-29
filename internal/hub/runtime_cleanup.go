@@ -65,11 +65,9 @@ func (s *Service) deleteProviderState(ctx context.Context, id string) bool {
 	state.mu.Lock()
 	removed := false
 	affected := map[string]bool{}
-	for key, item := range state.latestLocations {
-		if item.value.ProviderId == id {
-			delete(state.latestLocations, key)
-			removed = true
-		}
+	for key := range state.providerLocationKeys[id] {
+		state.deleteLatestLocationLocked(key)
+		removed = true
 	}
 	for trackable, candidates := range state.trackableCandidates {
 		for key, item := range candidates {

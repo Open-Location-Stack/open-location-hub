@@ -242,10 +242,13 @@ func (s *ProcessingState) seedTrackableCandidates(trackable gen.Trackable) []exp
 	now := s.nowUTC()
 	candidates := map[string]expiringLocation{}
 	out := []expiringLocation{}
-	for key, item := range s.latestLocations {
-		if item.expiresAt.After(now) && providers[item.value.ProviderId] {
-			candidates[key] = item
-			out = append(out, item)
+	for providerID := range providers {
+		for key := range s.providerLocationKeys[providerID] {
+			item := s.latestLocations[key]
+			if item.expiresAt.After(now) {
+				candidates[key] = item
+				out = append(out, item)
+			}
 		}
 	}
 	s.trackableCandidates[trackable.Id.String()] = candidates

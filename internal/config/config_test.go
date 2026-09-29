@@ -258,3 +258,21 @@ func TestInvalidHubIDFailsValidation(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestMQTTHandlerLimits(t *testing.T) {
+	cfg, err := configFromMap(map[string]string{"AUTH_MODE": "none"})
+	if err != nil || cfg.MQTTHandlerWorkers != 4 || cfg.MQTTHandlerBuffer != 1024 {
+		t.Fatalf("unexpected MQTT defaults: workers=%d buffer=%d err=%v", cfg.MQTTHandlerWorkers, cfg.MQTTHandlerBuffer, err)
+	}
+	cfg, err = configFromMap(map[string]string{"AUTH_MODE": "none", "MQTT_HANDLER_WORKERS": "2", "MQTT_HANDLER_BUFFER": "16"})
+	if err != nil || cfg.MQTTHandlerWorkers != 2 || cfg.MQTTHandlerBuffer != 16 {
+		t.Fatal("MQTT handler overrides not applied")
+	}
+	for _, key := range []string{"MQTT_HANDLER_WORKERS", "MQTT_HANDLER_BUFFER"} {
+		for _, value := range []string{"0", "-1"} {
+			if _, err := configFromMap(map[string]string{"AUTH_MODE": "none", key: value}); err == nil {
+				t.Fatalf("accepted %s=%s", key, value)
+			}
+		}
+	}
+}

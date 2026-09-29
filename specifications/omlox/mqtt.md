@@ -391,6 +391,15 @@ The client uses MQTT 5. Retained RPC availability announcements carry a
 120-second Message Expiry Interval. The registry also expires external handlers
 using the remaining broker-supplied lifetime, or 120 seconds when absent.
 
+Inbound handlers run in a bounded worker pool configured by
+`MQTT_HANDLER_WORKERS` (default 4) and `MQTT_HANDLER_BUFFER` (default 1024).
+The broker callback never waits for queue space because handlers can publish
+responses that need the receive loop to process acknowledgments. Saturation drops
+new messages with a runtime metric and throttled warning, including RPC discovery
+or responses using the same queue. MQTT QoS 1 does not guarantee application
+processing after such a drop; callers may time out and availability may expire.
+These limits and overload behavior are repository implementation choices.
+
 ## Reference implementation notes
 
 The following notes come from a public reference implementation. They are useful as reference implementation guidance, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.

@@ -16,6 +16,8 @@
 - The runtime resolves the singleton hub metadata row before the service starts so one stable `hub_id` and label are available for startup validation, internal event provenance, and identify responses.
 - The hub loads those resources into an immutable in-memory metadata snapshot before it accepts traffic.
 - Successful CRUD writes update Postgres first, then update the in-memory snapshot, invalidate any affected derived metadata such as zone transforms, and emit a `metadata_changes` bus event.
+- Metadata writers serialize snapshot preparation and take the reader lock only to publish the completed snapshot. A fence edit reprojects that fence and reuses other world geometries; zone changes rebuild world geometry. Spatial trees are rebuilt from the resulting snapshot. Readers continue on the previous immutable snapshot during preparation.
+- Provider location reads use a provider-to-source index maintained on writes, deletion, and expiry. Provider-to-trackable reads use the metadata assignment index.
 - A background reconcile loop reloads durable metadata periodically and emits the same `metadata_changes` notifications when it detects out-of-band create, update, or delete drift.
 - Decision-critical ingest state is kept in process memory:
   - dedup windows
@@ -27,7 +29,7 @@
   - collision pair state
 
 ## Event Fan-Out
-1. REST, MQTT, or WebSocket ingest enters the shared hub service.
+1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
 3. A buffered native-publication stage emits native provider location events. Trackable motion publication waits for location selection.
 4. A second buffered decision stage publishes alternate provider projections independently, then selects each trackable's significant location using locating rules and generated timestamps. Selected locations pass through optional Kalman normalization before motion publication, geofence evaluation, and collision preparation.
@@ -51,6 +53,8 @@ Implications:
 - switching a selected provider/source or selecting an older retained observation resets the optional Kalman filter to avoid blending unrelated coordinate frames
 - when Kalman filtering is enabled, `trackable_motion` publication can be rate-limited independently from decision logic
 - collision evaluation remains WGS84-only so downstream collision payloads stay in one coordinate space
+- pending internal events resume delivery when subscribers make room, even if no further events arrive; unsubscribe stops the flusher and synchronizes channel closure with concurrent emitters
+- WebSocket subscriptions match topic and observation filters before projection; a broadcast batch shares projections for each event, CRS, and target zone across connections
 - lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
 - WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable

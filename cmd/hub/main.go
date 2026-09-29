@@ -55,7 +55,7 @@ type runtimeDeps struct {
 	loadConfig           func() (config.Config, error)
 	newLogger            func(string) (*zap.Logger, func(), error)
 	openQueries          func(context.Context, string) (sqlcgen.Querier, runtimeCloser, error)
-	newMQTT              func(*zap.Logger, string) (mqttRuntimeClient, error)
+	newMQTT              func(*zap.Logger, string, mqtt.HandlerConfig) (mqttRuntimeClient, error)
 	newAuthenticator     func(context.Context, config.AuthConfig) (auth.Authenticator, error)
 	loadRegistry         func(string) (*auth.Registry, error)
 	resolveHubMetadata   func(context.Context, sqlcgen.Querier, config.Config) (hubmeta.Metadata, error)
@@ -103,8 +103,8 @@ var defaultRuntime = runtimeDeps{
 	},
 }
 
-func authlessNewMQTT(logger *zap.Logger, brokerURL string) (mqttRuntimeClient, error) {
-	return mqtt.NewClient(logger, brokerURL)
+func authlessNewMQTT(logger *zap.Logger, brokerURL string, handlers mqtt.HandlerConfig) (mqttRuntimeClient, error) {
+	return mqtt.NewClient(logger, brokerURL, handlers)
 }
 
 type runtimeCloserFunc func() error
@@ -165,7 +165,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 
 	mqttCtx, mqttSpan := telemetry.StartSpan(ctx, "runtime.mqtt.init")
-	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL)
+	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL, mqtt.HandlerConfig{Workers: cfg.MQTTHandlerWorkers, Buffer: cfg.MQTTHandlerBuffer})
 	if err != nil {
 		mqttSpan.RecordError(err)
 		telemetry.RecordDependencyEvent(mqttCtx, "mqtt", "init", "failure")
