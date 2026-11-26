@@ -93,10 +93,24 @@ checkpoint retains those interests so crossing multiple cells or changing
 estimator replicas still reaches the previously visited fence. Each fence and
 trackable pair maps to a stable Kafka partition. The selected location, fence
 geometry and effective timer policy travel with the configuration revision.
-The estimate, fence inputs and checkpoint commit together. Candidate routing
-does not change public fence events. Exact membership decisions, timer
-execution, provider-only routing and stationary re-evaluation still run outside
-this shadow stage.
+The estimate, fence inputs and checkpoint commit together.
+
+The `fence-worker` role evaluates exact geometry and the OMLOX exit timers
+for its membership partitions. Each worker caches decoded fence geometry.
+It keeps only active memberships in the compacted checkpoint and maintains
+one scheduled deadline per active membership. A due deadline appends a hint
+to the same partition as its observations. The hint carries the generation of
+the membership that scheduled it, so retries and previous owners cannot
+repeat an exit. A new owner restores live memberships and pending deadlines.
+It commits entry and exit records, membership checkpoints and input offsets
+in a single Kafka transaction.
+
+The transition log is available for comparison. The compatibility path still
+owns public events, provider-only memberships and stationary re-evaluation.
+The shadow worker orders timer hints with evaluations that have reached the
+fence log. A delayed upstream estimate can reach that log after a deadline
+hint has committed. Measure upstream lag and transition parity before
+selecting the public event path.
 
 The configuration relay publishes changes to zones, fences, trackables and
 location providers from a PostgreSQL outbox. It emits one revision per

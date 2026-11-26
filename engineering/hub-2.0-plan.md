@@ -383,6 +383,31 @@ topic reported six-hour retention. This run covers candidate routing, with
 exact membership decisions and timer execution still handled by the
 compatibility runtime.
 
+Two independent Kafka fence workers then took six membership partitions each.
+The first native replay on the warmed compatibility Hub recorded 13 event-bus
+drops. A fresh Hub process passed at 175 updates/s with zero reported drops.
+The 1 Hz run reached 2,539 updates/s, with 65,587 compatibility decision-queue
+drops and 3,537 event-bus drops.
+
+For the fresh native and 1 Hz replay window, the read-committed scan found
+5,188 fence evaluations and 28 entries plus 28 exits. Transition IDs were
+unique, and entry and exit alternated for each membership in the scan.
+The 28 entries took a median of 8.5 ms and a maximum of 78 ms from the asset
+input's broker append to the transition's broker append. The consumer group
+caught up on all partitions, with offsets at the log end or one trailing
+transaction marker behind. Perses data showed a per-worker observation
+service p99 below 0.63 ms and a batch commit p99 below 37 ms. Queue histogram
+samples also captured retained-data catch-up, so those samples did not
+yield a clean per-run queue p99.
+
+The failover fixture stopped the replica that had committed a trackable's
+departure. The peer restored the partition and appended a deadline hint
+without another observation. The worker emitted one exit at the original
+25-second deadline on the same partition as the entry. The transition topic
+is a shadow sink. A public rollout still needs provider and stationary
+membership reconciliation, timing parity under upstream lag, and ordered
+delivery through the facade.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

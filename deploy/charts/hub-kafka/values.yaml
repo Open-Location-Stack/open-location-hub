@@ -18,6 +18,8 @@ kafka:
     estimatorState: location-hub.estimator-state.v1
     configuration: location-hub.configuration.v1
     fenceEvaluations: location-hub.fence-evaluations.v1
+    fenceTransitions: location-hub.fence-transitions.v1
+    fenceState: location-hub.fence-state.v1
   routerGroup: location-hub.asset-router.v1
   partitions: 12
   logRetentionMs: 21600000

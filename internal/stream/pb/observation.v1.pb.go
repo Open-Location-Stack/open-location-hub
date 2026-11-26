@@ -75,6 +75,7 @@ const (
 	FenceEvaluation_ACTION_UNSPECIFIED FenceEvaluation_Action = 0
 	FenceEvaluation_ACTION_EVALUATE    FenceEvaluation_Action = 1
 	FenceEvaluation_ACTION_CANCEL      FenceEvaluation_Action = 2
+	FenceEvaluation_ACTION_DEADLINE    FenceEvaluation_Action = 3
 )
 
 // Enum value maps for FenceEvaluation_Action.
@@ -83,11 +84,13 @@ var (
 		0: "ACTION_UNSPECIFIED",
 		1: "ACTION_EVALUATE",
 		2: "ACTION_CANCEL",
+		3: "ACTION_DEADLINE",
 	}
 	FenceEvaluation_Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED": 0,
 		"ACTION_EVALUATE":    1,
 		"ACTION_CANCEL":      2,
+		"ACTION_DEADLINE":    3,
 	}
 )
 
@@ -116,6 +119,55 @@ func (x FenceEvaluation_Action) Number() protoreflect.EnumNumber {
 // Deprecated: Use FenceEvaluation_Action.Descriptor instead.
 func (FenceEvaluation_Action) EnumDescriptor() ([]byte, []int) {
 	return file_observation_v1_proto_rawDescGZIP(), []int{6, 0}
+}
+
+type FenceTransition_Kind int32
+
+const (
+	FenceTransition_KIND_UNSPECIFIED FenceTransition_Kind = 0
+	FenceTransition_KIND_ENTRY       FenceTransition_Kind = 1
+	FenceTransition_KIND_EXIT        FenceTransition_Kind = 2
+)
+
+// Enum value maps for FenceTransition_Kind.
+var (
+	FenceTransition_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "KIND_ENTRY",
+		2: "KIND_EXIT",
+	}
+	FenceTransition_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"KIND_ENTRY":       1,
+		"KIND_EXIT":        2,
+	}
+)
+
+func (x FenceTransition_Kind) Enum() *FenceTransition_Kind {
+	p := new(FenceTransition_Kind)
+	*p = x
+	return p
+}
+
+func (x FenceTransition_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FenceTransition_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_observation_v1_proto_enumTypes[2].Descriptor()
+}
+
+func (FenceTransition_Kind) Type() protoreflect.EnumType {
+	return &file_observation_v1_proto_enumTypes[2]
+}
+
+func (x FenceTransition_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FenceTransition_Kind.Descriptor instead.
+func (FenceTransition_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{8, 0}
 }
 
 // Observation is the internal ingress envelope. The payload uses the matching
@@ -762,6 +814,7 @@ type FenceEvaluation struct {
 	ToleranceTimeoutNanos int64                  `protobuf:"varint,17,opt,name=tolerance_timeout_nanos,json=toleranceTimeoutNanos,proto3" json:"tolerance_timeout_nanos,omitempty"`
 	ExitDelayNanos        int64                  `protobuf:"varint,18,opt,name=exit_delay_nanos,json=exitDelayNanos,proto3" json:"exit_delay_nanos,omitempty"`
 	Action                FenceEvaluation_Action `protobuf:"varint,19,opt,name=action,proto3,enum=locationhub.stream.v1.FenceEvaluation_Action" json:"action,omitempty"`
+	DeadlineGeneration    []byte                 `protobuf:"bytes,20,opt,name=deadline_generation,json=deadlineGeneration,proto3" json:"deadline_generation,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -929,6 +982,260 @@ func (x *FenceEvaluation) GetAction() FenceEvaluation_Action {
 	return FenceEvaluation_ACTION_UNSPECIFIED
 }
 
+func (x *FenceEvaluation) GetDeadlineGeneration() []byte {
+	if x != nil {
+		return x.DeadlineGeneration
+	}
+	return nil
+}
+
+// FenceMembershipCheckpoint materializes one active membership and its timers.
+type FenceMembershipCheckpoint struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	Observation               *FenceEvaluation       `protobuf:"bytes,1,opt,name=observation,proto3" json:"observation,omitempty"`
+	EnteredAtUnixNano         int64                  `protobuf:"varint,2,opt,name=entered_at_unix_nano,json=enteredAtUnixNano,proto3" json:"entered_at_unix_nano,omitempty"`
+	PhysicalArea              uint32                 `protobuf:"varint,3,opt,name=physical_area,json=physicalArea,proto3" json:"physical_area,omitempty"`
+	FenceDeadlineUnixNano     int64                  `protobuf:"varint,4,opt,name=fence_deadline_unix_nano,json=fenceDeadlineUnixNano,proto3" json:"fence_deadline_unix_nano,omitempty"`
+	ToleranceDeadlineUnixNano int64                  `protobuf:"varint,5,opt,name=tolerance_deadline_unix_nano,json=toleranceDeadlineUnixNano,proto3" json:"tolerance_deadline_unix_nano,omitempty"`
+	OutsideDeadlineUnixNano   int64                  `protobuf:"varint,6,opt,name=outside_deadline_unix_nano,json=outsideDeadlineUnixNano,proto3" json:"outside_deadline_unix_nano,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *FenceMembershipCheckpoint) Reset() {
+	*x = FenceMembershipCheckpoint{}
+	mi := &file_observation_v1_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FenceMembershipCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FenceMembershipCheckpoint) ProtoMessage() {}
+
+func (x *FenceMembershipCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FenceMembershipCheckpoint.ProtoReflect.Descriptor instead.
+func (*FenceMembershipCheckpoint) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *FenceMembershipCheckpoint) GetObservation() *FenceEvaluation {
+	if x != nil {
+		return x.Observation
+	}
+	return nil
+}
+
+func (x *FenceMembershipCheckpoint) GetEnteredAtUnixNano() int64 {
+	if x != nil {
+		return x.EnteredAtUnixNano
+	}
+	return 0
+}
+
+func (x *FenceMembershipCheckpoint) GetPhysicalArea() uint32 {
+	if x != nil {
+		return x.PhysicalArea
+	}
+	return 0
+}
+
+func (x *FenceMembershipCheckpoint) GetFenceDeadlineUnixNano() int64 {
+	if x != nil {
+		return x.FenceDeadlineUnixNano
+	}
+	return 0
+}
+
+func (x *FenceMembershipCheckpoint) GetToleranceDeadlineUnixNano() int64 {
+	if x != nil {
+		return x.ToleranceDeadlineUnixNano
+	}
+	return 0
+}
+
+func (x *FenceMembershipCheckpoint) GetOutsideDeadlineUnixNano() int64 {
+	if x != nil {
+		return x.OutsideDeadlineUnixNano
+	}
+	return 0
+}
+
+// FenceTransition is an ordered entry or exit for a fence membership.
+type FenceTransition struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion      uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	EventId            []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	CauseId            []byte                 `protobuf:"bytes,3,opt,name=cause_id,json=causeId,proto3" json:"cause_id,omitempty"`
+	Kind               FenceTransition_Kind   `protobuf:"varint,4,opt,name=kind,proto3,enum=locationhub.stream.v1.FenceTransition_Kind" json:"kind,omitempty"`
+	Observation        *FenceEvaluation       `protobuf:"bytes,5,opt,name=observation,proto3" json:"observation,omitempty"`
+	EnteredAtUnixNano  int64                  `protobuf:"varint,6,opt,name=entered_at_unix_nano,json=enteredAtUnixNano,proto3" json:"entered_at_unix_nano,omitempty"`
+	OccurredAtUnixNano int64                  `protobuf:"varint,7,opt,name=occurred_at_unix_nano,json=occurredAtUnixNano,proto3" json:"occurred_at_unix_nano,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *FenceTransition) Reset() {
+	*x = FenceTransition{}
+	mi := &file_observation_v1_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FenceTransition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FenceTransition) ProtoMessage() {}
+
+func (x *FenceTransition) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FenceTransition.ProtoReflect.Descriptor instead.
+func (*FenceTransition) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *FenceTransition) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *FenceTransition) GetEventId() []byte {
+	if x != nil {
+		return x.EventId
+	}
+	return nil
+}
+
+func (x *FenceTransition) GetCauseId() []byte {
+	if x != nil {
+		return x.CauseId
+	}
+	return nil
+}
+
+func (x *FenceTransition) GetKind() FenceTransition_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return FenceTransition_KIND_UNSPECIFIED
+}
+
+func (x *FenceTransition) GetObservation() *FenceEvaluation {
+	if x != nil {
+		return x.Observation
+	}
+	return nil
+}
+
+func (x *FenceTransition) GetEnteredAtUnixNano() int64 {
+	if x != nil {
+		return x.EnteredAtUnixNano
+	}
+	return 0
+}
+
+func (x *FenceTransition) GetOccurredAtUnixNano() int64 {
+	if x != nil {
+		return x.OccurredAtUnixNano
+	}
+	return 0
+}
+
+// FenceMembershipFrontier binds compacted state to one input and output generation.
+type FenceMembershipFrontier struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	InputTopicId      []byte                 `protobuf:"bytes,1,opt,name=input_topic_id,json=inputTopicId,proto3" json:"input_topic_id,omitempty"`
+	NextOffset        int64                  `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	TransitionTopicId []byte                 `protobuf:"bytes,3,opt,name=transition_topic_id,json=transitionTopicId,proto3" json:"transition_topic_id,omitempty"`
+	TopologyVersion   uint32                 `protobuf:"varint,4,opt,name=topology_version,json=topologyVersion,proto3" json:"topology_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *FenceMembershipFrontier) Reset() {
+	*x = FenceMembershipFrontier{}
+	mi := &file_observation_v1_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FenceMembershipFrontier) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FenceMembershipFrontier) ProtoMessage() {}
+
+func (x *FenceMembershipFrontier) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FenceMembershipFrontier.ProtoReflect.Descriptor instead.
+func (*FenceMembershipFrontier) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *FenceMembershipFrontier) GetInputTopicId() []byte {
+	if x != nil {
+		return x.InputTopicId
+	}
+	return nil
+}
+
+func (x *FenceMembershipFrontier) GetNextOffset() int64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *FenceMembershipFrontier) GetTransitionTopicId() []byte {
+	if x != nil {
+		return x.TransitionTopicId
+	}
+	return nil
+}
+
+func (x *FenceMembershipFrontier) GetTopologyVersion() uint32 {
+	if x != nil {
+		return x.TopologyVersion
+	}
+	return 0
+}
+
 // ConfigurationRevision represents one committed single-hub database
 // transaction. A snapshot at this revision already includes these changes.
 type ConfigurationRevision struct {
@@ -944,7 +1251,7 @@ type ConfigurationRevision struct {
 
 func (x *ConfigurationRevision) Reset() {
 	*x = ConfigurationRevision{}
-	mi := &file_observation_v1_proto_msgTypes[7]
+	mi := &file_observation_v1_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -956,7 +1263,7 @@ func (x *ConfigurationRevision) String() string {
 func (*ConfigurationRevision) ProtoMessage() {}
 
 func (x *ConfigurationRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[7]
+	mi := &file_observation_v1_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -969,7 +1276,7 @@ func (x *ConfigurationRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevision.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevision) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{7}
+	return file_observation_v1_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ConfigurationRevision) GetSchemaVersion() uint32 {
@@ -1024,7 +1331,7 @@ type ConfigurationRevisionPart struct {
 
 func (x *ConfigurationRevisionPart) Reset() {
 	*x = ConfigurationRevisionPart{}
-	mi := &file_observation_v1_proto_msgTypes[8]
+	mi := &file_observation_v1_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1036,7 +1343,7 @@ func (x *ConfigurationRevisionPart) String() string {
 func (*ConfigurationRevisionPart) ProtoMessage() {}
 
 func (x *ConfigurationRevisionPart) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[8]
+	mi := &file_observation_v1_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1049,7 +1356,7 @@ func (x *ConfigurationRevisionPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevisionPart.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevisionPart) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{8}
+	return file_observation_v1_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ConfigurationRevisionPart) GetSchemaVersion() uint32 {
@@ -1114,7 +1421,7 @@ type EstimateCheckpoint_Axis struct {
 
 func (x *EstimateCheckpoint_Axis) Reset() {
 	*x = EstimateCheckpoint_Axis{}
-	mi := &file_observation_v1_proto_msgTypes[9]
+	mi := &file_observation_v1_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1126,7 +1433,7 @@ func (x *EstimateCheckpoint_Axis) String() string {
 func (*EstimateCheckpoint_Axis) ProtoMessage() {}
 
 func (x *EstimateCheckpoint_Axis) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[9]
+	mi := &file_observation_v1_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1494,7 @@ type FenceRoutingCheckpoint_Interest struct {
 
 func (x *FenceRoutingCheckpoint_Interest) Reset() {
 	*x = FenceRoutingCheckpoint_Interest{}
-	mi := &file_observation_v1_proto_msgTypes[10]
+	mi := &file_observation_v1_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1506,7 @@ func (x *FenceRoutingCheckpoint_Interest) String() string {
 func (*FenceRoutingCheckpoint_Interest) ProtoMessage() {}
 
 func (x *FenceRoutingCheckpoint_Interest) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[10]
+	mi := &file_observation_v1_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1241,7 +1548,7 @@ type ConfigurationRevision_Change struct {
 
 func (x *ConfigurationRevision_Change) Reset() {
 	*x = ConfigurationRevision_Change{}
-	mi := &file_observation_v1_proto_msgTypes[11]
+	mi := &file_observation_v1_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1253,7 +1560,7 @@ func (x *ConfigurationRevision_Change) String() string {
 func (*ConfigurationRevision_Change) ProtoMessage() {}
 
 func (x *ConfigurationRevision_Change) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[11]
+	mi := &file_observation_v1_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1266,7 +1573,7 @@ func (x *ConfigurationRevision_Change) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevision_Change.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevision_Change) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{7, 0}
+	return file_observation_v1_proto_rawDescGZIP(), []int{10, 0}
 }
 
 func (x *ConfigurationRevision_Change) GetResourceKind() string {
@@ -1382,7 +1689,7 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\bInterest\x12\x19\n" +
 	"\bfence_id\x18\x01 \x01(\tR\afenceId\x12G\n" +
 	"\x1ecertainly_expired_at_unix_nano\x18\x02 \x01(\x03H\x00R\x1acertainlyExpiredAtUnixNano\x88\x01\x01B!\n" +
-	"\x1f_certainly_expired_at_unix_nano\"\x9b\a\n" +
+	"\x1f_certainly_expired_at_unix_nano\"\xe1\a\n" +
 	"\x0fFenceEvaluation\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12\x1f\n" +
@@ -1405,12 +1712,40 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x13fence_timeout_nanos\x18\x10 \x01(\x03R\x11fenceTimeoutNanos\x126\n" +
 	"\x17tolerance_timeout_nanos\x18\x11 \x01(\x03R\x15toleranceTimeoutNanos\x12(\n" +
 	"\x10exit_delay_nanos\x18\x12 \x01(\x03R\x0eexitDelayNanos\x12E\n" +
-	"\x06action\x18\x13 \x01(\x0e2-.locationhub.stream.v1.FenceEvaluation.ActionR\x06action\"H\n" +
+	"\x06action\x18\x13 \x01(\x0e2-.locationhub.stream.v1.FenceEvaluation.ActionR\x06action\x12/\n" +
+	"\x13deadline_generation\x18\x14 \x01(\fR\x12deadlineGeneration\"]\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fACTION_EVALUATE\x10\x01\x12\x11\n" +
-	"\rACTION_CANCEL\x10\x02B\x16\n" +
-	"\x14_trackable_extrusion\"\x96\x03\n" +
+	"\rACTION_CANCEL\x10\x02\x12\x13\n" +
+	"\x0fACTION_DEADLINE\x10\x03B\x16\n" +
+	"\x14_trackable_extrusion\"\xf2\x02\n" +
+	"\x19FenceMembershipCheckpoint\x12H\n" +
+	"\vobservation\x18\x01 \x01(\v2&.locationhub.stream.v1.FenceEvaluationR\vobservation\x12/\n" +
+	"\x14entered_at_unix_nano\x18\x02 \x01(\x03R\x11enteredAtUnixNano\x12#\n" +
+	"\rphysical_area\x18\x03 \x01(\rR\fphysicalArea\x127\n" +
+	"\x18fence_deadline_unix_nano\x18\x04 \x01(\x03R\x15fenceDeadlineUnixNano\x12?\n" +
+	"\x1ctolerance_deadline_unix_nano\x18\x05 \x01(\x03R\x19toleranceDeadlineUnixNano\x12;\n" +
+	"\x1aoutside_deadline_unix_nano\x18\x06 \x01(\x03R\x17outsideDeadlineUnixNano\"\x9a\x03\n" +
+	"\x0fFenceTransition\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12\x19\n" +
+	"\bcause_id\x18\x03 \x01(\fR\acauseId\x12?\n" +
+	"\x04kind\x18\x04 \x01(\x0e2+.locationhub.stream.v1.FenceTransition.KindR\x04kind\x12H\n" +
+	"\vobservation\x18\x05 \x01(\v2&.locationhub.stream.v1.FenceEvaluationR\vobservation\x12/\n" +
+	"\x14entered_at_unix_nano\x18\x06 \x01(\x03R\x11enteredAtUnixNano\x121\n" +
+	"\x15occurred_at_unix_nano\x18\a \x01(\x03R\x12occurredAtUnixNano\";\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"KIND_ENTRY\x10\x01\x12\r\n" +
+	"\tKIND_EXIT\x10\x02\"\xbb\x01\n" +
+	"\x17FenceMembershipFrontier\x12$\n" +
+	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
+	"\vnext_offset\x18\x02 \x01(\x03R\n" +
+	"nextOffset\x12.\n" +
+	"\x13transition_topic_id\x18\x03 \x01(\fR\x11transitionTopicId\x12)\n" +
+	"\x10topology_version\x18\x04 \x01(\rR\x0ftopologyVersion\"\x96\x03\n" +
 	"\x15ConfigurationRevision\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\"\n" +
 	"\rorigin_hub_id\x18\x02 \x01(\tR\voriginHubId\x12\x1a\n" +
@@ -1445,38 +1780,45 @@ func file_observation_v1_proto_rawDescGZIP() []byte {
 	return file_observation_v1_proto_rawDescData
 }
 
-var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_observation_v1_proto_goTypes = []any{
 	(Observation_Kind)(0),                   // 0: locationhub.stream.v1.Observation.Kind
 	(FenceEvaluation_Action)(0),             // 1: locationhub.stream.v1.FenceEvaluation.Action
-	(*Observation)(nil),                     // 2: locationhub.stream.v1.Observation
-	(*AssetInput)(nil),                      // 3: locationhub.stream.v1.AssetInput
-	(*MotionEstimate)(nil),                  // 4: locationhub.stream.v1.MotionEstimate
-	(*EstimateCheckpoint)(nil),              // 5: locationhub.stream.v1.EstimateCheckpoint
-	(*EstimatorFrontier)(nil),               // 6: locationhub.stream.v1.EstimatorFrontier
-	(*FenceRoutingCheckpoint)(nil),          // 7: locationhub.stream.v1.FenceRoutingCheckpoint
-	(*FenceEvaluation)(nil),                 // 8: locationhub.stream.v1.FenceEvaluation
-	(*ConfigurationRevision)(nil),           // 9: locationhub.stream.v1.ConfigurationRevision
-	(*ConfigurationRevisionPart)(nil),       // 10: locationhub.stream.v1.ConfigurationRevisionPart
-	(*EstimateCheckpoint_Axis)(nil),         // 11: locationhub.stream.v1.EstimateCheckpoint.Axis
-	(*FenceRoutingCheckpoint_Interest)(nil), // 12: locationhub.stream.v1.FenceRoutingCheckpoint.Interest
-	(*ConfigurationRevision_Change)(nil),    // 13: locationhub.stream.v1.ConfigurationRevision.Change
+	(FenceTransition_Kind)(0),               // 2: locationhub.stream.v1.FenceTransition.Kind
+	(*Observation)(nil),                     // 3: locationhub.stream.v1.Observation
+	(*AssetInput)(nil),                      // 4: locationhub.stream.v1.AssetInput
+	(*MotionEstimate)(nil),                  // 5: locationhub.stream.v1.MotionEstimate
+	(*EstimateCheckpoint)(nil),              // 6: locationhub.stream.v1.EstimateCheckpoint
+	(*EstimatorFrontier)(nil),               // 7: locationhub.stream.v1.EstimatorFrontier
+	(*FenceRoutingCheckpoint)(nil),          // 8: locationhub.stream.v1.FenceRoutingCheckpoint
+	(*FenceEvaluation)(nil),                 // 9: locationhub.stream.v1.FenceEvaluation
+	(*FenceMembershipCheckpoint)(nil),       // 10: locationhub.stream.v1.FenceMembershipCheckpoint
+	(*FenceTransition)(nil),                 // 11: locationhub.stream.v1.FenceTransition
+	(*FenceMembershipFrontier)(nil),         // 12: locationhub.stream.v1.FenceMembershipFrontier
+	(*ConfigurationRevision)(nil),           // 13: locationhub.stream.v1.ConfigurationRevision
+	(*ConfigurationRevisionPart)(nil),       // 14: locationhub.stream.v1.ConfigurationRevisionPart
+	(*EstimateCheckpoint_Axis)(nil),         // 15: locationhub.stream.v1.EstimateCheckpoint.Axis
+	(*FenceRoutingCheckpoint_Interest)(nil), // 16: locationhub.stream.v1.FenceRoutingCheckpoint.Interest
+	(*ConfigurationRevision_Change)(nil),    // 17: locationhub.stream.v1.ConfigurationRevision.Change
 }
 var file_observation_v1_proto_depIdxs = []int32{
 	0,  // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
-	2,  // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
-	11, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
-	3,  // 3: locationhub.stream.v1.EstimateCheckpoint.candidates:type_name -> locationhub.stream.v1.AssetInput
-	7,  // 4: locationhub.stream.v1.EstimateCheckpoint.fence_routing:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint
-	12, // 5: locationhub.stream.v1.FenceRoutingCheckpoint.interests:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint.Interest
+	3,  // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
+	15, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
+	4,  // 3: locationhub.stream.v1.EstimateCheckpoint.candidates:type_name -> locationhub.stream.v1.AssetInput
+	8,  // 4: locationhub.stream.v1.EstimateCheckpoint.fence_routing:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint
+	16, // 5: locationhub.stream.v1.FenceRoutingCheckpoint.interests:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint.Interest
 	1,  // 6: locationhub.stream.v1.FenceEvaluation.action:type_name -> locationhub.stream.v1.FenceEvaluation.Action
-	13, // 7: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
-	8,  // [8:8] is the sub-list for method output_type
-	8,  // [8:8] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	9,  // 7: locationhub.stream.v1.FenceMembershipCheckpoint.observation:type_name -> locationhub.stream.v1.FenceEvaluation
+	2,  // 8: locationhub.stream.v1.FenceTransition.kind:type_name -> locationhub.stream.v1.FenceTransition.Kind
+	9,  // 9: locationhub.stream.v1.FenceTransition.observation:type_name -> locationhub.stream.v1.FenceEvaluation
+	17, // 10: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -1487,14 +1829,14 @@ func file_observation_v1_proto_init() {
 	file_observation_v1_proto_msgTypes[0].OneofWrappers = []any{}
 	file_observation_v1_proto_msgTypes[2].OneofWrappers = []any{}
 	file_observation_v1_proto_msgTypes[6].OneofWrappers = []any{}
-	file_observation_v1_proto_msgTypes[10].OneofWrappers = []any{}
+	file_observation_v1_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_observation_v1_proto_rawDesc), len(file_observation_v1_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   12,
+			NumEnums:      3,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

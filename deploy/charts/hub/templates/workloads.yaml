@@ -6,6 +6,9 @@
   (dict "name" "asset-estimator" "replicas" .Values.kafka.estimatorReplicas "database" "" "port" 8081)
   (dict "name" "config-relay" "replicas" 1 "database" "relay" "port" 8081)) -}}
 {{- end -}}
+{{- if gt (int .Values.kafka.fenceReplicas) 0 -}}
+{{- $roles = append $roles (dict "name" "fence-worker" "replicas" .Values.kafka.fenceReplicas "database" "" "port" 8081) -}}
+{{- end -}}
 {{- range $role := $roles }}
 {{- $configReader := and (eq $role.name "asset-estimator") $root.Values.kafka.estimatorConfigSecret }}
 ---
@@ -165,6 +168,14 @@ spec:
             - name: KAFKA_FENCE_INPUT_TOPIC
               value: {{ required "Set kafka.topics.fenceEvaluations" $root.Values.kafka.topics.fenceEvaluations | quote }}
             {{- end }}
+            {{- end }}
+            {{- if eq $role.name "fence-worker" }}
+            - name: KAFKA_FENCE_INPUT_TOPIC
+              value: {{ required "Set kafka.topics.fenceEvaluations" $root.Values.kafka.topics.fenceEvaluations | quote }}
+            - name: KAFKA_FENCE_TRANSITION_TOPIC
+              value: {{ required "Set kafka.topics.fenceTransitions" $root.Values.kafka.topics.fenceTransitions | quote }}
+            - name: KAFKA_FENCE_STATE_TOPIC
+              value: {{ required "Set kafka.topics.fenceState" $root.Values.kafka.topics.fenceState | quote }}
             {{- end }}
             {{- if $root.Values.telemetry.metricsEndpoint }}
             - name: OTEL_ENABLED

@@ -69,6 +69,10 @@ compose-shadow-router:
 compose-shadow-estimator:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app asset-estimator
 
+# Evaluate spatial inputs and commit shadow fence transitions.
+compose-shadow-fences:
+	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app fence-worker
+
 # Write committed PostgreSQL configuration revisions to the shadow configuration topic.
 compose-shadow-config-relay:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app config-relay

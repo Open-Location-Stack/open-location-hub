@@ -26,3 +26,6 @@
 {{- if and .Values.kafka.fenceRouting (not (and .Values.kafka.enabled .Values.kafka.estimatorConfigSecret)) -}}
 {{- fail "Fence routing requires Kafka and kafka.estimatorConfigSecret" -}}
 {{- end -}}
+{{- if and (gt (int .Values.kafka.fenceReplicas) 0) (not .Values.kafka.fenceRouting) -}}
+{{- fail "Fence membership workers require kafka.fenceRouting" -}}
+{{- end -}}

@@ -12,6 +12,7 @@
 {{- $t := .Values.kafka.topics -}}
 {{- $routerGroup := .Values.kafka.routerGroup -}}
 {{- $estimateGroup := printf "%s.estimator" $t.estimatorState -}}
+{{- $fenceGroup := printf "%s.membership" $t.fenceState -}}
 {{- $topicRead := list "Read" "Describe" -}}
 {{- $topicWrite := list "Write" "Describe" -}}
 {{- $groupRead := list "Read" "Describe" -}}
@@ -34,6 +35,13 @@
     (dict "type" "cluster" "ops" (list "IdempotentWrite"))
     (dict "type" "group" "name" $estimateGroup "ops" $groupRead)
     (dict "type" "transactionalId" "name" (printf "%s." $estimateGroup) "pattern" "prefix" "ops" $txnWrite))
+  "fence-worker" (list
+    (dict "type" "topic" "name" $t.fenceEvaluations "ops" (list "Read" "Write" "Describe"))
+    (dict "type" "topic" "name" $t.fenceTransitions "ops" $topicWrite)
+    (dict "type" "topic" "name" $t.fenceState "ops" (list "Read" "Write" "Describe" "DescribeConfigs"))
+    (dict "type" "cluster" "ops" (list "IdempotentWrite"))
+    (dict "type" "group" "name" $fenceGroup "ops" $groupRead)
+    (dict "type" "transactionalId" "name" (printf "%s." $fenceGroup) "pattern" "prefix" "ops" $txnWrite))
   "config-relay" (list
     (dict "type" "topic" "name" $t.configuration "ops" $topicWrite)
     (dict "type" "transactionalId" "name" "location-hub.config-relay." "pattern" "prefix" "ops" $txnWrite))

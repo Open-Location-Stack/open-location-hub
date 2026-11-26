@@ -132,6 +132,8 @@ func runCommand(ctx context.Context, args []string) error {
 			return runAssetRouter(ctx)
 		case "asset-estimator":
 			return runAssetEstimator(ctx)
+		case "fence-worker":
+			return runFenceWorker(ctx)
 		case "config-relay":
 			return runConfigRelay(ctx)
 		case "db-prepare":
@@ -140,7 +142,7 @@ func runCommand(ctx context.Context, args []string) error {
 			return runDatabaseCheck(ctx)
 		}
 	}
-	return fmt.Errorf("expected no arguments, asset-router, asset-estimator, config-relay, db-prepare or db-check")
+	return fmt.Errorf("expected no arguments, asset-router, asset-estimator, fence-worker, config-relay, db-prepare or db-check")
 }
 
 func run(ctx context.Context) error {

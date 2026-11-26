@@ -109,6 +109,7 @@ message FenceEvaluation {
     ACTION_UNSPECIFIED = 0;
     ACTION_EVALUATE = 1;
     ACTION_CANCEL = 2;
+    ACTION_DEADLINE = 3;
   }
   uint32 schema_version = 1;
   bytes event_id = 2;
@@ -129,6 +130,41 @@ message FenceEvaluation {
   int64 tolerance_timeout_nanos = 17;
   int64 exit_delay_nanos = 18;
   Action action = 19;
+  bytes deadline_generation = 20;
+}
+
+// FenceMembershipCheckpoint materializes one active membership and its timers.
+message FenceMembershipCheckpoint {
+  FenceEvaluation observation = 1;
+  int64 entered_at_unix_nano = 2;
+  uint32 physical_area = 3;
+  int64 fence_deadline_unix_nano = 4;
+  int64 tolerance_deadline_unix_nano = 5;
+  int64 outside_deadline_unix_nano = 6;
+}
+
+// FenceTransition is an ordered entry or exit for a fence membership.
+message FenceTransition {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_ENTRY = 1;
+    KIND_EXIT = 2;
+  }
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  bytes cause_id = 3;
+  Kind kind = 4;
+  FenceEvaluation observation = 5;
+  int64 entered_at_unix_nano = 6;
+  int64 occurred_at_unix_nano = 7;
+}
+
+// FenceMembershipFrontier binds compacted state to one input and output generation.
+message FenceMembershipFrontier {
+  bytes input_topic_id = 1;
+  int64 next_offset = 2;
+  bytes transition_topic_id = 3;
+  uint32 topology_version = 4;
 }
 
 // ConfigurationRevision represents one committed single-hub database

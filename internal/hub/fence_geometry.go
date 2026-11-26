@@ -8,6 +8,22 @@ import (
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 )
 
+// ClassifyFence computes physical containment for geometry in a common frame.
+func ClassifyFence(fence gen.Fence, location gen.Location, radius float64, extrusion *float64, tolerance float64) (FenceArea, error) {
+	containment, err := fenceContainmentForLocation(fence, location, radius)
+	if err != nil {
+		return FenceOutside, err
+	}
+	verticalGap := fenceHeightGap(fence, location, extrusion)
+	if containment.Inside && verticalGap == 0 {
+		return FenceInside, nil
+	}
+	if math.Hypot(containment.OutsideDistance, verticalGap) <= tolerance {
+		return FenceTolerance, nil
+	}
+	return FenceOutside, nil
+}
+
 // fenceContainmentForLocation compares a location and fence already expressed
 // in the same coordinate frame. Radius and the returned separation are meters.
 // Polygon holes are excluded, and a touching circular extent counts as inside.

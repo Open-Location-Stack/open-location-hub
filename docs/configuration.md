@@ -139,6 +139,33 @@ event-log window. The Perses worker performance dashboard lists routing
 under stage `spatial_router`, including the per-estimate service duration and
 committed candidate count.
 
+### Fence membership worker
+
+Run `open-location-hub fence-worker` or `just compose-shadow-fences` once the
+estimator is publishing fence inputs. Each replica uses the same three topics
+with fixed and equal partition counts.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `KAFKA_FENCE_INPUT_TOPIC` | `location-hub.fence-evaluations.v1` | Reads routed inputs and appends deadline hints to the same membership partition. |
+| `KAFKA_FENCE_TRANSITION_TOPIC` | `location-hub.fence-transitions.v1` | Appends shadow entry and exit events. |
+| `KAFKA_FENCE_STATE_TOPIC` | `location-hub.fence-state.v1` | Stores active membership checkpoints with `cleanup.policy=compact`. |
+| `KAFKA_FENCE_INSTANCE` | Hostname | Identifies a replica for broker transactions. Set a unique value if replicas share a hostname. |
+| `KAFKA_FENCE_TRANSITION_RETENTION_MS` | Shared six-hour window | Overrides transition topic retention during the Compose topic initialization. |
+
+The consumer group is the checkpoint topic followed by `.membership`.
+Grant it read and write access on input and checkpoint topics, Write on the
+transition topic, DescribeConfigs on the checkpoint topic, and access to the
+group and its transactional IDs. Allow idempotent writes for deadline hints.
+Run independent deployments with distinct checkpoint topics. If the input
+or transition topic is recreated, bootstrap a new aligned generation before
+resuming. The worker stops on an expired input offset.
+
+In Perses, use the Worker performance dashboard for throughput and queue
+time under `fence_membership`. The State machines dashboard breaks out
+observation and timer evaluations and their outcomes with traffic mode
+`shadow`. The timer queue metric measures delay past the original deadline.
+
 ### Configuration relay
 
 Apply the database migrations and start the Hub once to initialize its persisted

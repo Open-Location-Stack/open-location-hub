@@ -155,7 +155,7 @@ if [[ -n "${KAFKA_VALUES:-}" ]]; then
     --set-string "kafka.caSecret=$kafka_release-cluster-ca-cert"
     --set-string kafka.scramMechanism=SCRAM-SHA-512)
   kafka_options=(-f "$KAFKA_VALUES")
-  for role in api asset-router asset-estimator config-relay; do
+  for role in api asset-router asset-estimator fence-worker config-relay; do
     hub_options+=(--set-string "kafka.authSecrets.$role=$kafka_release-$role"
       --set-string "kafka.usernames.$role=$kafka_release-$role")
   done

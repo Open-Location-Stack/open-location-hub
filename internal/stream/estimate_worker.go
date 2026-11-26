@@ -22,7 +22,7 @@ type EstimateWorker struct {
 	ctx           context.Context
 	stop          context.CancelCauseFunc
 	session       *kgo.GroupTransactSession
-	store         *estimateStore
+	store         *checkpointStore
 	model         motionEstimator
 	inputTopic    string
 	outputTopic   string
@@ -55,7 +55,7 @@ func OpenEstimateWorker(ctx context.Context, cfg config.KafkaShadowConfig, input
 		return nil, err
 	}
 	options = append(options, kgo.RecordPartitioner(kgo.ManualPartitioner()))
-	store, err := openEstimateStore(ctx, options, input, output, state)
+	store, err := openCheckpointStore(ctx, options, input, output, state)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (w *EstimateWorker) restorePartitions(ctx context.Context, offsets map[stri
 		return offsets, nil
 	}
 	started := time.Now()
-	partitions, err := w.store.restore(ctx, offsets[w.inputTopic])
+	partitions, err := w.store.restoreEstimates(ctx, offsets[w.inputTopic])
 	observability.RuntimeFromContext(w.ctx).RecordProcessingDuration(w.ctx, "asset_estimator_restore", "checkpoint", time.Since(started))
 	if err != nil {
 		if ctx.Err() == nil && w.ctx.Err() == nil {
@@ -200,7 +200,7 @@ func (w *EstimateWorker) process(ctx context.Context, fetches kgo.Fetches) error
 	if err != nil {
 		return err
 	}
-	checkpoints, err := w.store.records(batch)
+	checkpoints, err := w.store.estimateRecords(batch)
 	if err != nil {
 		return err
 	}

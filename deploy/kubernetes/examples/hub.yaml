@@ -11,6 +11,7 @@ kafka:
     api: location-hub-kafka-ingest
     asset-router: location-hub-kafka-router
     asset-estimator: location-hub-kafka-estimator
+    fence-worker: location-hub-kafka-fences
     config-relay: location-hub-kafka-relay
   caSecret: location-hub-kafka-ca
 telemetry:

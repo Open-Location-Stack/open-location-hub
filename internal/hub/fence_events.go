@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
-	"math"
 	"sync"
 	"time"
 
@@ -90,10 +89,6 @@ func (s *Service) publishFenceObservation(ctx context.Context, location gen.Loca
 					continue
 				}
 			}
-			containment, err := fenceContainmentForLocation(fence, location, trackableRadius(trackable))
-			if err != nil {
-				continue
-			}
 			var extrusion *float64
 			if hasTrackable {
 				extrusion = trackable.Extrusion
@@ -101,9 +96,6 @@ func (s *Service) publishFenceObservation(ctx context.Context, location gen.Loca
 				zero := 0.0
 				extrusion = &zero
 			}
-			verticalGap := fenceHeightGap(fence, location, extrusion)
-			containment.OutsideDistance = math.Hypot(containment.OutsideDistance, verticalGap)
-			containment.Inside = containment.Inside && verticalGap == 0
 			if elevationName(fence.ElevationRef) != elevationName(location.ElevationRef) {
 				// The specification leaves mixed height datums undefined. Do not
 				// compare them as if their z-coordinates shared a reference.
@@ -120,11 +112,9 @@ func (s *Service) publishFenceObservation(ctx context.Context, location gen.Loca
 				continue
 			}
 			policy := resolveFenceExitPolicy(fence, trackable, hasTrackable, provider, hasProvider)
-			area := exitOutside
-			if containment.Inside {
-				area = exitInside
-			} else if containment.OutsideDistance <= policy.ExitTolerance {
-				area = exitTolerance
+			area, err := ClassifyFence(fence, location, trackableRadius(trackable), extrusion, policy.ExitTolerance)
+			if err != nil {
+				continue
 			}
 			lock := s.fenceLock(member, id)
 			lock.Lock()

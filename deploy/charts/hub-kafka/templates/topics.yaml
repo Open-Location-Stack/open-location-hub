@@ -8,7 +8,8 @@
 {{- if hasKey $root.Values.kafka.topicRetentionMs $key -}}
 {{- $retention = int64 (index $root.Values.kafka.topicRetentionMs $key) -}}
 {{- end -}}
-{{- if and (ne $key "estimatorState") (le $retention 0) -}}
+{{- $compacted := has $key (list "estimatorState" "fenceState") -}}
+{{- if and (not $compacted) (le $retention 0) -}}
 {{- fail (printf "Topic %s must have a positive time-based retention" $key) -}}
 {{- end }}
 ---
@@ -25,7 +26,7 @@ spec:
   partitions: {{ $root.Values.kafka.partitions }}
   replicas: {{ $root.Values.broker.replicas }}
   config:
-    {{- if eq $key "estimatorState" }}
+    {{- if $compacted }}
     cleanup.policy: compact
     {{- else }}
     cleanup.policy: delete

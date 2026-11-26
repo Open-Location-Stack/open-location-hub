@@ -129,6 +129,16 @@ write access. Use a fresh estimate and checkpoint topic for the first
 routing rollout. Set `kafka.topicRetentionMs.fenceEvaluations` to override
 the shared six-hour event-log retention.
 
+Set `kafka.fenceReplicas` to a positive number to start independent
+membership workers. Their partition count comes from the fence evaluation
+topic. Provision `fenceEvaluations`, `fenceTransitions` and `fenceState` with
+equal, fixed partition counts. With an external broker, bind
+`kafka.authSecrets.fence-worker` to its dedicated principal. The managed
+Kafka example creates this principal and provisions its ACLs. Set
+`kafka.topicRetentionMs.fenceTransitions` to override the six-hour window
+for entry and exit events. The compacted fence checkpoint stores active
+memberships across that window.
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,

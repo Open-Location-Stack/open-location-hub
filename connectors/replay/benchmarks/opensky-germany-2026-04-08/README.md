@@ -74,3 +74,12 @@ both starting and ending offsets for each partition.
 With `just compose-shadow-router` running, also compare the consumer group's
 lag and the count of read-committed asset inputs. The airport capture uses one
 trackable per observation.
+
+With revision-aware estimation and spatial routing enabled, run
+`just compose-shadow-fences`. Compare the read-committed fence input and
+transition topics over the replay's offset range. Check that the group catches
+up, each transition ID is unique, entry and exit alternate per membership, and
+the worker restores a pending deadline after a replica leaves the group.
+Use Perses to compare shadow membership service time, handled/s and timer
+delay by worker replica. The benchmark's WebSocket gate continues to observe
+the compatibility path.

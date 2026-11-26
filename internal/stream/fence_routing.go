@@ -138,9 +138,7 @@ func (r fenceRouter) route(ctx context.Context, estimate *streampb.MotionEstimat
 }
 
 func (r fenceRouter) record(input *streampb.FenceEvaluation) (*kgo.Record, error) {
-	key := appendKeyPart(nil, input.OriginHubId)
-	key = appendKeyPart(key, input.FenceId)
-	key = appendKeyPart(key, input.TrackableId)
+	key := fenceMembershipKey(input.OriginHubId, input.FenceId, input.TrackableId)
 	cause := append([]byte("fence-evaluation:v1:"), input.EstimateId...)
 	id := sha256.Sum256(append(cause, key...))
 	input.EventId = id[:]
