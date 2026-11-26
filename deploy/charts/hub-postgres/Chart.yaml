@@ -1,0 +1,5 @@
+apiVersion: v2
+name: hub-postgres
+description: CloudNativePG database for an Open Location Hub deployment
+type: application
+version: 0.1.0

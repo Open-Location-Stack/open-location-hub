@@ -1,0 +1,53 @@
+auth:
+  mode: oidc
+  issuer: https://identity.example.com
+  audience: open-location-hub
+  filesSecret: location-hub-auth
+mqtt:
+  secret: location-hub-mqtt
+kafka:
+  brokers: kafka-bootstrap.messaging.svc.cluster.local:9093
+  authSecrets:
+    api: location-hub-kafka-ingest
+    asset-router: location-hub-kafka-router
+    asset-estimator: location-hub-kafka-estimator
+    config-relay: location-hub-kafka-relay
+  caSecret: location-hub-kafka-ca
+telemetry:
+  deployment: plant-a
+network:
+  # Match the service targets, ingress controller and external endpoints in the
+  # actual namespace. These selectors describe the example stack.
+  httpIngressPeers:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: location-postgres
+      ports: [{port: 5432}]
+    - to:
+        - podSelector:
+            matchLabels:
+              strimzi.io/cluster: location-kafka
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: messaging
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+      ports: [{port: 9093}]
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: messaging
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mosquitto
+      ports: [{port: 8883}]
+    - to:
+        - ipBlock:
+            cidr: 192.0.2.20/32
+      ports: [{port: 443}]

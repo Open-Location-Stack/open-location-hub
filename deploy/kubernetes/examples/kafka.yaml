@@ -1,0 +1,6 @@
+broker:
+  storageClass: fast-persistent
+  storage: 100Gi
+kafka:
+  logRetentionMs: 21600000
+  topicRetentionMs: {}

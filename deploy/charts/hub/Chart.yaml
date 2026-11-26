@@ -1,0 +1,6 @@
+apiVersion: v2
+name: open-location-hub
+description: Open Location Hub 2.0 compatibility facade and streaming workers
+type: application
+version: 0.1.0
+appVersion: "2.0"

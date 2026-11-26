@@ -46,5 +46,5 @@ func runAssetRouter(ctx context.Context) error {
 		return fmt.Errorf("initialize asset router: %w", err)
 	}
 	defer router.Close()
-	return router.Run(ctx)
+	return serveWorker(ctx, router.Run)
 }

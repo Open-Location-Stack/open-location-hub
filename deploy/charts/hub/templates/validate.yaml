@@ -1,0 +1,25 @@
+{{- if not (has .Values.database.mode (list "external" "managed")) -}}
+{{- fail "database.mode must be external or managed. Use deploy/kubernetes/deploy.sh to bind the database." -}}
+{{- end -}}
+{{- if eq .Values.database.mode "managed" -}}
+{{- if not (and (regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" .Values.database.name) (regexMatch "^[a-zA-Z0-9.-]+$" .Values.database.host)) -}}
+{{- fail "Managed database names and hosts must be valid PostgreSQL and DNS identifiers" -}}
+{{- end -}}
+{{- range $name := list .Values.database.runtimeUser .Values.database.migrationUser .Values.database.relayUser -}}
+{{- if not (regexMatch "^[a-zA-Z_][a-zA-Z0-9_]*$" $name) -}}
+{{- fail "Managed database roles must be valid PostgreSQL identifiers" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (not .Values.dev.insecureLocal) (not .Values.database.caSecret) -}}
+{{- fail "Managed database connections require the CloudNativePG CA Secret" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (has .Values.auth.mode (list "oidc" "static" "hybrid")) -}}
+{{- fail "auth.mode must be oidc, static or hybrid" -}}
+{{- end -}}
+{{- if and (has .Values.auth.mode (list "oidc" "hybrid")) (not .Values.dev.insecureLocal) (not (hasPrefix "https://" .Values.auth.issuer)) -}}
+{{- fail "OIDC and hybrid mode require a TLS issuer URL" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (not (and .Values.ingress.host .Values.ingress.tlsSecret)) -}}
+{{- fail "Ingress requires a hostname and TLS Secret" -}}
+{{- end -}}

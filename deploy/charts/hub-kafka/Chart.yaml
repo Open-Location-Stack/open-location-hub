@@ -1,0 +1,5 @@
+apiVersion: v2
+name: hub-kafka
+description: Strimzi broker, topics and scoped Kafka users for Open Location Hub
+type: application
+version: 0.1.0

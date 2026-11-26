@@ -1,0 +1,24 @@
+cluster:
+  imageName: ""
+  instances: 3
+  database: location_hub
+  storageClass: ""
+  storageSize: 20Gi
+  walStorageSize: 10Gi
+  migrationUser: hub_migrator
+  migrationSecret: location-postgres-migration
+  runtimeUser: hub_runtime
+  runtimeSecret: location-postgres-runtime
+  relayUser: hub_relay
+  relaySecret: location-postgres-relay
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+backup:
+  objectStore: ""
+  schedule: "0 15 2 * * *"
+dev:
+  singleNode: false

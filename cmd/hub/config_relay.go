@@ -56,5 +56,5 @@ func runConfigRelay(ctx context.Context) error {
 		return fmt.Errorf("initialize configuration relay: %w", err)
 	}
 	defer relay.Close()
-	return relay.Run(ctx)
+	return serveWorker(ctx, relay.Run)
 }

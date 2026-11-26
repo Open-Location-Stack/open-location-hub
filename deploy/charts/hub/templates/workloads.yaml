@@ -1,0 +1,198 @@
+{{- $root := . -}}
+{{- $roles := list (dict "name" "api" "replicas" 1 "database" "runtime" "port" 8080) -}}
+{{- if .Values.kafka.enabled -}}
+{{- $roles = concat $roles (list
+  (dict "name" "asset-router" "replicas" .Values.kafka.routerReplicas "database" "" "port" 8081)
+  (dict "name" "asset-estimator" "replicas" .Values.kafka.estimatorReplicas "database" "" "port" 8081)
+  (dict "name" "config-relay" "replicas" 1 "database" "relay" "port" 8081)) -}}
+{{- end -}}
+{{- range $role := $roles }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $root.Release.Name }}-{{ $role.name }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $root.Release.Name }}-{{ $role.name }}
+  labels:
+    {{- include "hub.commonLabels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $role.name }}
+spec:
+  replicas: {{ $role.replicas }}
+  {{- if has $role.name (list "api" "config-relay") }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "hub.commonLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $role.name }}
+  template:
+    metadata:
+      labels:
+        {{- include "hub.commonLabels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $role.name }}
+    spec:
+      serviceAccountName: {{ $root.Release.Name }}-{{ $role.name }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        {{- include "hub.podSecurity" $root | nindent 8 }}
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets: {{ toJson . }}
+      {{- end }}
+      {{- if gt (int $role.replicas) 1 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "hub.commonLabels" $root | nindent 14 }}
+              app.kubernetes.io/component: {{ $role.name }}
+      {{- end }}
+      {{- if $role.database }}
+      initContainers:
+        - name: db-binding
+          image: {{ $root.Values.image | quote }}
+          args: ["db-check"]
+          securityContext:
+            {{- include "hub.containerSecurity" $root | nindent 12 }}
+          resources:
+            {{- toYaml $root.Values.migrationResources | nindent 12 }}
+          {{- if $root.Values.database.caSecret }}
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/location-hub/postgres
+              readOnly: true
+          {{- end }}
+          env:
+            {{- include "hub.databaseBindingEnv" $root | nindent 12 }}
+            {{- include "hub.databaseConnEnv" (dict "root" $root "role" $role.database "urlVar" "POSTGRES_URL" "passwordVar" "PGPASSWORD") | nindent 12 }}
+      {{- end }}
+      containers:
+        - name: hub
+          image: {{ $root.Values.image | quote }}
+          {{- if ne $role.name "api" }}
+          args: [{{ $role.name | quote }}]
+          {{- end }}
+          securityContext:
+            {{- include "hub.containerSecurity" $root | nindent 12 }}
+          resources:
+            {{- toYaml $root.Values.resources | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $role.port }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 45
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          volumeMounts:
+            {{- if eq $role.name "api" }}
+            - name: auth-files
+              mountPath: /etc/location-hub/auth
+              readOnly: true
+            {{- end }}
+            {{- if and $role.database $root.Values.database.caSecret }}
+            - name: postgres-ca
+              mountPath: /etc/location-hub/postgres
+              readOnly: true
+            {{- end }}
+            {{- if and $root.Values.kafka.enabled $root.Values.kafka.caSecret }}
+            - name: kafka-ca
+              mountPath: /etc/location-hub/kafka
+              readOnly: true
+            {{- end }}
+          env:
+            - name: HUB_ID
+              value: {{ $root.Values.identity.id | quote }}
+            {{- if $role.database }}
+            {{- include "hub.databaseConnEnv" (dict "root" $root "role" $role.database "urlVar" "POSTGRES_URL" "passwordVar" "PGPASSWORD") | nindent 12 }}
+            {{- end }}
+            {{- if eq $role.name "api" }}
+            - name: HUB_LABEL
+              value: {{ $root.Values.identity.label | quote }}
+            - name: HTTP_LISTEN_ADDR
+              value: ":8080"
+            - name: AUTH_ENABLED
+              value: "true"
+            - name: AUTH_MODE
+              value: {{ $root.Values.auth.mode | quote }}
+            - name: AUTH_ISSUER
+              value: {{ $root.Values.auth.issuer | quote }}
+            - name: AUTH_AUDIENCE
+              value: {{ $root.Values.auth.audience | quote }}
+            - name: AUTH_ROLES_CLAIM
+              value: {{ $root.Values.auth.rolesClaim | quote }}
+            - name: AUTH_PERMISSIONS_FILE
+              value: /etc/location-hub/auth/permissions.yaml
+            {{- if has $root.Values.auth.mode (list "static" "hybrid") }}
+            - name: AUTH_STATIC_PUBLIC_KEYS
+              value: {{ $root.Values.auth.staticPublicKeys | quote }}
+            {{- end }}
+            - name: MQTT_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "Set mqtt.secret to a Secret with the broker URL" $root.Values.mqtt.secret }}
+                  key: url
+            {{- else }}
+            - name: HUB_WORKER_HEALTH_ADDR
+              value: ":8081"
+            {{- end }}
+            {{- if $root.Values.kafka.enabled }}
+            {{- include "hub.kafkaEnv" (dict "root" $root "role" $role.name) | nindent 12 }}
+            {{- end }}
+            {{- if $root.Values.telemetry.metricsEndpoint }}
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_METRICS_ENABLED
+              value: "true"
+            - name: OTEL_TRACES_ENABLED
+              value: "false"
+            - name: OTEL_LOGS_ENABLED
+              value: "false"
+            - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+              value: {{ $root.Values.telemetry.metricsEndpoint | quote }}
+            - name: OTEL_DEPLOYMENT_ENVIRONMENT
+              value: {{ $root.Values.telemetry.deployment | quote }}
+            {{- end }}
+      volumes:
+        {{- if eq $role.name "api" }}
+        - name: auth-files
+          secret:
+            secretName: {{ required "Set auth.filesSecret to a Secret with permissions.yaml" $root.Values.auth.filesSecret }}
+        {{- end }}
+        {{- if and $role.database $root.Values.database.caSecret }}
+        - name: postgres-ca
+          secret:
+            secretName: {{ $root.Values.database.caSecret }}
+        {{- end }}
+        {{- if and $root.Values.kafka.enabled $root.Values.kafka.caSecret }}
+        - name: kafka-ca
+          secret:
+            secretName: {{ $root.Values.kafka.caSecret }}
+        {{- end }}
+{{- if gt (int $role.replicas) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $root.Release.Name }}-{{ $role.name }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "hub.commonLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $role.name }}
+{{- end }}
+{{- end }}

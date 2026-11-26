@@ -17,6 +17,7 @@ Key capabilities:
 - RBAC and ownership-aware authorization
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
 - Local starter stack with Perses and Prometheus dashboards
+- Kubernetes deployment with existing or managed PostgreSQL. [Deployment guide](deploy/kubernetes/README.md)
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
 - Connector demonstrators under [`connectors/`](connectors)

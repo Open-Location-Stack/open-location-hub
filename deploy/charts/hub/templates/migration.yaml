@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-db-prepare
+  labels:
+    {{- include "hub.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: db-prepare
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 420
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "hub.commonLabels" . | nindent 8 }}
+        app.kubernetes.io/component: db-prepare
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "hub.podSecurity" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{ toJson . }}
+      {{- end }}
+      {{- if .Values.database.caSecret }}
+      volumes:
+        - name: postgres-ca
+          secret:
+            secretName: {{ .Values.database.caSecret }}
+      {{- end }}
+      containers:
+        - name: db-prepare
+          image: {{ required "Set image to the published Hub image" .Values.image | quote }}
+          args: ["db-prepare"]
+          securityContext:
+            {{- include "hub.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrationResources | nindent 12 }}
+          {{- if .Values.database.caSecret }}
+          volumeMounts:
+            - name: postgres-ca
+              mountPath: /etc/location-hub/postgres
+              readOnly: true
+          {{- end }}
+          env:
+            {{- include "hub.databaseBindingEnv" . | nindent 12 }}
+            {{- include "hub.databaseConnEnv" (dict "root" . "role" "migration" "urlVar" "HUB_DB_MIGRATION_URL" "passwordVar" "HUB_DB_MIGRATION_PASSWORD") | nindent 12 }}
+            {{- include "hub.databaseConnEnv" (dict "root" . "role" "runtime" "urlVar" "HUB_DB_RUNTIME_URL" "passwordVar" "HUB_DB_RUNTIME_PASSWORD") | nindent 12 }}
+            {{- if .Values.kafka.enabled }}
+            {{- include "hub.databaseConnEnv" (dict "root" . "role" "relay" "urlVar" "HUB_DB_RELAY_URL" "passwordVar" "HUB_DB_RELAY_PASSWORD") | nindent 12 }}
+            {{- end }}

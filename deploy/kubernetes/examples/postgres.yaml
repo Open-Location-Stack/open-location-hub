@@ -1,0 +1,7 @@
+cluster:
+  instances: 3
+  storageClass: fast-persistent
+  storageSize: 50Gi
+  walStorageSize: 25Gi
+backup:
+  objectStore: location-postgres-backups

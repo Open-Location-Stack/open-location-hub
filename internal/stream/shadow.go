@@ -60,7 +60,12 @@ func kafkaClientOptions(cfg config.KafkaShadowConfig) ([]kgo.Opt, error) {
 		opts = append(opts, kgo.DialTLSConfig(tlsConfig))
 	}
 	if cfg.Username != "" {
-		opts = append(opts, kgo.SASL(scram.Auth{User: cfg.Username, Pass: cfg.Password}.AsSha256Mechanism()))
+		credentials := scram.Auth{User: cfg.Username, Pass: cfg.Password}
+		mechanism := credentials.AsSha256Mechanism()
+		if cfg.SCRAMMechanism == "SCRAM-SHA-512" {
+			mechanism = credentials.AsSha512Mechanism()
+		}
+		opts = append(opts, kgo.SASL(mechanism))
 	}
 	return opts, nil
 }

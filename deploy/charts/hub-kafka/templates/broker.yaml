@@ -1,0 +1,56 @@
+{{- $b := .Values.broker -}}
+{{- if and (not .Values.dev.singleNode) (or (lt (int $b.replicas) 3) (lt (int $b.minInSyncReplicas) 2)) -}}
+{{- fail "Production Kafka requires at least three replicas and two in-sync replicas" -}}
+{{- end -}}
+{{- if gt (int $b.minInSyncReplicas) (int $b.replicas) -}}
+{{- fail "Kafka minInSyncReplicas exceeds the number of replicas" -}}
+{{- end -}}
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: {{ .Release.Name }}-nodes
+  labels:
+    strimzi.io/cluster: {{ .Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  replicas: {{ $b.replicas }}
+  roles: [controller, broker]
+  storage:
+    type: persistent-claim
+    size: {{ $b.storage | quote }}
+    deleteClaim: false
+    {{- with $b.storageClass }}
+    class: {{ . | quote }}
+    {{- end }}
+  resources:
+    {{- toYaml $b.resources | nindent 4 }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: {{ .Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  kafka:
+    version: {{ $b.version | quote }}
+    listeners:
+      - name: hubtls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: scram-sha-512
+    authorization:
+      type: simple
+    config:
+      auto.create.topics.enable: false
+      default.replication.factor: {{ $b.replicas }}
+      min.insync.replicas: {{ $b.minInSyncReplicas }}
+      offsets.topic.replication.factor: {{ $b.replicas }}
+      transaction.state.log.replication.factor: {{ $b.replicas }}
+      transaction.state.log.min.isr: {{ $b.minInSyncReplicas }}
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

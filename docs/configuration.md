@@ -57,6 +57,7 @@ The broker connection verifies TLS by default. Use `KAFKA_SHADOW_CA_FILE` for a
 private CA. Set `KAFKA_SHADOW_CLIENT_CERT_FILE` and
 `KAFKA_SHADOW_CLIENT_KEY_FILE` together for mTLS, or supply
 `KAFKA_SHADOW_USERNAME` and `KAFKA_SHADOW_PASSWORD` for SCRAM-SHA-256. Use
+`KAFKA_SHADOW_SCRAM_MECHANISM=SCRAM-SHA-512` for a Strimzi SCRAM listener. Use
 `KAFKA_SHADOW_INSECURE_LOCAL=true` only with the isolated development broker.
 The local Compose overlay defaults every event log to six hours (21,600,000
 milliseconds). Set `KAFKA_LOG_RETENTION_MS` to change the shared default, or

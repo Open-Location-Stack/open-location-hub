@@ -40,7 +40,7 @@ func runAssetEstimator(ctx context.Context) error {
 		return fmt.Errorf("initialize estimator: %w", err)
 	}
 	defer worker.Close()
-	return worker.Run()
+	return serveWorker(ctx, func(context.Context) error { return worker.Run() })
 }
 
 func workerEnv(name, fallback string) string {

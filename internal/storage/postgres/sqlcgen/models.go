@@ -38,6 +38,13 @@ type HubConfigOutbox struct {
 	PublishedAt   pgtype.Timestamptz
 }
 
+type HubDeploymentBinding struct {
+	Singleton    bool
+	BindingID    string
+	DatabaseMode string
+	HubID        pgtype.UUID
+}
+
 type HubMetadatum struct {
 	SingletonID int16
 	HubID       pgtype.UUID

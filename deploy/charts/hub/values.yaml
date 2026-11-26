@@ -1,0 +1,73 @@
+image: ""
+imagePullSecrets: []
+identity:
+  id: ""
+  label: ""
+database:
+  mode: ""
+  bindingConfigMap: location-hub-db-binding
+  name: location_hub
+  runtimeSecret: ""
+  migrationSecret: ""
+  relaySecret: ""
+  caSecret: ""
+  host: location-postgres-rw
+  runtimeUser: hub_runtime
+  migrationUser: hub_migrator
+  relayUser: hub_relay
+  minVersionNum: 170000
+  requiredMajor: 0
+auth:
+  mode: oidc
+  issuer: ""
+  audience: open-location-hub
+  rolesClaim: groups
+  filesSecret: ""
+  staticPublicKeys: /etc/location-hub/auth/public.pem
+mqtt:
+  secret: ""
+kafka:
+  enabled: true
+  brokers: ""
+  authSecret: ""
+  authSecrets: {}
+  usernames: {}
+  scramMechanism: SCRAM-SHA-256
+  insecureLocal: false
+  caSecret: ""
+  topics:
+    observations: location-hub.observations.v1
+    assetInputs: location-hub.asset-inputs.v1
+    estimates: location-hub.motion-estimates.v1
+    estimatorState: location-hub.estimator-state.v1
+    configuration: location-hub.configuration.v1
+  routerGroup: location-hub.asset-router.v1
+  configHistory: 6h
+  routerReplicas: 1
+  estimatorReplicas: 1
+telemetry:
+  metricsEndpoint: ""
+  deployment: ""
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tlsSecret: ""
+network:
+  enabled: true
+  httpIngressPeers: []
+  egress: []
+dev:
+  insecureLocal: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+migrationResources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

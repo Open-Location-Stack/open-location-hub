@@ -1,0 +1,84 @@
+{{- $cluster := .Values.cluster -}}
+{{- if and (lt (int $cluster.instances) 3) (not .Values.dev.singleNode) -}}
+{{- fail "Production PostgreSQL requires at least three instances" -}}
+{{- end -}}
+{{- if and (not .Values.dev.singleNode) (not .Values.backup.objectStore) -}}
+{{- fail "Production PostgreSQL requires a Barman Cloud ObjectStore" -}}
+{{- end -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  imageName: {{ required "Set cluster.imageName to the qualified current PostgreSQL image" $cluster.imageName | quote }}
+  instances: {{ $cluster.instances }}
+  enableSuperuserAccess: false
+  bootstrap:
+    initdb:
+      database: {{ $cluster.database | quote }}
+      owner: {{ $cluster.migrationUser | quote }}
+      secret:
+        name: {{ $cluster.migrationSecret }}
+  managed:
+    roles:
+      - name: {{ $cluster.runtimeUser | quote }}
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ $cluster.runtimeSecret }}
+      - name: {{ $cluster.relayUser | quote }}
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ $cluster.relaySecret }}
+  resources:
+    {{- toYaml $cluster.resources | nindent 4 }}
+  storage:
+    size: {{ $cluster.storageSize | quote }}
+    {{- with $cluster.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- with $cluster.walStorageSize }}
+  walStorage:
+    size: {{ . | quote }}
+    {{- with $cluster.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  {{- if not .Values.dev.singleNode }}
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: topology.kubernetes.io/zone
+    podAntiAffinityType: required
+  postgresql:
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: required
+  {{- end }}
+  {{- if .Values.backup.objectStore }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ .Values.backup.objectStore }}
+  {{- end }}
+{{- if .Values.backup.objectStore }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .Release.Name }}-daily
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ .Release.Name }}
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}

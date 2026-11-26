@@ -1,0 +1,36 @@
+{{- $root := . -}}
+{{- $topics := .Values.kafka.topics -}}
+{{- if ne (len ($topics | values | uniq)) (len $topics) -}}
+{{- fail "Kafka topic names must be distinct" -}}
+{{- end -}}
+{{- range $key, $name := $topics }}
+{{- $retention := int64 $root.Values.kafka.logRetentionMs -}}
+{{- if hasKey $root.Values.kafka.topicRetentionMs $key -}}
+{{- $retention = int64 (index $root.Values.kafka.topicRetentionMs $key) -}}
+{{- end -}}
+{{- if and (ne $key "estimatorState") (le $retention 0) -}}
+{{- fail (printf "Topic %s must have a positive time-based retention" $key) -}}
+{{- end }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: {{ $root.Release.Name }}-{{ kebabcase $key }}
+  labels:
+    strimzi.io/cluster: {{ $root.Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  topicName: {{ $name | quote }}
+  partitions: {{ $root.Values.kafka.partitions }}
+  replicas: {{ $root.Values.broker.replicas }}
+  config:
+    {{- if eq $key "estimatorState" }}
+    cleanup.policy: compact
+    {{- else }}
+    cleanup.policy: delete
+    message.timestamp.type: LogAppendTime
+    retention.ms: {{ $retention }}
+    segment.ms: {{ min 300000 $retention }}
+    {{- end }}
+{{- end }}

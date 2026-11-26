@@ -19,6 +19,7 @@ type KafkaShadowConfig struct {
 	ClientKeyFile  string
 	Username       string
 	Password       string
+	SCRAMMechanism string
 }
 
 // Enabled reports whether a Kafka shadow sink was explicitly configured.
@@ -36,6 +37,7 @@ func loadKafkaShadow(lookup lookupEnvFunc) (KafkaShadowConfig, error) {
 		ClientKeyFile:  get("CLIENT_KEY_FILE"),
 		Username:       get("USERNAME"),
 		Password:       get("PASSWORD"),
+		SCRAMMechanism: get("SCRAM_MECHANISM"),
 	}
 	if value := get("INSECURE_LOCAL"); value != "" {
 		insecure, err := strconv.ParseBool(value)
@@ -46,7 +48,7 @@ func loadKafkaShadow(lookup lookupEnvFunc) (KafkaShadowConfig, error) {
 	}
 	if !cfg.Enabled() {
 		if cfg.InsecureLocal || cfg.CAFile != "" || cfg.ClientCertFile != "" || cfg.ClientKeyFile != "" ||
-			cfg.Username != "" || cfg.Password != "" || get("TOPIC") != "" {
+			cfg.Username != "" || cfg.Password != "" || cfg.SCRAMMechanism != "" || get("TOPIC") != "" {
 			return cfg, fmt.Errorf("KAFKA_SHADOW_BROKERS is required when configuring the Kafka mirror")
 		}
 		return cfg, nil
@@ -66,6 +68,9 @@ func loadKafkaShadow(lookup lookupEnvFunc) (KafkaShadowConfig, error) {
 	}
 	if (cfg.Username == "") != (cfg.Password == "") {
 		return cfg, fmt.Errorf("configure both Kafka SCRAM username and password")
+	}
+	if cfg.SCRAMMechanism != "" && (cfg.Username == "" || (cfg.SCRAMMechanism != "SCRAM-SHA-256" && cfg.SCRAMMechanism != "SCRAM-SHA-512")) {
+		return cfg, fmt.Errorf("configure Kafka SCRAM credentials and use SCRAM-SHA-256 or SCRAM-SHA-512")
 	}
 	if cfg.InsecureLocal && (cfg.CAFile != "" || cfg.ClientCertFile != "" || cfg.Username != "") {
 		return cfg, fmt.Errorf("a TLS broker is required for Kafka TLS and SCRAM settings")

@@ -73,6 +73,10 @@ compose-shadow-estimator:
 compose-shadow-config-relay:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app config-relay
 
+# Install the Hub and the stateful releases selected by the stack inventory.
+deploy-kubernetes:
+	./deploy/kubernetes/deploy.sh
+
 compose-down:
 	docker compose down -v
 

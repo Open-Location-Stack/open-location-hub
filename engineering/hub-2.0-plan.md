@@ -1,6 +1,6 @@
 # Open Location Hub 2.0 plan
 
-Design draft dated 26 November 2026. Scope covers the processing architecture, compatibility, migration and proposed Kubernetes deployment. The shell examples describe the deployment interface to build.
+Design draft dated 26 November 2026. Scope covers processing architecture, compatibility, migration and Kubernetes deployment. The implementation evidence records the stages validated so far.
 
 ## Recommendation
 
@@ -133,102 +133,25 @@ Use a TLS ingress or Gateway for HTTPS/WSS, a private MQTT listener where needed
 - **Latest version policy.** PostgreSQL **19.0** is the current stable release as of 26 November 2026. CloudNativePG's stable 1.30 line lists support through PostgreSQL 18. The 1.31 release candidate adds PostgreSQL 19 support. Require a qualified stable operator with PostgreSQL 19 support before approving a new production in-cluster database on that release. A managed provider that already supports PostgreSQL 19 can use the existing-database path. Qualify the PostgreSQL 19 path in a disposable cluster while stable operator support is pending. [PostgreSQL version policy](https://www.postgresql.org/support/versioning/), [CloudNativePG support matrix](https://cloudnative-pg.io/docs/devel/supported_releases/), [CloudNativePG releases](https://cloudnative-pg.io/releases/)
 - **Version maintenance.** Release CI resolves the latest stable upstream major and patch, verifies the chosen image and operator pairing, signs or verifies the image provenance, and produces a tested image reference by digest. A dependency update opens a reviewed change for each patch, with a scheduled freshness check so the lock does not age quietly. Keep the deployment inputs versioned and reproducible. PostgreSQL major upgrades require a rehearsed maintenance plan, backups and a rollback or reverse migration strategy. Existing clusters use their DBA's upgrade path. [PostgreSQL upgrades](https://www.postgresql.org/docs/current/upgrading.html), [CloudNativePG operand images](https://github.com/cloudnative-pg/postgres-containers)
 
-### Example scripts for both stack types
+### Scripts for both stack types
 
-These examples call proposed Helm charts. The platform team installs the supported operators and CRDs, creates the namespace and provisions access to Secrets, storage, backup targets, ingress and the OIDC issuer. Each install pins its Kubernetes context. The stateful charts are independent of the app chart and apply their own storage, backup and network policies. Serialize each deployment in CI or GitOps.
+The [Kubernetes deployment guide](../deploy/kubernetes/README.md) lists the
+platform prerequisites and the Secret contracts. The operator prepares the
+namespace, storage, backups, ingress, identity provider and credentials.
+Stateful resources have separate Helm releases.
 
-The common deployment script accepts an explicit stack inventory. `DB_MODE=external` means the stack provides PostgreSQL. `DB_MODE=managed` means the Hub owns a new cluster on initial install and reuses that same cluster on reruns. Record the selected mode and a stable database binding ID at first successful bootstrap. The application chart's pre-install/upgrade preflight checks an existing binding before writes and requires a separate migration procedure to change it. The platform deployer also checks the binding before invoking the managed infrastructure chart. Failed checks stop the rollout. Helm targets and Secret names are supplied as values or release metadata.
+Use [reuse-postgresql.sh](../deploy/kubernetes/examples/reuse-postgresql.sh)
+for an existing database, or [create-postgresql.sh](../deploy/kubernetes/examples/create-postgresql.sh)
+to deploy a dedicated CloudNativePG cluster. Both call the
+[common installer](../deploy/kubernetes/deploy.sh), which pins the Kubernetes
+context, records the database binding and checks image compatibility. Supply
+`KAFKA_VALUES` only when the Hub should install Strimzi broker resources.
 
-```bash
-#!/usr/bin/env bash
-# Proposed deploy/kubernetes/deploy.sh
-set -euo pipefail
-
-: "${KUBE_CONTEXT:?set the target Kubernetes context}"
-: "${HUB_NAMESPACE:?set the prepared namespace}"
-: "${HUB_VALUES:?set the Hub values file}"
-: "${DB_MODE:?set external or managed from the stack inventory}"
-: "${DB_BINDING_ID:?set the stable database binding ID}"
-
-helm_ns=(helm --kube-context "$KUBE_CONTEXT" --namespace "$HUB_NAMESPACE")
-kube_ns=(kubectl --context "$KUBE_CONTEXT" --namespace "$HUB_NAMESPACE")
-
-binding="$("${kube_ns[@]}" get configmap location-hub-db-binding \
-  --ignore-not-found -o jsonpath='{.data.mode}:{.data.id}')"
-if [[ -n "$binding" && "$binding" != "$DB_MODE:$DB_BINDING_ID" ]]; then
-  printf 'Database binding change requires a database migration.\n' >&2
-  exit 1
-fi
-
-case "$DB_MODE" in
-  external)
-    : "${DB_RUNTIME_SECRET:?set the existing database runtime Secret name}"
-    : "${DB_MIGRATION_SECRET:?set the existing database migration Secret name}"
-    ;;
-  managed)
-    : "${PG_VALUES:?set CloudNativePG storage, backup and TLS values}"
-    : "${PG_IMAGE:?supply the release-qualified PostgreSQL tag and digest}"
-    "${helm_ns[@]}" upgrade --install location-postgres ./deploy/charts/hub-postgres \
-      -f "$PG_VALUES" --set-string "cluster.imageName=$PG_IMAGE" \
-      --wait --wait-for-jobs --timeout 15m
-    "${kube_ns[@]}" wait --for=condition=Ready cluster/location-postgres --timeout=15m
-    DB_RUNTIME_SECRET=location-postgres-runtime
-    DB_MIGRATION_SECRET=location-postgres-migration
-    ;;
-  *)
-    printf 'Unsupported DB_MODE %s\n' "$DB_MODE" >&2
-    exit 2
-    ;;
-esac
-
-"${kube_ns[@]}" get secret "$DB_RUNTIME_SECRET" "$DB_MIGRATION_SECRET" -o name >/dev/null
-
-if [[ -n "${KAFKA_VALUES:-}" ]]; then
-  "${helm_ns[@]}" upgrade --install location-kafka ./deploy/charts/hub-kafka \
-    -f "$KAFKA_VALUES" --wait --wait-for-jobs --timeout 15m
-  "${kube_ns[@]}" wait --for=condition=Ready kafka/location-kafka --timeout=15m
-fi
-
-# The Hub chart preflight checks database identity, TLS and Kafka access.
-# A blocking migration Job runs before the application rollout.
-"${helm_ns[@]}" upgrade --install location-hub ./deploy/charts/hub \
-  -f "$HUB_VALUES" \
-  --set-string "database.mode=$DB_MODE" \
-  --set-string "database.bindingId=$DB_BINDING_ID" \
-  --set-string "database.runtimeSecret=$DB_RUNTIME_SECRET" \
-  --set-string "database.migrationSecret=$DB_MIGRATION_SECRET" \
-  --wait --wait-for-jobs --timeout 15m
-"${helm_ns[@]}" test location-hub --timeout 5m
-```
-
-With existing PostgreSQL and Kafka, the referenced Secret names and endpoints are already provisioned. `stacks/plant-a/hub.yaml` points to the existing Kafka listeners and credentials.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-export KUBE_CONTEXT=plant-a HUB_NAMESPACE=location-hub
-export HUB_VALUES=stacks/plant-a/hub.yaml
-export DB_MODE=external DB_BINDING_ID=plant-a-hub-db
-export DB_RUNTIME_SECRET=existing-hub-db-runtime
-export DB_MIGRATION_SECRET=existing-hub-db-migration
-unset KAFKA_VALUES
-exec ./deploy/kubernetes/deploy.sh
-```
-
-Without PostgreSQL or Kafka, the stateful charts create both. Set `PG_IMAGE` from the approved release manifest before running the wrapper. The PostgreSQL chart provisions namespace-local connection and CA Secrets for the two Hub roles. The Kafka chart provisions the broker, users and topics, and the Hub preflight confirms that credentials, topics and replication settings are usable.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-: "${PG_IMAGE:?export the qualified current PostgreSQL image from the release manifest}"
-export PG_IMAGE
-export KUBE_CONTEXT=plant-b HUB_NAMESPACE=location-hub
-export HUB_VALUES=stacks/plant-b/hub.yaml
-export DB_MODE=managed DB_BINDING_ID=plant-b-hub-db
-export PG_VALUES=stacks/plant-b/postgres.yaml
-export KAFKA_VALUES=stacks/plant-b/kafka.yaml
-exec ./deploy/kubernetes/deploy.sh
-```
+The release migration Job confirms database identity and writable primary
+access, applies the same embedded Goose SQL used by the local CLI under an
+advisory lock, and grants table privileges to the API and relay roles. It
+saves the Hub identity and database binding. The API and configuration relay
+validate the stored binding before their containers start.
 
 Keep in-cluster PostgreSQL and Kafka optional independently. With GitOps, express the same dependency order as sync stages and keep the binding in the stack inventory. Provision stateful resources with retention controls that survive application rollback or uninstall. Retry infrastructure creation and credential issuance idempotently. Run smoke tests against a candidate service and promote its route as a separate release step. A Helm rollback alone cannot undo a schema migration or an emitted event. [Helm upgrade reference](https://helm.sh/docs/helm/helm_upgrade/)
 
@@ -401,6 +324,23 @@ and estimator Kafka commit p99 stayed below 50 ms. The monitored local stack
 supports the existing shadow pipeline and compatibility state machines.
 Kubernetes monitoring and the new pipeline's decision and recovery metrics
 still need implementation and validation.
+
+The Kubernetes installer rendered both database paths and the Kubernetes
+API accepted the application and operator resources in server-side dry
+runs. The external path selected existing credentials without invoking
+the PostgreSQL chart. The managed path rendered CloudNativePG and Strimzi
+resources. The chart rendered a shared one-hour retention override and a
+separate two-minute configuration topic, while retaining checkpoint
+compaction.
+
+On a TLS-enabled PostgreSQL 19.0 fixture, concurrent preparation applied
+the migrations once. Repeat preparation and runtime binding checks
+passed. A wrong binding and a connection without TLS hostname verification
+were rejected. A separate existing database kept its Hub ID, label and
+provider data on adoption. The rebuilt Hub passed the native airport
+profile with 8,368 observations at about 174/s and zero recorded drops.
+The Kubernetes checks validated resource schemas. A full operator rollout
+and airport replay inside Kubernetes still require a worker node.
 
 ### Delivery sequence
 

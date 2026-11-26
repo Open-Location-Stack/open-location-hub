@@ -1,0 +1,25 @@
+broker:
+  version: 4.3.2
+  replicas: 3
+  storageClass: ""
+  storage: 50Gi
+  minInSyncReplicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      memory: 2Gi
+kafka:
+  topics:
+    observations: location-hub.observations.v1
+    assetInputs: location-hub.asset-inputs.v1
+    estimates: location-hub.motion-estimates.v1
+    estimatorState: location-hub.estimator-state.v1
+    configuration: location-hub.configuration.v1
+  routerGroup: location-hub.asset-router.v1
+  partitions: 12
+  logRetentionMs: 21600000
+  topicRetentionMs: {}
+dev:
+  singleNode: false
