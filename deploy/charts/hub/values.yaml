@@ -44,6 +44,9 @@ kafka:
     fenceEvaluations: location-hub.fence-evaluations.v1
     fenceTransitions: location-hub.fence-transitions.v1
     fenceState: location-hub.fence-state.v1
+    collisionCells: location-hub.collision-cells.v1
+    collisionPairs: location-hub.collision-pairs.v1
+    collisionCellState: location-hub.collision-cell-state.v1
   routerGroup: location-hub.asset-router.v1
   configHistory: 6h
   routerReplicas: 1
@@ -51,6 +54,8 @@ kafka:
   estimatorConfigSecret: ""
   fenceRouting: false
   fenceReplicas: 0
+  collisionRouting: false
+  collisionCellReplicas: 0
   configMaxStale: 30s
 telemetry:
   metricsEndpoint: ""

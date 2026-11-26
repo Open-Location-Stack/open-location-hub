@@ -29,3 +29,9 @@
 {{- if and (gt (int .Values.kafka.fenceReplicas) 0) (not .Values.kafka.fenceRouting) -}}
 {{- fail "Fence membership workers require kafka.fenceRouting" -}}
 {{- end -}}
+{{- if and .Values.kafka.collisionRouting (not (and .Values.kafka.enabled .Values.kafka.estimatorConfigSecret)) -}}
+{{- fail "Collision routing requires Kafka and kafka.estimatorConfigSecret" -}}
+{{- end -}}
+{{- if and (gt (int .Values.kafka.collisionCellReplicas) 0) (not .Values.kafka.collisionRouting) -}}
+{{- fail "Collision cell workers require kafka.collisionRouting" -}}
+{{- end -}}

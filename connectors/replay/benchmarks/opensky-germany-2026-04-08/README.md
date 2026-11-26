@@ -83,3 +83,10 @@ the worker restores a pending deadline after a replica leaves the group.
 Use Perses to compare shadow membership service time, handled/s and timer
 delay by worker replica. The benchmark's WebSocket gate continues to observe
 the compatibility path.
+
+For shadow collision candidates, enable estimator collision routing and run
+`just compose-shadow-collision-cells`. Use fresh topics for the run. Check
+that the cell worker group catches up and that repeated sample versions from
+different cells keep the same candidate ID and pair partition. Include two
+overlapping tracks followed by one track jumping away to check that a
+withdrawal delivers the newer position to the original pair key.

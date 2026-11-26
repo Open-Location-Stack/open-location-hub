@@ -113,7 +113,7 @@ func (w *EstimateWorker) estimateConfigured(input *streampb.AssetInput, previous
 			SchemaVersion: filter.SchemaVersion, Sequence: filter.Sequence, Frame: filter.Frame,
 			ObservedAtUnixNano: filter.ObservedAtUnixNano, Axes: filter.Axes, Position: filter.Position,
 			SelectedInputId: filter.SelectedInputId,
-			FenceRouting:    filter.FenceRouting,
+			FenceRouting:    filter.FenceRouting, CollisionRouting: filter.CollisionRouting,
 		}
 	} else {
 		return nil, nil, outcome, nil

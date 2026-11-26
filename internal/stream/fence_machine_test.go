@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
-	"github.com/formation-res/open-location-hub/internal/hub"
 	streampb "github.com/formation-res/open-location-hub/internal/stream/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -15,15 +14,12 @@ import (
 func TestFenceDeadlineQueueOrdersTiesAndUpdatesInPlace(t *testing.T) {
 	t.Parallel()
 	at := time.Unix(1700000000, 0)
-	state := func(deadline time.Time) *fenceMembership {
-		return &fenceMembership{deadlines: hub.FenceDeadlines{Fence: deadline}}
-	}
-	queue := fenceDeadlineQueue{byKey: make(map[string]*fenceDeadline)}
-	queue.update(0, "b", state(at))
-	queue.update(0, "a", state(at.Add(time.Second)))
-	queue.update(0, "a", state(at))
-	queue.update(0, "cancelled", state(at.Add(-time.Second)))
-	queue.update(0, "cancelled", nil)
+	queue := deadlineQueue[string]{byKey: make(map[string]*deadlineItem[string])}
+	queue.update(0, "b", at, "b")
+	queue.update(0, "a", at.Add(time.Second), "a")
+	queue.update(0, "a", at, "a")
+	queue.update(0, "cancelled", at.Add(-time.Second), "cancelled")
+	queue.update(0, "cancelled", time.Time{}, "")
 	if queue.pop().key != "a" || queue.pop().key != "b" || !queue.next().IsZero() {
 		t.Fatal("queue did not keep one deadline per key with stable tie order")
 	}

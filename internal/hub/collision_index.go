@@ -7,6 +7,19 @@ import (
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 )
 
+// CollisionEarthPosition returns the metric index coordinates of a WGS84 point.
+func CollisionEarthPosition(location gen.Location) ([3]float64, bool) {
+	point, err := point2D(location.Position)
+	if err != nil || locationCRS(location) != "EPSG:4326" {
+		return [3]float64{}, false
+	}
+	position, _, ok := collisionIndexPosition(location, point)
+	if !ok {
+		return [3]float64{}, false
+	}
+	return [3]float64{position[0], position[1], position[2]}, true
+}
+
 type indexedCollisionMotion struct {
 	motion   gen.TrackableMotion
 	point    [2]float64

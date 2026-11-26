@@ -112,6 +112,23 @@ fence log. A delayed upstream estimate can reach that log after a deadline
 hint has committed. Measure upstream lag and transition parity before
 selecting the public event path.
 
+Optional collision routing projects eligible trackable estimates to WGS84 and
+maps their current extent to Earth-centered metric cells. The estimator
+checkpoints the prior cell coverage and sends a withdrawal, with the new
+estimate, to every cell it leaves. The estimate and its cell inputs commit
+together. Cell workers maintain an incremental index for each owned cell.
+A worker searches both the previous and current boxes, so it can still find
+a prior neighbor after the updated asset jumps out of shared coverage. The
+worker snapshots only current asset samples and restores the index and
+expiry schedule after partition reassignment.
+
+Cell workers publish ordered pair keys with the two sample versions as shadow
+candidates. Multiple cells may emit the same version pair under the same
+candidate ID. Exact contact, collision timers and public delivery remain on
+the compatibility path. A later pair worker must merge candidates by both
+asset sequences, including when two cells observe the samples in different
+order.
+
 The configuration relay publishes changes to zones, fences, trackables and
 location providers from a PostgreSQL outbox. It emits one revision per
 committed transaction, including SQL inserts, updates and deletes. All

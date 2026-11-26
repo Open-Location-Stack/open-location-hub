@@ -408,6 +408,30 @@ is a shadow sink. A public rollout still needs provider and stationary
 membership reconciliation, timing parity under upstream lag, and ordered
 delivery through the facade.
 
+The collision broad phase used two estimator replicas and two cell workers
+with six partitions each. The native airport profile passed at 173 updates/s
+with zero reported drops. The 1 Hz profile reached 2,533 updates/s and
+reported 76,245 compatibility decision-queue drops and 5,164 event-bus drops.
+The compatibility observer received 305 collision events in the native run.
+
+Across both profiles, Kafka committed 193,601 cell upserts and 24,396
+withdrawals. The pair topic held 9,868 candidates with 9,562 distinct
+sample-pair IDs. A read-committed scan traced every candidate back to a cell
+input and two estimates, and confirmed that a given pair key stayed on one
+partition. The two workers handled all 12 cell partitions. Perses estimates
+from the replay showed router service p99 below 0.47 ms, cell service p99
+below 28 µs, cell queue-wait p99 below 200 ms and cell commit p99 below 63 ms
+on both replicas in the disposable stack.
+
+The failover fixture stopped a cell owner with two nearby assets indexed.
+After its peer restored the checkpoint, one asset jumped 33 km. A
+withdrawal paired the newer position with the restored neighbor on the
+same pair partition. After the samples expired, the cell group had zero lag
+on all partitions and the compacted store had zero live cell entries. The
+pair topic carries candidate inputs. Distributed
+exact contact, timer decisions and public delivery still need qualification
+against the compatibility events under concurrent changes and upstream lag.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

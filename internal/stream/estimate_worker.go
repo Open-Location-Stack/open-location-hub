@@ -30,14 +30,17 @@ type EstimateWorker struct {
 	configuration *ConfigurationWatch
 	retention     candidateRetention
 	fences        *fenceRouter
+	collisions    *collisionRouter
 }
 
 // EstimatorConfiguration enables locating rules and defines candidate lifetimes.
 type EstimatorConfiguration struct {
-	Watch           *ConfigurationWatch
-	LocationTTL     time.Duration
-	ProximityTTL    time.Duration
-	FenceInputTopic string
+	Watch              *ConfigurationWatch
+	LocationTTL        time.Duration
+	ProximityTTL       time.Duration
+	FenceInputTopic    string
+	CollisionCellTopic string
+	CollisionTTL       time.Duration
 }
 
 type partitionEstimates struct {
@@ -73,12 +76,15 @@ func OpenEstimateWorker(ctx context.Context, cfg config.KafkaShadowConfig, input
 		}
 		worker.configuration = configuration.Watch
 		worker.retention = candidateRetention{location: configuration.LocationTTL, proximity: configuration.ProximityTTL}
-		if topic := configuration.FenceInputTopic; topic != "" {
+		for _, topic := range []string{configuration.FenceInputTopic, configuration.CollisionCellTopic} {
+			if topic == "" {
+				continue
+			}
 			if topic == cfg.Topic || topic == input || topic == output || topic == state || topic == configuration.Watch.topic ||
-				configuration.Watch.cache.Load().geometry == nil {
+				configuration.Watch.cache.Load().geometry == nil || configuration.FenceInputTopic == configuration.CollisionCellTopic {
 				stop(nil)
 				store.client.Close()
-				return nil, fmt.Errorf("fence routing requires a separate input topic and geometry snapshot")
+				return nil, fmt.Errorf("spatial routing requires separate output topics and a geometry snapshot")
 			}
 			checkCtx, finish := context.WithTimeout(ctx, 5*time.Second)
 			metadata, err := topicMetadata(checkCtx, store.client, topic)
@@ -86,9 +92,19 @@ func OpenEstimateWorker(ctx context.Context, cfg config.KafkaShadowConfig, input
 			if err != nil || metadata.TopicID == [16]byte{} || len(metadata.Partitions) == 0 {
 				stop(nil)
 				store.client.Close()
-				return nil, fmt.Errorf("fence input topic topology is unavailable: %v", err)
+				return nil, fmt.Errorf("spatial output topic %q topology is unavailable: %v", topic, err)
 			}
-			worker.fences = &fenceRouter{topic: topic, topicID: metadata.TopicID, partitions: int32(len(metadata.Partitions))}
+			partitions := int32(len(metadata.Partitions))
+			if topic == configuration.FenceInputTopic {
+				worker.fences = &fenceRouter{topic: topic, topicID: metadata.TopicID, partitions: partitions}
+				continue
+			}
+			if configuration.CollisionTTL <= 0 {
+				stop(nil)
+				store.client.Close()
+				return nil, fmt.Errorf("collision routing requires a positive sample lifetime")
+			}
+			worker.collisions = &collisionRouter{topic: topic, topicID: metadata.TopicID, partitions: partitions, ttl: configuration.CollisionTTL}
 		}
 	}
 	group := state + ".estimator"
@@ -176,6 +192,12 @@ func (w *EstimateWorker) restorePartitions(ctx context.Context, offsets map[stri
 				w.stop(err)
 				return nil, err
 			}
+			if (len(frontier.CollisionCellTopicId) != 0) != (w.collisions != nil) || w.collisions != nil &&
+				(!bytes.Equal(frontier.CollisionCellTopicId, w.collisions.topicID[:]) || frontier.CollisionCellPartitions != w.collisions.partitions) {
+				err := fmt.Errorf("partition %d checkpoint belongs to another collision cell topology", partition)
+				w.stop(err)
+				return nil, err
+			}
 		}
 		if w.configuration != nil && materialized.frontier != nil &&
 			materialized.frontier.ConfigurationRevision > w.configuration.cache.Load().revision {
@@ -225,17 +247,37 @@ func (w *EstimateWorker) process(ctx context.Context, fetches kgo.Fetches) error
 				}
 			}
 		}
+		if w.collisions != nil {
+			for _, record := range results {
+				if record.Topic == w.collisions.topic {
+					telemetry.RecordStreamHandled(ctx, "collision_router", "cell_update", "collision_pair", "shadow", "committed")
+				}
+			}
+		}
 	}
 	for _, outcome := range outcomes {
 		if !committed {
-			outcome = "rebalanced"
+			outcome.estimate = "rebalanced"
+			if outcome.collision != "" {
+				outcome.collision = "rebalanced"
+			}
 		}
-		telemetry.RecordStreamHandled(ctx, "asset_estimator", "estimate", "motion", "shadow", outcome)
+		telemetry.RecordStreamHandled(ctx, "asset_estimator", "estimate", "motion", "shadow", outcome.estimate)
+		if outcome.collision != "" {
+			telemetry.RecordStreamHandled(ctx, "collision_router", "route", "collision_pair", "shadow", outcome.collision)
+			if outcome.collision == "reach_exceeded" {
+				telemetry.RecordRuntimeDrop(ctx, "collision_router", outcome.collision)
+			}
+		}
 	}
 	return nil
 }
 
-func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[int32]*partitionEstimates, []*kgo.Record, []string, error) {
+type estimateOutcome struct {
+	estimate, collision string
+}
+
+func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[int32]*partitionEstimates, []*kgo.Record, []estimateOutcome, error) {
 	var configuration *locatingConfiguration
 	if w.configuration != nil {
 		configuration = w.configuration.cache.Load()
@@ -243,7 +285,7 @@ func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[
 	telemetry := observability.RuntimeFromContext(ctx)
 	batch := make(map[int32]*partitionEstimates)
 	results := make([]*kgo.Record, 0, fetches.NumRecords())
-	outcomes := make([]string, 0, fetches.NumRecords())
+	outcomes := make([]estimateOutcome, 0, fetches.NumRecords())
 	for record := range fetches.RecordsAll() {
 		previous := w.partitions[record.Partition]
 		if previous == nil {
@@ -278,20 +320,24 @@ func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[
 			updates.frontier.FenceInputTopicId = w.fences.topicID[:]
 			updates.frontier.FenceInputPartitions = w.fences.partitions
 		}
+		if w.collisions != nil {
+			updates.frontier.CollisionCellTopicId = w.collisions.topicID[:]
+			updates.frontier.CollisionCellPartitions = w.collisions.partitions
+		}
 	}
 	return batch, results, outcomes, nil
 }
 
-func (w *EstimateWorker) estimateRecord(ctx context.Context, record *kgo.Record, previous, updates *partitionEstimates, configuration *locatingConfiguration) ([]*kgo.Record, string, error) {
+func (w *EstimateWorker) estimateRecord(ctx context.Context, record *kgo.Record, previous, updates *partitionEstimates, configuration *locatingConfiguration) ([]*kgo.Record, estimateOutcome, error) {
 	var input streampb.AssetInput
 	if err := proto.Unmarshal(record.Value, &input); err != nil {
-		return nil, "", fmt.Errorf("decode asset input: %w", err)
+		return nil, estimateOutcome{}, fmt.Errorf("decode asset input: %w", err)
 	}
 	origin := input.GetObservation().GetOriginHubId()
 	key := appendKeyPart(appendKeyPart(nil, origin), input.GetTrackableId())
 	if input.SchemaVersion != 1 || input.GetObservation().GetSchemaVersion() != 1 || origin == "" ||
 		input.GetTrackableId() == "" || len(input.EventId) != sha256.Size || !bytes.Equal(record.Key, key) {
-		return nil, "", fmt.Errorf("invalid asset input version or identity")
+		return nil, estimateOutcome{}, fmt.Errorf("invalid asset input version or identity")
 	}
 	checkpoint := updates.assets[string(key)]
 	if checkpoint == nil {
@@ -299,13 +345,13 @@ func (w *EstimateWorker) estimateRecord(ctx context.Context, record *kgo.Record,
 	}
 	var result *streampb.MotionEstimate
 	var next *assetEstimateState
-	var outcome string
+	var outcome estimateOutcome
 	var err error
 	if configuration != nil {
-		result, next, outcome, err = w.estimateConfigured(&input, checkpoint, configuration)
+		result, next, outcome.estimate, err = w.estimateConfigured(&input, checkpoint, configuration)
 	} else {
 		var filter *streampb.EstimateCheckpoint
-		result, filter, outcome, err = w.model.estimate(&input, checkpoint.filter())
+		result, filter, outcome.estimate, err = w.model.estimate(&input, checkpoint.filter())
 		if filter != nil {
 			next = &assetEstimateState{checkpoint: filter}
 		}
@@ -321,20 +367,31 @@ func (w *EstimateWorker) estimateRecord(ctx context.Context, record *kgo.Record,
 	}
 	encoded, err := proto.Marshal(result)
 	if err != nil {
-		return nil, "", fmt.Errorf("marshal motion estimate: %w", err)
+		return nil, outcome, fmt.Errorf("marshal motion estimate: %w", err)
 	}
 	outputs := []*kgo.Record{{Topic: w.outputTopic, Partition: record.Partition, Key: key, Value: encoded}}
 	if w.fences != nil {
 		started := time.Now()
 		evaluations, routing, err := w.fences.route(ctx, result, checkpoint.filter().GetFenceRouting(), configuration, record.Timestamp.UnixNano())
 		if err != nil {
-			return nil, "", err
+			return nil, outcome, err
 		}
 		telemetry := observability.RuntimeFromContext(ctx)
 		telemetry.RecordStreamServiceTime(ctx, "spatial_router", "route", "fence_membership", "shadow", time.Since(started))
 		telemetry.RecordBatchProcessing(ctx, "spatial_router", len(evaluations), time.Since(started))
 		next.checkpoint.FenceRouting = routing
 		outputs = append(outputs, evaluations...)
+	}
+	if w.collisions != nil {
+		started := time.Now()
+		cells, routing, routed, err := w.collisions.route(ctx, result, checkpoint.filter().GetCollisionRouting(), configuration, record.Timestamp.UnixNano())
+		observability.RuntimeFromContext(ctx).RecordStreamServiceTime(ctx, "collision_router", "route", "collision_pair", "shadow", time.Since(started))
+		if err != nil {
+			return nil, outcome, err
+		}
+		outcome.collision = routed
+		next.checkpoint.CollisionRouting = routing
+		outputs = append(outputs, cells...)
 	}
 	updates.assets[string(key)] = next
 	return outputs, outcome, nil

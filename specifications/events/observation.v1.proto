@@ -76,6 +76,7 @@ message EstimateCheckpoint {
   bytes selected_input_id = 8;
   int64 evaluated_at_unix_nano = 9;
   FenceRoutingCheckpoint fence_routing = 10;
+  CollisionRoutingCheckpoint collision_routing = 11;
 }
 
 // EstimatorFrontier binds a partition's materialized state to the exact input
@@ -88,6 +89,8 @@ message EstimatorFrontier {
   bool fence_routing = 5;
   bytes fence_input_topic_id = 6;
   int32 fence_input_partitions = 7;
+  bytes collision_cell_topic_id = 8;
+  int32 collision_cell_partitions = 9;
 }
 
 // FenceRoutingCheckpoint retains possible memberships across cell jumps and
@@ -165,6 +168,75 @@ message FenceMembershipFrontier {
   int64 next_offset = 2;
   bytes transition_topic_id = 3;
   uint32 topology_version = 4;
+}
+
+// CollisionCell is a fixed Earth-centered metric cube.
+message CollisionCell {
+  sint32 x = 1;
+  sint32 y = 2;
+  sint32 z = 3;
+}
+
+// CollisionRoutingCheckpoint tracks the asset's replicated cells.
+message CollisionRoutingCheckpoint {
+  int64 processed_at_unix_nano = 1;
+  repeated CollisionCell cells = 2;
+}
+
+// CollisionSample carries a versioned estimate and the overrides used for contact.
+message CollisionSample {
+  bytes estimate_id = 1;
+  string origin_hub_id = 2;
+  string trackable_id = 3;
+  uint64 sequence = 4;
+  int64 configuration_revision = 5;
+  int64 processed_at_unix_nano = 6;
+  int64 expires_at_unix_nano = 7;
+  bytes location_json = 8;
+  repeated double ecef_meters = 9;
+  double radius_meters = 10;
+  optional double extrusion_meters = 11;
+  double exit_tolerance_meters = 12;
+  int64 tolerance_timeout_nanos = 13;
+  int64 exit_delay_nanos = 14;
+  bool eligible = 15;
+}
+
+// CollisionCellInput updates one owned cell, including previously covered cells.
+message CollisionCellInput {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_UPSERT = 1;
+    ACTION_WITHDRAW = 2;
+    ACTION_EXPIRE = 3;
+  }
+  uint32 schema_version = 1;
+  uint32 topology_version = 2;
+  bytes event_id = 3;
+  CollisionCell cell = 4;
+  CollisionSample sample = 5;
+  Action action = 6;
+}
+
+// CollisionPairInput carries two asset versions from a shared or departed cell.
+// Pair ownership is independent from either asset's spatial position.
+message CollisionPairInput {
+  uint32 schema_version = 1;
+  uint32 topology_version = 2;
+  bytes event_id = 3;
+  bytes trigger_cell_input_id = 4;
+  CollisionSample left = 5;
+  CollisionSample right = 6;
+  int64 evaluated_at_unix_nano = 7;
+}
+
+// CollisionCellFrontier binds cell checkpoints to a fixed topic topology.
+message CollisionCellFrontier {
+  bytes input_topic_id = 1;
+  int64 next_offset = 2;
+  bytes pair_topic_id = 3;
+  int32 pair_partitions = 4;
+  uint32 topology_version = 5;
 }
 
 // ConfigurationRevision represents one committed single-hub database

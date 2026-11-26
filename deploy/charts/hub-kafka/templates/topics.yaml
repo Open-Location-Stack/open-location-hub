@@ -8,7 +8,7 @@
 {{- if hasKey $root.Values.kafka.topicRetentionMs $key -}}
 {{- $retention = int64 (index $root.Values.kafka.topicRetentionMs $key) -}}
 {{- end -}}
-{{- $compacted := has $key (list "estimatorState" "fenceState") -}}
+{{- $compacted := has $key (list "estimatorState" "fenceState" "collisionCellState") -}}
 {{- if and (not $compacted) (le $retention 0) -}}
 {{- fail (printf "Topic %s must have a positive time-based retention" $key) -}}
 {{- end }}

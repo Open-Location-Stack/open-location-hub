@@ -81,7 +81,7 @@ type configAssembly struct {
 
 // OpenConfigurationWatch captures committed Kafka offsets before taking the
 // PostgreSQL snapshot, so revisions committed after the snapshot stay in view.
-func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, db *pgxpool.Pool, topic, hubID string, maxStale time.Duration, fenceRouting bool) (*ConfigurationWatch, error) {
+func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, db *pgxpool.Pool, topic, hubID string, maxStale time.Duration, spatial bool) (*ConfigurationWatch, error) {
 	if !cfg.Enabled() || db == nil || topic == "" || hubID == "" || maxStale < time.Second {
 		return nil, fmt.Errorf("configuration watch requires Kafka, PostgreSQL, a topic, a Hub ID and at least one second of allowed staleness")
 	}
@@ -95,7 +95,7 @@ func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, d
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := loadLocatingConfiguration(ctx, db, hubID, fenceRouting)
+	snapshot, err := loadLocatingConfiguration(ctx, db, hubID, spatial)
 	if err != nil {
 		return nil, fmt.Errorf("load locating configuration snapshot: %w", err)
 	}
@@ -156,7 +156,7 @@ func configurationOffsets(ctx context.Context, options []kgo.Opt, topic string) 
 	return offsets, nil
 }
 
-func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID string, fenceRouting bool) (*locatingConfiguration, error) {
+func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID string, spatial bool) (*locatingConfiguration, error) {
 	snapshot := newLocatingConfiguration(0)
 	err := pgx.BeginTxFunc(ctx, db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		q := sqlcgen.New(tx)
@@ -183,7 +183,7 @@ func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID stri
 			id := row.ID.String()
 			shard := &snapshot.shards[configurationShard(id)]
 			shard.rules[id] = rules
-			if fenceRouting {
+			if spatial {
 				if shard.trackables == nil {
 					shard.trackables = make(map[string]gen.Trackable)
 				}
@@ -196,14 +196,14 @@ func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID stri
 		}
 		for _, row := range providers {
 			provider := providerForLocating(row.ID, row.Type, row.Name)
-			if fenceRouting {
+			if spatial {
 				if err := json.Unmarshal(row.Payload, &provider); err != nil {
 					return fmt.Errorf("decode provider %s: %w", row.ID, err)
 				}
 			}
 			snapshot.shards[configurationShard(row.ID)].providers[row.ID] = provider
 		}
-		if fenceRouting {
+		if spatial {
 			snapshot.geometry, err = loadFenceConfiguration(ctx, q)
 			return err
 		}
@@ -417,11 +417,11 @@ type locatingChange struct {
 	fence     gen.Fence
 }
 
-func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change, fenceRouting bool) ([]locatingChange, error) {
+func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change, spatial bool) ([]locatingChange, error) {
 	changes := make([]locatingChange, 0, len(rows))
 	for _, row := range rows {
 		kind := row.GetResourceKind()
-		if kind != "trackable" && kind != "location_provider" && !(fenceRouting && (kind == "zone" || kind == "fence")) {
+		if kind != "trackable" && kind != "location_provider" && !(spatial && (kind == "zone" || kind == "fence")) {
 			continue
 		}
 		change := locatingChange{kind: kind}
@@ -455,7 +455,7 @@ func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change, fenceR
 				change.trackable = trackable
 			case "location_provider":
 				change.provider = gen.LocationProvider{Id: entry.ID, Type: entry.Type, Name: entry.Name}
-				if fenceRouting {
+				if spatial {
 					if err := json.Unmarshal(entry.Payload, &change.provider); err != nil {
 						return nil, fmt.Errorf("decode provider %s: %w", entry.ID, err)
 					}

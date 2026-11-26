@@ -160,15 +160,9 @@ func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMot
 }
 
 func (s *Service) collisionExitPolicy(ctx context.Context, left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) (exitTimerPolicy, float64) {
-	forTrackable := func(motion gen.TrackableMotion, trackable gen.Trackable) fenceExitPolicy {
-		policy := fenceExitPolicy{}
-		applyFencePolicyOverride(&policy, trackable.ExitTolerance, trackable.ToleranceTimeout, trackable.ExitDelay)
-		if provider, ok := s.providerByID(ctx, motion.Location.ProviderId); ok {
-			applyFencePolicyOverride(&policy, provider.ExitTolerance, provider.ToleranceTimeout, provider.ExitDelay)
-		}
-		return policy
-	}
-	l, r := forTrackable(left, lt), forTrackable(right, rt)
+	lp, _ := s.providerByID(ctx, left.Location.ProviderId)
+	rp, _ := s.providerByID(ctx, right.Location.ProviderId)
+	l, r := ResolveCollisionAssetPolicy(lt, lp), ResolveCollisionAssetPolicy(rt, rp)
 	maximum := func(a, b time.Duration) time.Duration {
 		if a < 0 || b < 0 {
 			return -1
@@ -178,7 +172,24 @@ func (s *Service) collisionExitPolicy(ctx context.Context, left gen.TrackableMot
 		}
 		return b
 	}
-	return exitTimerPolicy{fenceTimeout: -1, toleranceTimeout: maximum(l.ToleranceTimeout, r.ToleranceTimeout), exitDelay: maximum(l.ExitDelay, r.ExitDelay)}, l.ExitTolerance + r.ExitTolerance
+	return exitTimerPolicy{fenceTimeout: -1, toleranceTimeout: maximum(time.Duration(l.ToleranceTimeoutNanos), time.Duration(r.ToleranceTimeoutNanos)), exitDelay: maximum(time.Duration(l.ExitDelayNanos), time.Duration(r.ExitDelayNanos))}, l.ExitTolerance + r.ExitTolerance
+}
+
+// CollisionAssetPolicy holds the per-asset extent and timer overrides used in pairs.
+type CollisionAssetPolicy struct {
+	Radius, ExitTolerance                 float64
+	ToleranceTimeoutNanos, ExitDelayNanos int64
+}
+
+// ResolveCollisionAssetPolicy applies provider overrides before contact evaluation.
+func ResolveCollisionAssetPolicy(trackable gen.Trackable, provider gen.LocationProvider) CollisionAssetPolicy {
+	policy := fenceExitPolicy{}
+	applyFencePolicyOverride(&policy, trackable.ExitTolerance, trackable.ToleranceTimeout, trackable.ExitDelay)
+	applyFencePolicyOverride(&policy, provider.ExitTolerance, provider.ToleranceTimeout, provider.ExitDelay)
+	return CollisionAssetPolicy{
+		Radius: trackableRadius(trackable), ExitTolerance: policy.ExitTolerance,
+		ToleranceTimeoutNanos: int64(policy.ToleranceTimeout), ExitDelayNanos: int64(policy.ExitDelay),
+	}
 }
 
 // Caller holds collisionMu, including while emitting the ordered edge.

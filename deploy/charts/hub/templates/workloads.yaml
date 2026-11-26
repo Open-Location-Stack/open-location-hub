@@ -9,6 +9,9 @@
 {{- if gt (int .Values.kafka.fenceReplicas) 0 -}}
 {{- $roles = append $roles (dict "name" "fence-worker" "replicas" .Values.kafka.fenceReplicas "database" "" "port" 8081) -}}
 {{- end -}}
+{{- if gt (int .Values.kafka.collisionCellReplicas) 0 -}}
+{{- $roles = append $roles (dict "name" "collision-cell-worker" "replicas" .Values.kafka.collisionCellReplicas "database" "" "port" 8081) -}}
+{{- end -}}
 {{- range $role := $roles }}
 {{- $configReader := and (eq $role.name "asset-estimator") $root.Values.kafka.estimatorConfigSecret }}
 ---
@@ -168,6 +171,10 @@ spec:
             - name: KAFKA_FENCE_INPUT_TOPIC
               value: {{ required "Set kafka.topics.fenceEvaluations" $root.Values.kafka.topics.fenceEvaluations | quote }}
             {{- end }}
+            {{- if $root.Values.kafka.collisionRouting }}
+            - name: KAFKA_COLLISION_CELL_TOPIC
+              value: {{ required "Set kafka.topics.collisionCells" $root.Values.kafka.topics.collisionCells | quote }}
+            {{- end }}
             {{- end }}
             {{- if eq $role.name "fence-worker" }}
             - name: KAFKA_FENCE_INPUT_TOPIC
@@ -176,6 +183,14 @@ spec:
               value: {{ required "Set kafka.topics.fenceTransitions" $root.Values.kafka.topics.fenceTransitions | quote }}
             - name: KAFKA_FENCE_STATE_TOPIC
               value: {{ required "Set kafka.topics.fenceState" $root.Values.kafka.topics.fenceState | quote }}
+            {{- end }}
+            {{- if eq $role.name "collision-cell-worker" }}
+            - name: KAFKA_COLLISION_CELL_TOPIC
+              value: {{ required "Set kafka.topics.collisionCells" $root.Values.kafka.topics.collisionCells | quote }}
+            - name: KAFKA_COLLISION_PAIR_TOPIC
+              value: {{ required "Set kafka.topics.collisionPairs" $root.Values.kafka.topics.collisionPairs | quote }}
+            - name: KAFKA_COLLISION_CELL_STATE_TOPIC
+              value: {{ required "Set kafka.topics.collisionCellState" $root.Values.kafka.topics.collisionCellState | quote }}
             {{- end }}
             {{- if $root.Values.telemetry.metricsEndpoint }}
             - name: OTEL_ENABLED

@@ -166,6 +166,42 @@ time under `fence_membership`. The State machines dashboard breaks out
 observation and timer evaluations and their outcomes with traffic mode
 `shadow`. The timer queue metric measures delay past the original deadline.
 
+### Collision cell worker
+
+Set `KAFKA_COLLISION_CELL_TOPIC` on the revision-aware asset estimator to
+enable WGS84 collision candidate routing. Grant the configuration reader
+`SELECT` on `zones` and `fences` for the shared spatial snapshot. Start with
+fresh estimator checkpoint and output topics when enabling collision routing.
+The estimator uses `COLLISION_STATE_TTL` (default two minutes) for the
+freshness of indexed samples.
+
+Run `open-location-hub collision-cell-worker` or
+`just compose-shadow-collision-cells` to start the cell workers.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `KAFKA_COLLISION_CELL_TOPIC` | `location-hub.collision-cells.v1` | Cell inputs and generation-specific expiry hints. |
+| `KAFKA_COLLISION_PAIR_TOPIC` | `location-hub.collision-pairs.v1` | Pair candidates keyed by origin and two ordered trackable IDs. |
+| `KAFKA_COLLISION_CELL_STATE_TOPIC` | `location-hub.collision-cell-state.v1` | Compacted checkpoints for current indexed samples. |
+| `KAFKA_COLLISION_CELL_INSTANCE` | Hostname | Unique transaction instance. Override for replicas sharing a hostname. |
+| `KAFKA_COLLISION_CELL_RETENTION_MS` | Shared six-hour window | Compose override for cell input retention. |
+| `KAFKA_COLLISION_PAIR_RETENTION_MS` | Shared six-hour window | Compose override for pair input retention. |
+
+Provision these three topics with equal, fixed partition counts. The estimator
+needs Write and Describe on the cell input topic. For cell workers, grant
+Read and Write on the input and checkpoint topics, DescribeConfigs on the
+checkpoint topic, and Write on the pair topic. Allow idempotent writes and
+grant access to the consumer group named for the checkpoint topic plus
+`.cells` and its transactional IDs.
+
+The initial topology uses 2,048 m cubes and accepts a combined trackable
+radius and exit tolerance up to 1,000 m per sample. A cell evaluation can
+publish up to 256 candidate peers. When a limit is exceeded, Perses shows
+`reach_exceeded` for `collision_router` or `candidate_limit` for
+`collision_cell`. The cell does not publish a partial candidate set.
+The Worker performance dashboard separates routing, cell evaluations and
+committed pair candidates. The compatibility path still owns public events.
+
 ### Configuration relay
 
 Apply the database migrations and start the Hub once to initialize its persisted

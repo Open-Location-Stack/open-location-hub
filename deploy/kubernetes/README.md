@@ -139,6 +139,15 @@ Kafka example creates this principal and provisions its ACLs. Set
 for entry and exit events. The compacted fence checkpoint stores active
 memberships across that window.
 
+For shadow collision candidates, set `kafka.collisionRouting` and a positive
+`kafka.collisionCellReplicas`. Use the same spatial configuration reader as
+fence routing. Set matching `collisionCells`, `collisionPairs` and
+`collisionCellState` topics in the application and broker values. The broker
+chart creates a dedicated cell-worker principal and ACLs. When using external
+Kafka, set `kafka.authSecrets.collision-cell-worker` to its credentials
+Secret. The event topics take independent retention overrides via
+`kafka.topicRetentionMs.collisionCells` and `kafka.topicRetentionMs.collisionPairs`.
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,

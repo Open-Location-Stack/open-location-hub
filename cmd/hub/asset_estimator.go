@@ -41,8 +41,10 @@ func runAssetEstimator(ctx context.Context) error {
 	group, workerCtx := errgroup.WithContext(ctx)
 	var estimatorConfiguration *stream.EstimatorConfiguration
 	fenceInputTopic := strings.TrimSpace(os.Getenv("KAFKA_FENCE_INPUT_TOPIC"))
-	if fenceInputTopic != "" && strings.TrimSpace(os.Getenv("HUB_CONFIG_READ_URL")) == "" {
-		return fmt.Errorf("HUB_CONFIG_READ_URL is required for fence routing")
+	collisionCellTopic := strings.TrimSpace(os.Getenv("KAFKA_COLLISION_CELL_TOPIC"))
+	spatial := fenceInputTopic != "" || collisionCellTopic != ""
+	if spatial && strings.TrimSpace(os.Getenv("HUB_CONFIG_READ_URL")) == "" {
+		return fmt.Errorf("HUB_CONFIG_READ_URL is required for spatial routing")
 	}
 	if snapshotURL := strings.TrimSpace(os.Getenv("HUB_CONFIG_READ_URL")); snapshotURL != "" {
 		if cfg.HubID == "" {
@@ -61,14 +63,14 @@ func runAssetEstimator(ctx context.Context) error {
 			return fmt.Errorf("open estimator configuration database: %w", err)
 		}
 		defer db.Close()
-		watch, err := stream.OpenConfigurationWatch(ctx, cfg.KafkaShadow, db, topic, cfg.HubID, maxStale, fenceInputTopic != "")
+		watch, err := stream.OpenConfigurationWatch(ctx, cfg.KafkaShadow, db, topic, cfg.HubID, maxStale, spatial)
 		if err != nil {
 			return fmt.Errorf("initialize estimator configuration watch: %w", err)
 		}
 		defer watch.Close()
 		estimatorConfiguration = &stream.EstimatorConfiguration{
 			Watch: watch, LocationTTL: cfg.StateLocationTTL, ProximityTTL: cfg.StateProximityTTL,
-			FenceInputTopic: fenceInputTopic,
+			FenceInputTopic: fenceInputTopic, CollisionCellTopic: collisionCellTopic, CollisionTTL: cfg.CollisionStateTTL,
 		}
 	}
 	worker, err := stream.OpenEstimateWorker(workerCtx, cfg.KafkaShadow, input, output, state, instance, estimatorConfiguration)

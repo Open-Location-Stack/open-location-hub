@@ -28,7 +28,7 @@ type FenceWorker struct {
 	machine     fenceMachine
 	mu          sync.Mutex
 	partitions  map[int32]*partitionMemberships
-	deadlines   fenceDeadlineQueue
+	deadlines   deadlineQueue[*fenceMembership]
 }
 
 // OpenFenceWorker joins the membership consumer group for a dedicated state topic.
@@ -53,7 +53,7 @@ func OpenFenceWorker(ctx context.Context, cfg config.KafkaShadowConfig, input, o
 	worker := &FenceWorker{
 		ctx: ctx, stop: stop, store: store, inputTopic: input, outputTopic: output,
 		machine: fenceMachine{geometry: make(map[string]gen.Fence)}, partitions: make(map[int32]*partitionMemberships),
-		deadlines: fenceDeadlineQueue{byKey: make(map[string]*fenceDeadline)},
+		deadlines: deadlineQueue[*fenceMembership]{byKey: make(map[string]*deadlineItem[*fenceMembership])},
 	}
 	group := state + ".membership"
 	worker.session, err = kgo.NewGroupTransactSession(append(options,
@@ -134,7 +134,7 @@ func (w *FenceWorker) restorePartitions(ctx context.Context, offsets map[string]
 	for partition, materialized := range partitions {
 		w.partitions[partition] = materialized
 		for key, state := range materialized.members {
-			w.deadlines.update(partition, key, state)
+			w.updateDeadline(partition, key, state)
 		}
 	}
 	return offsets, nil
@@ -146,11 +146,19 @@ func (w *FenceWorker) dropPartitions(_ context.Context, _ *kgo.Client, revoked m
 	for _, partition := range revoked[w.inputTopic] {
 		if state := w.partitions[partition]; state != nil {
 			for key := range state.members {
-				w.deadlines.update(partition, key, nil)
+				w.updateDeadline(partition, key, nil)
 			}
 			delete(w.partitions, partition)
 		}
 	}
+}
+
+func (w *FenceWorker) updateDeadline(partition int32, key string, state *fenceMembership) {
+	var at time.Time
+	if state != nil {
+		at = state.deadlines.Next()
+	}
+	w.deadlines.update(partition, key, at, state)
 }
 
 func (w *FenceWorker) publishDue(ctx context.Context, now time.Time) (time.Time, error) {
@@ -171,7 +179,7 @@ func (w *FenceWorker) publishDue(ctx context.Context, now time.Time) (time.Time,
 			break
 		}
 		timer := w.deadlines.pop()
-		last := timer.membership.observation
+		last := timer.value.observation
 		eventID := fenceDeadlineID(last.EventId, at)
 		value, err := proto.Marshal(&streampb.FenceEvaluation{
 			SchemaVersion: 1, EventId: eventID[:], OriginHubId: last.OriginHubId,
@@ -282,7 +290,7 @@ func (w *FenceWorker) process(ctx context.Context, fetches kgo.Fetches) error {
 				} else {
 					current.members[key] = state
 				}
-				w.deadlines.update(partition, key, state)
+				w.updateDeadline(partition, key, state)
 			}
 			current.frontier = updates.frontier
 		}
