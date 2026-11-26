@@ -129,6 +129,7 @@ func TestResolvePropagatesLoadFailure(t *testing.T) {
 }
 
 type fakeQueries struct {
+	sqlcgen.Querier
 	row     sqlcgen.HubMetadatum
 	getErr  error
 	created *sqlcgen.CreateHubMetadataParams

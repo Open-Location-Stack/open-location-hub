@@ -132,9 +132,11 @@ func runCommand(ctx context.Context, args []string) error {
 			return runAssetRouter(ctx)
 		case "asset-estimator":
 			return runAssetEstimator(ctx)
+		case "config-relay":
+			return runConfigRelay(ctx)
 		}
 	}
-	return fmt.Errorf("expected no arguments, asset-router or asset-estimator")
+	return fmt.Errorf("expected no arguments, asset-router, asset-estimator or config-relay")
 }
 
 func run(ctx context.Context) error {

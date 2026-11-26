@@ -94,8 +94,13 @@ func runMigrations(t *testing.T, ctx context.Context, pg testcontainers.Containe
 		time.Sleep(500 * time.Millisecond)
 	}
 	ensurePostgresDatabase(t, ctx, pg, "openrtls")
-	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql", "00003_zone_foreign_id_unique.sql"} {
-		content, err := os.ReadFile(repoPath(t, filepath.Join("migrations", name)))
+	migrations, err := filepath.Glob(repoPath(t, filepath.Join("migrations", "[0-9]*.sql")))
+	if err != nil || len(migrations) == 0 {
+		t.Fatalf("no integration migrations found: %v", err)
+	}
+	for _, file := range migrations {
+		name := filepath.Base(file)
+		content, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("read migration %s failed: %v", name, err)
 		}

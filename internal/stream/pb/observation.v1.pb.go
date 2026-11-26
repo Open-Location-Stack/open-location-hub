@@ -540,6 +540,178 @@ func (x *EstimatorFrontier) GetNextOffset() int64 {
 	return 0
 }
 
+// ConfigurationRevision represents one committed single-hub database
+// transaction. A snapshot at this revision already includes these changes.
+type ConfigurationRevision struct {
+	state              protoimpl.MessageState          `protogen:"open.v1"`
+	SchemaVersion      uint32                          `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	OriginHubId        string                          `protobuf:"bytes,2,opt,name=origin_hub_id,json=originHubId,proto3" json:"origin_hub_id,omitempty"`
+	Revision           int64                           `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	RecordedAtUnixNano int64                           `protobuf:"varint,4,opt,name=recorded_at_unix_nano,json=recordedAtUnixNano,proto3" json:"recorded_at_unix_nano,omitempty"`
+	Changes            []*ConfigurationRevision_Change `protobuf:"bytes,5,rep,name=changes,proto3" json:"changes,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ConfigurationRevision) Reset() {
+	*x = ConfigurationRevision{}
+	mi := &file_observation_v1_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigurationRevision) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigurationRevision) ProtoMessage() {}
+
+func (x *ConfigurationRevision) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigurationRevision.ProtoReflect.Descriptor instead.
+func (*ConfigurationRevision) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ConfigurationRevision) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *ConfigurationRevision) GetOriginHubId() string {
+	if x != nil {
+		return x.OriginHubId
+	}
+	return ""
+}
+
+func (x *ConfigurationRevision) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ConfigurationRevision) GetRecordedAtUnixNano() int64 {
+	if x != nil {
+		return x.RecordedAtUnixNano
+	}
+	return 0
+}
+
+func (x *ConfigurationRevision) GetChanges() []*ConfigurationRevision_Change {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+// ConfigurationRevisionPart carries a bounded fragment of a serialized bundle.
+// All fragments are published in one Kafka transaction and share the hub key.
+type ConfigurationRevisionPart struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	OriginHubId   string                 `protobuf:"bytes,2,opt,name=origin_hub_id,json=originHubId,proto3" json:"origin_hub_id,omitempty"`
+	Revision      int64                  `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	PartIndex     uint32                 `protobuf:"varint,4,opt,name=part_index,json=partIndex,proto3" json:"part_index,omitempty"`
+	PartCount     uint32                 `protobuf:"varint,5,opt,name=part_count,json=partCount,proto3" json:"part_count,omitempty"`
+	BundleSha256  []byte                 `protobuf:"bytes,6,opt,name=bundle_sha256,json=bundleSha256,proto3" json:"bundle_sha256,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigurationRevisionPart) Reset() {
+	*x = ConfigurationRevisionPart{}
+	mi := &file_observation_v1_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigurationRevisionPart) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigurationRevisionPart) ProtoMessage() {}
+
+func (x *ConfigurationRevisionPart) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigurationRevisionPart.ProtoReflect.Descriptor instead.
+func (*ConfigurationRevisionPart) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ConfigurationRevisionPart) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *ConfigurationRevisionPart) GetOriginHubId() string {
+	if x != nil {
+		return x.OriginHubId
+	}
+	return ""
+}
+
+func (x *ConfigurationRevisionPart) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *ConfigurationRevisionPart) GetPartIndex() uint32 {
+	if x != nil {
+		return x.PartIndex
+	}
+	return 0
+}
+
+func (x *ConfigurationRevisionPart) GetPartCount() uint32 {
+	if x != nil {
+		return x.PartCount
+	}
+	return 0
+}
+
+func (x *ConfigurationRevisionPart) GetBundleSha256() []byte {
+	if x != nil {
+		return x.BundleSha256
+	}
+	return nil
+}
+
+func (x *ConfigurationRevisionPart) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
 type EstimateCheckpoint_Axis struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Position         float64                `protobuf:"fixed64,1,opt,name=position,proto3" json:"position,omitempty"`
@@ -553,7 +725,7 @@ type EstimateCheckpoint_Axis struct {
 
 func (x *EstimateCheckpoint_Axis) Reset() {
 	*x = EstimateCheckpoint_Axis{}
-	mi := &file_observation_v1_proto_msgTypes[5]
+	mi := &file_observation_v1_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -565,7 +737,7 @@ func (x *EstimateCheckpoint_Axis) String() string {
 func (*EstimateCheckpoint_Axis) ProtoMessage() {}
 
 func (x *EstimateCheckpoint_Axis) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[5]
+	mi := &file_observation_v1_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,6 +786,74 @@ func (x *EstimateCheckpoint_Axis) GetVelocityVariance() float64 {
 		return x.VelocityVariance
 	}
 	return 0
+}
+
+type ConfigurationRevision_Change struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ResourceKind  string                 `protobuf:"bytes,1,opt,name=resource_kind,json=resourceKind,proto3" json:"resource_kind,omitempty"`
+	Operation     string                 `protobuf:"bytes,2,opt,name=operation,proto3" json:"operation,omitempty"`
+	PreviousJson  []byte                 `protobuf:"bytes,3,opt,name=previous_json,json=previousJson,proto3" json:"previous_json,omitempty"`
+	CurrentJson   []byte                 `protobuf:"bytes,4,opt,name=current_json,json=currentJson,proto3" json:"current_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigurationRevision_Change) Reset() {
+	*x = ConfigurationRevision_Change{}
+	mi := &file_observation_v1_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigurationRevision_Change) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigurationRevision_Change) ProtoMessage() {}
+
+func (x *ConfigurationRevision_Change) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigurationRevision_Change.ProtoReflect.Descriptor instead.
+func (*ConfigurationRevision_Change) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{5, 0}
+}
+
+func (x *ConfigurationRevision_Change) GetResourceKind() string {
+	if x != nil {
+		return x.ResourceKind
+	}
+	return ""
+}
+
+func (x *ConfigurationRevision_Change) GetOperation() string {
+	if x != nil {
+		return x.Operation
+	}
+	return ""
+}
+
+func (x *ConfigurationRevision_Change) GetPreviousJson() []byte {
+	if x != nil {
+		return x.PreviousJson
+	}
+	return nil
+}
+
+func (x *ConfigurationRevision_Change) GetCurrentJson() []byte {
+	if x != nil {
+		return x.CurrentJson
+	}
+	return nil
 }
 
 var File_observation_v1_proto protoreflect.FileDescriptor
@@ -678,7 +918,28 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x11EstimatorFrontier\x12$\n" +
 	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
 	"\vnext_offset\x18\x02 \x01(\x03R\n" +
-	"nextOffsetBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
+	"nextOffset\"\x96\x03\n" +
+	"\x15ConfigurationRevision\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\"\n" +
+	"\rorigin_hub_id\x18\x02 \x01(\tR\voriginHubId\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\x121\n" +
+	"\x15recorded_at_unix_nano\x18\x04 \x01(\x03R\x12recordedAtUnixNano\x12M\n" +
+	"\achanges\x18\x05 \x03(\v23.locationhub.stream.v1.ConfigurationRevision.ChangeR\achanges\x1a\x93\x01\n" +
+	"\x06Change\x12#\n" +
+	"\rresource_kind\x18\x01 \x01(\tR\fresourceKind\x12\x1c\n" +
+	"\toperation\x18\x02 \x01(\tR\toperation\x12#\n" +
+	"\rprevious_json\x18\x03 \x01(\fR\fpreviousJson\x12!\n" +
+	"\fcurrent_json\x18\x04 \x01(\fR\vcurrentJson\"\xff\x01\n" +
+	"\x19ConfigurationRevisionPart\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\"\n" +
+	"\rorigin_hub_id\x18\x02 \x01(\tR\voriginHubId\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\x12\x1d\n" +
+	"\n" +
+	"part_index\x18\x04 \x01(\rR\tpartIndex\x12\x1d\n" +
+	"\n" +
+	"part_count\x18\x05 \x01(\rR\tpartCount\x12#\n" +
+	"\rbundle_sha256\x18\x06 \x01(\fR\fbundleSha256\x12\x18\n" +
+	"\apayload\x18\a \x01(\fR\apayloadBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
 
 var (
 	file_observation_v1_proto_rawDescOnce sync.Once
@@ -693,25 +954,29 @@ func file_observation_v1_proto_rawDescGZIP() []byte {
 }
 
 var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_observation_v1_proto_goTypes = []any{
-	(Observation_Kind)(0),           // 0: locationhub.stream.v1.Observation.Kind
-	(*Observation)(nil),             // 1: locationhub.stream.v1.Observation
-	(*AssetInput)(nil),              // 2: locationhub.stream.v1.AssetInput
-	(*MotionEstimate)(nil),          // 3: locationhub.stream.v1.MotionEstimate
-	(*EstimateCheckpoint)(nil),      // 4: locationhub.stream.v1.EstimateCheckpoint
-	(*EstimatorFrontier)(nil),       // 5: locationhub.stream.v1.EstimatorFrontier
-	(*EstimateCheckpoint_Axis)(nil), // 6: locationhub.stream.v1.EstimateCheckpoint.Axis
+	(Observation_Kind)(0),                // 0: locationhub.stream.v1.Observation.Kind
+	(*Observation)(nil),                  // 1: locationhub.stream.v1.Observation
+	(*AssetInput)(nil),                   // 2: locationhub.stream.v1.AssetInput
+	(*MotionEstimate)(nil),               // 3: locationhub.stream.v1.MotionEstimate
+	(*EstimateCheckpoint)(nil),           // 4: locationhub.stream.v1.EstimateCheckpoint
+	(*EstimatorFrontier)(nil),            // 5: locationhub.stream.v1.EstimatorFrontier
+	(*ConfigurationRevision)(nil),        // 6: locationhub.stream.v1.ConfigurationRevision
+	(*ConfigurationRevisionPart)(nil),    // 7: locationhub.stream.v1.ConfigurationRevisionPart
+	(*EstimateCheckpoint_Axis)(nil),      // 8: locationhub.stream.v1.EstimateCheckpoint.Axis
+	(*ConfigurationRevision_Change)(nil), // 9: locationhub.stream.v1.ConfigurationRevision.Change
 }
 var file_observation_v1_proto_depIdxs = []int32{
 	0, // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
 	1, // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
-	6, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	8, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
+	9, // 3: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -726,7 +991,7 @@ func file_observation_v1_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_observation_v1_proto_rawDesc), len(file_observation_v1_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

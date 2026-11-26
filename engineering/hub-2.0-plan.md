@@ -114,7 +114,7 @@ For the first implementation, keep fence candidate assembly and dispatch asset-k
 | Replay and optional persistence | Keep the configuration revisions, topology decisions, timer inputs and rule/estimator versions needed to replay the retained data. Record original revision assignments or the inputs that determine them when exact replay is required. Replay into an isolated generation with external effects disabled. Longer event history can be added later via an independent S3-compatible sink or another downstream consumer, with its own retention and access policy. |
 | Smaller deployments | Evaluate NATS JetStream only if footprint justifies a second profile. Qualify keyed sequencing, replay, ownership transfer and output/offset recovery against the same behavior tests. A narrow PostgreSQL outbox is appropriate for metadata distribution, and would require a separate load and recovery test before being considered for observations. [NATS JetStream](https://docs.nats.io/concepts/jetstream) |
 
-Apply the six-hour default to all Hub-owned event topics, including observations, intermediate estimates and evaluation inputs, configuration changes, state changelogs, discrete outputs and quarantined inputs. Put a common default and per-topic overrides in deployment values. Use Kafka's time-based delete policy (`retention.ms=21600000` by default), with segment rolls sized for the configured window. Measure retention from broker append time and keep the source event time in the envelope. Kafka expires segments, so the setting is a replay budget with segment-level cleanup. A topic size cap can shorten the available window. Validate actual topic settings for both managed and self-hosted Kafka. [Kafka topic configuration](https://kafka.apache.org/43/configuration/topic-configs/)
+Apply the six-hour default to all Hub-owned event topics, including observations, intermediate estimates and evaluation inputs, configuration changes, state change events, discrete outputs and quarantined inputs. Put a common default and per-topic overrides in deployment values. Use Kafka's time-based delete policy (`retention.ms=21600000` by default), with segment rolls sized for the configured window. Measure retention from broker append time and keep the source event time in the envelope. Kafka expires segments, so the setting is a replay budget with segment-level cleanup. A topic size cap can shorten the available window. Compacted checkpoint topics hold current worker state by key and use worker state lifecycles for expiry. Validate actual topic settings for both managed and self-hosted Kafka. [Kafka topic configuration](https://kafka.apache.org/43/configuration/topic-configs/)
 
 Back up PostgreSQL with tested point-in-time recovery. Record backup and recovery cutoffs, snapshot offsets and Hub identity. Keep periodic checkpoints recent enough for restore and catch-up within the shortest relevant topic window. Compare saved offsets with the earliest retained offsets before restoring a worker or resuming a client. If an offset has expired, surface a gap and reconcile from current state or request a fresh snapshot. Transitions whose inputs have expired may be unrecoverable. Alert on remaining replay headroom using consumer lag age and topic retention. Apply backpressure when sustained ingest keeps consumers from catching up. Keep quarantine bounded by the same default.
 
@@ -373,6 +373,15 @@ record and the scan still found contiguous sequences. The compatibility-path
 airport functional checks passed on that replay as well. This exercised
 checkpoint recovery and continued motion estimation. Configuration-aware
 selection and spatial decision delivery remain separate cutover gates.
+
+A PostgreSQL outbox smoke test committed a provider and zone together, rolled
+back a separate delete, and committed a provider edit. A read-committed scan
+verified two ordered Kafka revisions with valid bundle digests and the expected
+change sets. Broker settings confirmed the six-hour default for observation,
+asset input, estimate and configuration logs and compaction for the estimator
+checkpoint topic. A separate provisioning run verified an overridden one-hour
+default and a two-minute configuration log. The database cleanup removed an
+expired published revision and preserved equally old unpublished work.
 
 ### Delivery sequence
 

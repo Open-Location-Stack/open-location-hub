@@ -71,6 +71,20 @@ of event expiry. The worker runs on the shadow path. Locating-rule selection,
 configuration activation, bounded reordering and live delivery still use the
 compatibility path or require downstream integration.
 
+The configuration relay publishes changes to zones, fences, trackables and
+location providers from a PostgreSQL outbox. It emits one revision per
+committed transaction, including SQL inserts, updates and deletes. All
+parts of a revision share a Kafka key and commit together in Kafka. If the
+relay stops after that commit and before the database acknowledgement,
+it may publish the same revision again. The Hub ID, revision number and
+bundle digest identify those deliveries. Worker activation from these
+revisions still needs to be wired.
+
+Kafka event logs support short-term delivery and replay. The Compose defaults
+give each log a six-hour window and allow independent overrides. A future
+consumer could persist selected events to S3-compatible storage with its own
+retention policy.
+
 1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
 3. A buffered native-publication stage emits native provider location events. Trackable motion publication waits for location selection.

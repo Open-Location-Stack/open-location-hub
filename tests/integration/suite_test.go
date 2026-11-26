@@ -337,8 +337,13 @@ func runSuiteMigrations(ctx context.Context, pg testcontainers.Container) error 
 	if err := ensurePostgresDatabaseNoTest(ctx, pg, "openrtls"); err != nil {
 		return err
 	}
-	for _, name := range []string{"00001_initial.sql", "00002_hub_metadata.sql", "00003_zone_foreign_id_unique.sql"} {
-		content, err := os.ReadFile(filepath.Join(repoRoot(), "migrations", name))
+	migrations, err := filepath.Glob(filepath.Join(repoRoot(), "migrations", "[0-9]*.sql"))
+	if err != nil || len(migrations) == 0 {
+		return fmt.Errorf("no integration migrations found: %v", err)
+	}
+	for _, file := range migrations {
+		name := filepath.Base(file)
+		content, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("read migration %s failed: %w", name, err)
 		}

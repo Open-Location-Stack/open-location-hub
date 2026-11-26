@@ -110,6 +110,13 @@ When the asset router runs, verify source group lag and count asset records
 with a read-committed consumer. Transaction markers also occupy offsets, so
 end-offset deltas are insufficient for counting asset records.
 
+For the configuration relay, commit a test transaction that changes multiple
+resources, roll back another change, then commit a second revision. Check
+published outbox rows and read the Kafka topic with `read_committed`.
+Verify revision order, bundle digests, and that each revision contains only
+its committed changes. Use the broker configuration API to check independent
+retention overrides and verify that the estimator checkpoint topic is compacted.
+
 The suite boots Postgres, Valkey, and Mosquitto containers and performs migration smoke checks.
 If Docker is unavailable, tests should skip.
 The integration harness now retries migration startup briefly so hosted CI runners tolerate transient Postgres readiness and connection-reset races during container boot.

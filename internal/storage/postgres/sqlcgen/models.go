@@ -17,6 +17,27 @@ type Fence struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
+type HubConfigChange struct {
+	Revision     int64
+	ChangeID     int64
+	ResourceKind string
+	Operation    string
+	Previous     []byte
+	Current      []byte
+}
+
+type HubConfigHead struct {
+	Singleton bool
+	Revision  int64
+}
+
+type HubConfigOutbox struct {
+	Revision      int64
+	TransactionID pgtype.Uint64
+	CreatedAt     pgtype.Timestamptz
+	PublishedAt   pgtype.Timestamptz
+}
+
 type HubMetadatum struct {
 	SingletonID int16
 	HubID       pgtype.UUID

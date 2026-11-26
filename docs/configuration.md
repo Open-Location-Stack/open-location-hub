@@ -58,9 +58,12 @@ private CA. Set `KAFKA_SHADOW_CLIENT_CERT_FILE` and
 `KAFKA_SHADOW_CLIENT_KEY_FILE` together for mTLS, or supply
 `KAFKA_SHADOW_USERNAME` and `KAFKA_SHADOW_PASSWORD` for SCRAM-SHA-256. Use
 `KAFKA_SHADOW_INSECURE_LOCAL=true` only with the isolated development broker.
-The local Compose overlay configures six-hour retention; set
-`KAFKA_SHADOW_RETENTION_MS` before creating the topic to override it. For an
-existing topic, change retention through the broker's provisioning workflow.
+The local Compose overlay defaults every event log to six hours (21,600,000
+milliseconds). Set `KAFKA_LOG_RETENTION_MS` to change the shared default, or
+`KAFKA_SHADOW_RETENTION_MS` to override the observation log alone. Retention
+uses broker append time and expires whole Kafka segments. These settings
+apply at topic creation. Use the broker's provisioning workflow to change
+existing topics.
 
 ### Asset input router
 
@@ -102,6 +105,21 @@ A new deployment starts at the earliest retained input. An existing deployment
 stops on an expired offset or an incompatible checkpoint frontier. Restore an
 aligned input and state generation or bootstrap a new checkpoint topic from an
 explicitly chosen retained input range before resuming.
+
+### Configuration relay
+
+Apply the database migrations and start the Hub once to initialize its persisted
+identity. Run `open-location-hub config-relay` or
+`just compose-shadow-config-relay`. The worker requires access to `POSTGRES_URL`,
+uses the `KAFKA_SHADOW_*` connection settings, and publishes to
+`KAFKA_CONFIG_TOPIC` (`location-hub.configuration.v1`). Grant it Kafka write
+permissions on that topic and on its transactional ID,
+`location-hub.config-relay.<hub-id>`. Run one relay per Hub identity.
+
+`KAFKA_CONFIG_RETENTION_MS` overrides the common event-log retention for that
+topic. `HUB_CONFIG_HISTORY` controls how long PostgreSQL retains already
+published outbox rows and defaults to `6h`. Unpublished revisions are held
+through a broker outage and delivered in revision order after recovery.
 
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)

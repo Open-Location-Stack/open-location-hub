@@ -1984,6 +1984,7 @@ func zapTestLogger(t *testing.T) *zap.Logger {
 }
 
 type fakeQueries struct {
+	sqlcgen.Querier
 	getHubMetadataFn  func(context.Context) (sqlcgen.HubMetadatum, error)
 	createHubMetaFn   func(context.Context, sqlcgen.CreateHubMetadataParams) (sqlcgen.HubMetadatum, error)
 	updateHubMetaFn   func(context.Context, sqlcgen.UpdateHubMetadataParams) (sqlcgen.HubMetadatum, error)
