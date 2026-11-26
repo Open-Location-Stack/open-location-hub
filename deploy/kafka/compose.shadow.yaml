@@ -35,6 +35,9 @@ services:
       OBSERVATION_RETENTION_MS: "${KAFKA_SHADOW_RETENTION_MS:-21600000}"
       ASSET_INPUT_TOPIC: "${KAFKA_ASSET_INPUT_TOPIC:-location-hub.asset-inputs.v1}"
       ASSET_INPUT_RETENTION_MS: "${KAFKA_ASSET_INPUT_RETENTION_MS:-21600000}"
+      ESTIMATE_TOPIC: "${KAFKA_ESTIMATE_TOPIC:-location-hub.motion-estimates.v1}"
+      ESTIMATE_RETENTION_MS: "${KAFKA_ESTIMATE_RETENTION_MS:-21600000}"
+      ESTIMATOR_STATE_TOPIC: "${KAFKA_ESTIMATOR_STATE_TOPIC:-location-hub.estimator-state.v1}"
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -52,6 +55,10 @@ services:
         test "$$OBSERVATION_TOPIC" != "$$ASSET_INPUT_TOPIC"
         create_topic "$$OBSERVATION_TOPIC" "$$OBSERVATION_RETENTION_MS"
         create_topic "$$ASSET_INPUT_TOPIC" "$$ASSET_INPUT_RETENTION_MS"
+        create_topic "$$ESTIMATE_TOPIC" "$$ESTIMATE_RETENTION_MS"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic "$$ESTIMATOR_STATE_TOPIC" \
+          --partitions 12 --replication-factor 1 --config cleanup.policy=compact
 
   app:
     environment:
@@ -59,6 +66,8 @@ services:
       KAFKA_SHADOW_INSECURE_LOCAL: "true"
       KAFKA_SHADOW_TOPIC: "${KAFKA_SHADOW_TOPIC:-location-hub.observations.v1}"
       KAFKA_ASSET_INPUT_TOPIC: "${KAFKA_ASSET_INPUT_TOPIC:-location-hub.asset-inputs.v1}"
+      KAFKA_ESTIMATE_TOPIC: "${KAFKA_ESTIMATE_TOPIC:-location-hub.motion-estimates.v1}"
+      KAFKA_ESTIMATOR_STATE_TOPIC: "${KAFKA_ESTIMATOR_STATE_TOPIC:-location-hub.estimator-state.v1}"
     depends_on:
       kafka-init:
         condition: service_completed_successfully

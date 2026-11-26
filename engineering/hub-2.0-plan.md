@@ -364,6 +364,16 @@ workload at about 2,547 publisher observations/s. The same run still dropped
 asset router caught up to the end of all 12 input partitions. This isolates a
 remaining bottleneck in the compatibility decision and delivery paths.
 
+The stateful Kafka estimator consumed that retained airport workload. A
+read-committed scan before the restart replay found 184,364 estimates for 687
+aircraft, with unique output IDs and contiguous per-aircraft sequences. After
+restarting the worker and replaying 8,368 more observations, the log held
+192,612 estimates. All 12 partitions caught up through their last application
+record and the scan still found contiguous sequences. The compatibility-path
+airport functional checks passed on that replay as well. This exercised
+checkpoint recovery and continued motion estimation. Configuration-aware
+selection and spatial decision delivery remain separate cutover gates.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

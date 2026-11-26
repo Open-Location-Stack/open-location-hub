@@ -61,6 +61,10 @@ compose-shadow-up:
 compose-shadow-router:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app asset-router
 
+# Run the restartable estimator against the asset input and checkpoint topics.
+compose-shadow-estimator:
+	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app asset-estimator
+
 compose-down:
 	docker compose down -v
 

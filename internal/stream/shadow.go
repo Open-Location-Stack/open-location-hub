@@ -102,22 +102,28 @@ func (w *ShadowWriter) Close() error {
 }
 
 func requireTopic(ctx context.Context, client *kgo.Client, topic string) error {
+	_, err := topicMetadata(ctx, client, topic)
+	return err
+}
+
+func topicMetadata(ctx context.Context, client *kgo.Client, topic string) (kmsg.MetadataResponseTopic, error) {
 	request := kmsg.NewPtrMetadataRequest()
 	request.Topics = []kmsg.MetadataRequestTopic{{Topic: &topic}}
 	response, err := request.RequestWith(ctx, client)
 	if err != nil {
-		return fmt.Errorf("read Kafka observation topic metadata: %w", err)
+		return kmsg.MetadataResponseTopic{}, fmt.Errorf("read Kafka topic metadata for %q: %w", topic, err)
 	}
 	if len(response.Topics) != 1 {
-		return fmt.Errorf("cannot find observation topic %q", topic)
+		return kmsg.MetadataResponseTopic{}, fmt.Errorf("cannot find Kafka topic %q", topic)
 	}
-	if err := kerr.ErrorForCode(response.Topics[0].ErrorCode); err != nil {
-		return fmt.Errorf("verify observation topic %q: %w", topic, err)
+	result := response.Topics[0]
+	if err := kerr.ErrorForCode(result.ErrorCode); err != nil {
+		return kmsg.MetadataResponseTopic{}, fmt.Errorf("verify Kafka topic %q: %w", topic, err)
 	}
-	if len(response.Topics[0].Partitions) == 0 {
-		return fmt.Errorf("observation topic %q has no partitions", topic)
+	if len(result.Partitions) == 0 {
+		return kmsg.MetadataResponseTopic{}, fmt.Errorf("topic %q has no partitions", topic)
 	}
-	return nil
+	return result, nil
 }
 
 func brokerTLS(cfg config.KafkaShadowConfig) (*tls.Config, error) {

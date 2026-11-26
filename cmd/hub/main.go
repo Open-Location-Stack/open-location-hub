@@ -126,10 +126,15 @@ func runCommand(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return run(ctx)
 	}
-	if len(args) == 1 && args[0] == "asset-router" {
-		return runAssetRouter(ctx)
+	if len(args) == 1 {
+		switch args[0] {
+		case "asset-router":
+			return runAssetRouter(ctx)
+		case "asset-estimator":
+			return runAssetEstimator(ctx)
+		}
 	}
-	return fmt.Errorf("expected no arguments or asset-router")
+	return fmt.Errorf("expected no arguments, asset-router or asset-estimator")
 }
 
 func run(ctx context.Context) error {

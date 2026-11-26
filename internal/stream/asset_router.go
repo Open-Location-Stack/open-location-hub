@@ -91,13 +91,13 @@ func (r *AssetRouter) Run(ctx context.Context) error {
 			outputs = append(outputs, expanded...)
 		}
 		commitStarted := time.Now()
-		committed, err := r.commitBatch(ctx, outputs)
+		committed, err := commitStreamBatch(ctx, r.session, outputs)
 		telemetry.RecordProcessingDuration(ctx, "asset_router_commit", "asset_input", time.Since(commitStarted))
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
-			return err
+			return fmt.Errorf("commit asset routing: %w", err)
 		}
 		outcome := "committed"
 		if !committed {
@@ -112,28 +112,6 @@ func (r *AssetRouter) Run(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (r *AssetRouter) commitBatch(ctx context.Context, outputs []*kgo.Record) (bool, error) {
-	if err := r.session.Begin(); err != nil {
-		return false, fmt.Errorf("begin asset-router transaction: %w", err)
-	}
-	ioCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	if err := r.session.ProduceSync(ioCtx, outputs...).FirstErr(); err != nil {
-		abortCtx, finishAbort := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer finishAbort()
-		_, abortErr := r.session.End(abortCtx, kgo.TryAbort)
-		if abortErr != nil {
-			return false, fmt.Errorf("produce asset-router batch: %w; abort: %w", err, abortErr)
-		}
-		return false, fmt.Errorf("produce asset-router batch: %w", err)
-	}
-	committed, err := r.session.End(ioCtx, kgo.TryCommit)
-	if err != nil {
-		return false, fmt.Errorf("commit asset-router batch: %w", err)
-	}
-	return committed, nil
 }
 
 func assetRecords(value []byte, outputTopic string) ([]*kgo.Record, error) {

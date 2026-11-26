@@ -35,3 +35,46 @@ message AssetInput {
   string trackable_id = 3;
   Observation observation = 4;
 }
+
+// MotionEstimate is the current and previous position for one asset decision.
+// The location is an OMLOX Location object with horizontal speed and course.
+message MotionEstimate {
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  bytes input_event_id = 3;
+  string origin_hub_id = 4;
+  string trackable_id = 5;
+  uint64 sequence = 6;
+  bytes location_json = 7;
+  repeated double previous_position = 8;
+  repeated double horizontal_velocity_meters_per_second = 9;
+  double horizontal_accuracy_meters = 10;
+  bool filter_reset = 11;
+}
+
+// EstimateCheckpoint is current state materialized by asset. Its compact-only
+// topic is co-partitioned with the asset input topic. The last record per key
+// survives expiry of the event topics.
+message EstimateCheckpoint {
+  message Axis {
+    double position = 1;
+    double velocity = 2;
+    double position_variance = 3;
+    double covariance = 4;
+    double velocity_variance = 5;
+  }
+
+  uint32 schema_version = 1;
+  uint64 sequence = 2;
+  int64 observed_at_unix_nano = 3;
+  bytes frame = 4;
+  repeated Axis axes = 5;
+  repeated double position = 6;
+}
+
+// EstimatorFrontier binds a partition's materialized state to the exact input
+// generation and next offset committed with it.
+message EstimatorFrontier {
+  bytes input_topic_id = 1;
+  int64 next_offset = 2;
+}

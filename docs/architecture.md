@@ -53,6 +53,24 @@ this phase. Asset order reflects arrival in the output log, with event-time
 reordering still needed in the estimator. Unassociated observations remain in
 the original log for provider-scoped processing.
 
+The Kafka `asset-estimator` worker consumes those asset inputs and emits motion
+estimates on the same partition number. It selects strictly increasing event
+times, falls back to receipt time when the source gives none, and uses a
+constant-velocity filter with position and velocity covariance. WGS84 motion
+is filtered in Earth-centered metric coordinates. Local motion is filtered in
+the source frame. The filter resets on frame changes and gaps over 60 seconds.
+Estimates include the asset sequence, source event identity, uncertainty and,
+for a continuing frame, the preceding position and horizontal velocity.
+
+The worker commits estimates, current asset checkpoints and the consumed
+offsets in one Kafka transaction. Each partition restores its compacted current
+state before it can process inputs. Its saved frontier must match the input
+topic generation and the group's committed offset. The event topics keep the
+normal time limit. The checkpoint store keeps only current state independently
+of event expiry. The worker runs on the shadow path. Locating-rule selection,
+configuration activation, bounded reordering and live delivery still use the
+compatibility path or require downstream integration.
+
 1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
 3. A buffered native-publication stage emits native provider location events. Trackable motion publication waits for location selection.

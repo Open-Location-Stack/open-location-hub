@@ -273,6 +273,349 @@ func (x *AssetInput) GetObservation() *Observation {
 	return nil
 }
 
+// MotionEstimate is the current and previous position for one asset decision.
+// The location is an OMLOX Location object with horizontal speed and course.
+type MotionEstimate struct {
+	state                             protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion                     uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	EventId                           []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	InputEventId                      []byte                 `protobuf:"bytes,3,opt,name=input_event_id,json=inputEventId,proto3" json:"input_event_id,omitempty"`
+	OriginHubId                       string                 `protobuf:"bytes,4,opt,name=origin_hub_id,json=originHubId,proto3" json:"origin_hub_id,omitempty"`
+	TrackableId                       string                 `protobuf:"bytes,5,opt,name=trackable_id,json=trackableId,proto3" json:"trackable_id,omitempty"`
+	Sequence                          uint64                 `protobuf:"varint,6,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	LocationJson                      []byte                 `protobuf:"bytes,7,opt,name=location_json,json=locationJson,proto3" json:"location_json,omitempty"`
+	PreviousPosition                  []float64              `protobuf:"fixed64,8,rep,packed,name=previous_position,json=previousPosition,proto3" json:"previous_position,omitempty"`
+	HorizontalVelocityMetersPerSecond []float64              `protobuf:"fixed64,9,rep,packed,name=horizontal_velocity_meters_per_second,json=horizontalVelocityMetersPerSecond,proto3" json:"horizontal_velocity_meters_per_second,omitempty"`
+	HorizontalAccuracyMeters          float64                `protobuf:"fixed64,10,opt,name=horizontal_accuracy_meters,json=horizontalAccuracyMeters,proto3" json:"horizontal_accuracy_meters,omitempty"`
+	FilterReset                       bool                   `protobuf:"varint,11,opt,name=filter_reset,json=filterReset,proto3" json:"filter_reset,omitempty"`
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
+}
+
+func (x *MotionEstimate) Reset() {
+	*x = MotionEstimate{}
+	mi := &file_observation_v1_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MotionEstimate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MotionEstimate) ProtoMessage() {}
+
+func (x *MotionEstimate) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MotionEstimate.ProtoReflect.Descriptor instead.
+func (*MotionEstimate) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *MotionEstimate) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *MotionEstimate) GetEventId() []byte {
+	if x != nil {
+		return x.EventId
+	}
+	return nil
+}
+
+func (x *MotionEstimate) GetInputEventId() []byte {
+	if x != nil {
+		return x.InputEventId
+	}
+	return nil
+}
+
+func (x *MotionEstimate) GetOriginHubId() string {
+	if x != nil {
+		return x.OriginHubId
+	}
+	return ""
+}
+
+func (x *MotionEstimate) GetTrackableId() string {
+	if x != nil {
+		return x.TrackableId
+	}
+	return ""
+}
+
+func (x *MotionEstimate) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *MotionEstimate) GetLocationJson() []byte {
+	if x != nil {
+		return x.LocationJson
+	}
+	return nil
+}
+
+func (x *MotionEstimate) GetPreviousPosition() []float64 {
+	if x != nil {
+		return x.PreviousPosition
+	}
+	return nil
+}
+
+func (x *MotionEstimate) GetHorizontalVelocityMetersPerSecond() []float64 {
+	if x != nil {
+		return x.HorizontalVelocityMetersPerSecond
+	}
+	return nil
+}
+
+func (x *MotionEstimate) GetHorizontalAccuracyMeters() float64 {
+	if x != nil {
+		return x.HorizontalAccuracyMeters
+	}
+	return 0
+}
+
+func (x *MotionEstimate) GetFilterReset() bool {
+	if x != nil {
+		return x.FilterReset
+	}
+	return false
+}
+
+// EstimateCheckpoint is current state materialized by asset. Its compact-only
+// topic is co-partitioned with the asset input topic. The last record per key
+// survives expiry of the event topics.
+type EstimateCheckpoint struct {
+	state              protoimpl.MessageState     `protogen:"open.v1"`
+	SchemaVersion      uint32                     `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	Sequence           uint64                     `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	ObservedAtUnixNano int64                      `protobuf:"varint,3,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3" json:"observed_at_unix_nano,omitempty"`
+	Frame              []byte                     `protobuf:"bytes,4,opt,name=frame,proto3" json:"frame,omitempty"`
+	Axes               []*EstimateCheckpoint_Axis `protobuf:"bytes,5,rep,name=axes,proto3" json:"axes,omitempty"`
+	Position           []float64                  `protobuf:"fixed64,6,rep,packed,name=position,proto3" json:"position,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *EstimateCheckpoint) Reset() {
+	*x = EstimateCheckpoint{}
+	mi := &file_observation_v1_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EstimateCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EstimateCheckpoint) ProtoMessage() {}
+
+func (x *EstimateCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EstimateCheckpoint.ProtoReflect.Descriptor instead.
+func (*EstimateCheckpoint) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *EstimateCheckpoint) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint) GetObservedAtUnixNano() int64 {
+	if x != nil {
+		return x.ObservedAtUnixNano
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint) GetFrame() []byte {
+	if x != nil {
+		return x.Frame
+	}
+	return nil
+}
+
+func (x *EstimateCheckpoint) GetAxes() []*EstimateCheckpoint_Axis {
+	if x != nil {
+		return x.Axes
+	}
+	return nil
+}
+
+func (x *EstimateCheckpoint) GetPosition() []float64 {
+	if x != nil {
+		return x.Position
+	}
+	return nil
+}
+
+// EstimatorFrontier binds a partition's materialized state to the exact input
+// generation and next offset committed with it.
+type EstimatorFrontier struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InputTopicId  []byte                 `protobuf:"bytes,1,opt,name=input_topic_id,json=inputTopicId,proto3" json:"input_topic_id,omitempty"`
+	NextOffset    int64                  `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EstimatorFrontier) Reset() {
+	*x = EstimatorFrontier{}
+	mi := &file_observation_v1_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EstimatorFrontier) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EstimatorFrontier) ProtoMessage() {}
+
+func (x *EstimatorFrontier) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EstimatorFrontier.ProtoReflect.Descriptor instead.
+func (*EstimatorFrontier) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *EstimatorFrontier) GetInputTopicId() []byte {
+	if x != nil {
+		return x.InputTopicId
+	}
+	return nil
+}
+
+func (x *EstimatorFrontier) GetNextOffset() int64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+type EstimateCheckpoint_Axis struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Position         float64                `protobuf:"fixed64,1,opt,name=position,proto3" json:"position,omitempty"`
+	Velocity         float64                `protobuf:"fixed64,2,opt,name=velocity,proto3" json:"velocity,omitempty"`
+	PositionVariance float64                `protobuf:"fixed64,3,opt,name=position_variance,json=positionVariance,proto3" json:"position_variance,omitempty"`
+	Covariance       float64                `protobuf:"fixed64,4,opt,name=covariance,proto3" json:"covariance,omitempty"`
+	VelocityVariance float64                `protobuf:"fixed64,5,opt,name=velocity_variance,json=velocityVariance,proto3" json:"velocity_variance,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *EstimateCheckpoint_Axis) Reset() {
+	*x = EstimateCheckpoint_Axis{}
+	mi := &file_observation_v1_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EstimateCheckpoint_Axis) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EstimateCheckpoint_Axis) ProtoMessage() {}
+
+func (x *EstimateCheckpoint_Axis) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EstimateCheckpoint_Axis.ProtoReflect.Descriptor instead.
+func (*EstimateCheckpoint_Axis) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{3, 0}
+}
+
+func (x *EstimateCheckpoint_Axis) GetPosition() float64 {
+	if x != nil {
+		return x.Position
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint_Axis) GetVelocity() float64 {
+	if x != nil {
+		return x.Velocity
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint_Axis) GetPositionVariance() float64 {
+	if x != nil {
+		return x.PositionVariance
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint_Axis) GetCovariance() float64 {
+	if x != nil {
+		return x.Covariance
+	}
+	return 0
+}
+
+func (x *EstimateCheckpoint_Axis) GetVelocityVariance() float64 {
+	if x != nil {
+		return x.VelocityVariance
+	}
+	return 0
+}
+
 var File_observation_v1_proto protoreflect.FileDescriptor
 
 const file_observation_v1_proto_rawDesc = "" +
@@ -303,7 +646,39 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12!\n" +
 	"\ftrackable_id\x18\x03 \x01(\tR\vtrackableId\x12D\n" +
-	"\vobservation\x18\x04 \x01(\v2\".locationhub.stream.v1.ObservationR\vobservationBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
+	"\vobservation\x18\x04 \x01(\v2\".locationhub.stream.v1.ObservationR\vobservation\"\xe0\x03\n" +
+	"\x0eMotionEstimate\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12$\n" +
+	"\x0einput_event_id\x18\x03 \x01(\fR\finputEventId\x12\"\n" +
+	"\rorigin_hub_id\x18\x04 \x01(\tR\voriginHubId\x12!\n" +
+	"\ftrackable_id\x18\x05 \x01(\tR\vtrackableId\x12\x1a\n" +
+	"\bsequence\x18\x06 \x01(\x04R\bsequence\x12#\n" +
+	"\rlocation_json\x18\a \x01(\fR\flocationJson\x12+\n" +
+	"\x11previous_position\x18\b \x03(\x01R\x10previousPosition\x12P\n" +
+	"%horizontal_velocity_meters_per_second\x18\t \x03(\x01R!horizontalVelocityMetersPerSecond\x12<\n" +
+	"\x1ahorizontal_accuracy_meters\x18\n" +
+	" \x01(\x01R\x18horizontalAccuracyMeters\x12!\n" +
+	"\ffilter_reset\x18\v \x01(\bR\vfilterReset\"\xbb\x03\n" +
+	"\x12EstimateCheckpoint\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x1a\n" +
+	"\bsequence\x18\x02 \x01(\x04R\bsequence\x121\n" +
+	"\x15observed_at_unix_nano\x18\x03 \x01(\x03R\x12observedAtUnixNano\x12\x14\n" +
+	"\x05frame\x18\x04 \x01(\fR\x05frame\x12B\n" +
+	"\x04axes\x18\x05 \x03(\v2..locationhub.stream.v1.EstimateCheckpoint.AxisR\x04axes\x12\x1a\n" +
+	"\bposition\x18\x06 \x03(\x01R\bposition\x1a\xb8\x01\n" +
+	"\x04Axis\x12\x1a\n" +
+	"\bposition\x18\x01 \x01(\x01R\bposition\x12\x1a\n" +
+	"\bvelocity\x18\x02 \x01(\x01R\bvelocity\x12+\n" +
+	"\x11position_variance\x18\x03 \x01(\x01R\x10positionVariance\x12\x1e\n" +
+	"\n" +
+	"covariance\x18\x04 \x01(\x01R\n" +
+	"covariance\x12+\n" +
+	"\x11velocity_variance\x18\x05 \x01(\x01R\x10velocityVariance\"Z\n" +
+	"\x11EstimatorFrontier\x12$\n" +
+	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
+	"\vnext_offset\x18\x02 \x01(\x03R\n" +
+	"nextOffsetBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
 
 var (
 	file_observation_v1_proto_rawDescOnce sync.Once
@@ -318,20 +693,25 @@ func file_observation_v1_proto_rawDescGZIP() []byte {
 }
 
 var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_observation_v1_proto_goTypes = []any{
-	(Observation_Kind)(0), // 0: locationhub.stream.v1.Observation.Kind
-	(*Observation)(nil),   // 1: locationhub.stream.v1.Observation
-	(*AssetInput)(nil),    // 2: locationhub.stream.v1.AssetInput
+	(Observation_Kind)(0),           // 0: locationhub.stream.v1.Observation.Kind
+	(*Observation)(nil),             // 1: locationhub.stream.v1.Observation
+	(*AssetInput)(nil),              // 2: locationhub.stream.v1.AssetInput
+	(*MotionEstimate)(nil),          // 3: locationhub.stream.v1.MotionEstimate
+	(*EstimateCheckpoint)(nil),      // 4: locationhub.stream.v1.EstimateCheckpoint
+	(*EstimatorFrontier)(nil),       // 5: locationhub.stream.v1.EstimatorFrontier
+	(*EstimateCheckpoint_Axis)(nil), // 6: locationhub.stream.v1.EstimateCheckpoint.Axis
 }
 var file_observation_v1_proto_depIdxs = []int32{
 	0, // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
 	1, // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -346,7 +726,7 @@ func file_observation_v1_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_observation_v1_proto_rawDesc), len(file_observation_v1_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

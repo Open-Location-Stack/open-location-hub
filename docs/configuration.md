@@ -78,6 +78,31 @@ Use `just compose-shadow-router` after the local shadow stack has started.
 `KAFKA_ASSET_INPUT_RETENTION_MS` overrides the local six-hour default before topic
 creation. The observation and asset input topics have independent retention.
 
+### Asset motion estimator
+
+Start `open-location-hub asset-estimator` or run `just compose-shadow-estimator`
+after the shadow stack and asset router. It uses `KAFKA_SHADOW_*` connection
+settings, `KAFKA_ASSET_INPUT_TOPIC` as input and `KAFKA_ESTIMATE_TOPIC`
+(`location-hub.motion-estimates.v1`) as its output. The estimator writes current
+filter state to `KAFKA_ESTIMATOR_STATE_TOPIC`
+(`location-hub.estimator-state.v1`). Provision all three topics with equal,
+fixed partition counts. The checkpoint topic requires `cleanup.policy=compact`.
+It serves as a current-state store across idle periods. The estimate event log
+defaults to six-hour retention in Compose, adjustable through
+`KAFKA_ESTIMATE_RETENTION_MS`.
+
+Use a dedicated checkpoint topic per estimator deployment. The consumer group
+name is the checkpoint topic followed by `.estimator`. Set
+`KAFKA_ESTIMATOR_INSTANCE` when two replicas share a hostname. Otherwise the
+hostname uniquely identifies the producer within the group. Grant the worker
+write access to the estimate topic, read and write access to the checkpoint
+topic, read access to the input topic, and access to the group and its
+transactional IDs. The worker verifies the checkpoint topic's configuration.
+A new deployment starts at the earliest retained input. An existing deployment
+stops on an expired offset or an incompatible checkpoint frontier. Restore an
+aligned input and state generation or bootstrap a new checkpoint topic from an
+explicitly chosen retained input range before resuming.
+
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)
 - `STATE_PROXIMITY_TTL` (duration, default `5m`)
