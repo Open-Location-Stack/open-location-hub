@@ -1,7 +1,7 @@
 # Open Location Hub
 
 Version **0.2.0** introduces breaking API changes relative to earlier releases.
-The OMLOX protocol baseline remains Hub 2.0.0 (August 2023).
+The protocol baseline is the OMLOX Hub specification version 2.0.0 (August 2023).
 
 Open Location Hub is an OpenAPI-first Go implementation of an OMLOX-ready location hub. It provides OMLOX `/v2` REST resources, OMLOX companion MQTT and WebSocket surfaces, and hub-mediated RPC control-plane support for location-driven integrations.
 

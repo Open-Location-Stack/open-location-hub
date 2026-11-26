@@ -1,4 +1,4 @@
-# Open Location Hub 2.0 plan
+# Open Location Hub spatial streaming plan
 
 Design draft dated 26 November 2026. Scope covers processing architecture, compatibility, migration and Kubernetes deployment. The implementation evidence records the stages validated so far.
 
