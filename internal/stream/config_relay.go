@@ -183,6 +183,9 @@ func configRecords(topic string, bundle *streampb.ConfigurationRevision, partSiz
 	digest := sha256.Sum256(payload)
 	key := []byte(bundle.OriginHubId)
 	count := (len(payload) + partSize - 1) / partSize
+	if count > configMaxParts {
+		return nil, fmt.Errorf("configuration revision exceeds the %d-byte bundle limit", configMaxParts*partSize)
+	}
 	records := make([]*kgo.Record, 0, count)
 	for position := 0; position < len(payload); position += partSize {
 		part := &streampb.ConfigurationRevisionPart{

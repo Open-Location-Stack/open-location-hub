@@ -67,9 +67,24 @@ offsets in one Kafka transaction. Each partition restores its compacted current
 state before it can process inputs. Its saved frontier must match the input
 topic generation and the group's committed offset. The event topics keep the
 normal time limit. The checkpoint store keeps only current state independently
-of event expiry. The worker runs on the shadow path. Locating-rule selection,
-configuration activation, bounded reordering and live delivery still use the
-compatibility path or require downstream integration.
+of event expiry. The worker runs on the shadow path. Revision-aware mode
+compiles the same locating rules as the compatibility path.
+
+Each estimator replica captures Kafka offsets before reading a
+repeatable-read PostgreSQL snapshot. It assembles the configuration fragments
+in commit order and activates a complete revision by swapping an immutable
+snapshot. An update copies only affected cache shards. The processing path
+loads one snapshot for each batch without a configuration lock or a
+PostgreSQL lookup. The Kafka consumer group gives one replica ownership of
+each asset's partition. Decoded candidates stay with that partition and
+recover from the checkpoint log after reassignment.
+
+Estimates identify their configuration revision, trigger and selected sample.
+A rule change can select an older sample from a different source and reset
+the filter while the asset sequence advances. Configuration becomes visible
+on the next asset input. Stationary-asset reevaluation, provider association
+changes after ingress, bounded reordering and exact replay of the original
+revision assignments still require additional stages.
 
 The configuration relay publishes changes to zones, fences, trackables and
 location providers from a PostgreSQL outbox. It emits one revision per
@@ -77,8 +92,8 @@ committed transaction, including SQL inserts, updates and deletes. All
 parts of a revision share a Kafka key and commit together in Kafka. If the
 relay stops after that commit and before the database acknowledgement,
 it may publish the same revision again. The Hub ID, revision number and
-bundle digest identify those deliveries. Worker activation from these
-revisions still needs to be wired.
+bundle digest identify those deliveries. The revision-aware estimator rejects
+gaps and conflicting duplicates.
 
 Kafka event logs support short-term delivery and replay. The Compose defaults
 give each log a six-hour window and allow independent overrides. A future

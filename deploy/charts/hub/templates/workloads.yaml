@@ -7,6 +7,7 @@
   (dict "name" "config-relay" "replicas" 1 "database" "relay" "port" 8081)) -}}
 {{- end -}}
 {{- range $role := $roles }}
+{{- $configReader := and (eq $role.name "asset-estimator") $root.Values.kafka.estimatorConfigSecret }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -103,7 +104,7 @@ spec:
               mountPath: /etc/location-hub/auth
               readOnly: true
             {{- end }}
-            {{- if and $role.database $root.Values.database.caSecret }}
+            {{- if and (or $role.database $configReader) $root.Values.database.caSecret }}
             - name: postgres-ca
               mountPath: /etc/location-hub/postgres
               readOnly: true
@@ -152,6 +153,15 @@ spec:
             {{- if $root.Values.kafka.enabled }}
             {{- include "hub.kafkaEnv" (dict "root" $root "role" $role.name) | nindent 12 }}
             {{- end }}
+            {{- if $configReader }}
+            - name: HUB_CONFIG_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.kafka.estimatorConfigSecret }}
+                  key: POSTGRES_URL
+            - name: HUB_CONFIG_MAX_STALE
+              value: {{ $root.Values.kafka.configMaxStale | quote }}
+            {{- end }}
             {{- if $root.Values.telemetry.metricsEndpoint }}
             - name: OTEL_ENABLED
               value: "true"
@@ -172,7 +182,7 @@ spec:
           secret:
             secretName: {{ required "Set auth.filesSecret to a Secret with permissions.yaml" $root.Values.auth.filesSecret }}
         {{- end }}
-        {{- if and $role.database $root.Values.database.caSecret }}
+        {{- if and (or $role.database $configReader) $root.Values.database.caSecret }}
         - name: postgres-ca
           secret:
             secretName: {{ $root.Values.database.caSecret }}

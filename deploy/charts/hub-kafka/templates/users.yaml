@@ -27,6 +27,7 @@
     (dict "type" "transactionalId" "name" (printf "%s." $routerGroup) "pattern" "prefix" "ops" $txnWrite))
   "asset-estimator" (list
     (dict "type" "topic" "name" $t.assetInputs "ops" $topicRead)
+    (dict "type" "topic" "name" $t.configuration "ops" $topicRead)
     (dict "type" "topic" "name" $t.estimates "ops" $topicWrite)
     (dict "type" "topic" "name" $t.estimatorState "ops" (list "Read" "Write" "Describe" "DescribeConfigs"))
     (dict "type" "cluster" "ops" (list "IdempotentWrite"))

@@ -81,6 +81,8 @@ services:
       KAFKA_ESTIMATOR_STATE_TOPIC: "${KAFKA_ESTIMATOR_STATE_TOPIC:-location-hub.estimator-state.v1}"
       KAFKA_CONFIG_TOPIC: "${KAFKA_CONFIG_TOPIC:-location-hub.configuration.v1}"
       HUB_CONFIG_HISTORY: "${HUB_CONFIG_HISTORY:-6h}"
+      HUB_CONFIG_READ_URL: "${HUB_CONFIG_READ_URL:-}"
+      HUB_CONFIG_MAX_STALE: "${HUB_CONFIG_MAX_STALE:-30s}"
     depends_on:
       kafka-init:
         condition: service_completed_successfully

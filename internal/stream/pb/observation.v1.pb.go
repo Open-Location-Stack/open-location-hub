@@ -288,6 +288,8 @@ type MotionEstimate struct {
 	HorizontalVelocityMetersPerSecond []float64              `protobuf:"fixed64,9,rep,packed,name=horizontal_velocity_meters_per_second,json=horizontalVelocityMetersPerSecond,proto3" json:"horizontal_velocity_meters_per_second,omitempty"`
 	HorizontalAccuracyMeters          float64                `protobuf:"fixed64,10,opt,name=horizontal_accuracy_meters,json=horizontalAccuracyMeters,proto3" json:"horizontal_accuracy_meters,omitempty"`
 	FilterReset                       bool                   `protobuf:"varint,11,opt,name=filter_reset,json=filterReset,proto3" json:"filter_reset,omitempty"`
+	ConfigurationRevision             *int64                 `protobuf:"varint,12,opt,name=configuration_revision,json=configurationRevision,proto3,oneof" json:"configuration_revision,omitempty"`
+	TriggerAssetInputId               []byte                 `protobuf:"bytes,13,opt,name=trigger_asset_input_id,json=triggerAssetInputId,proto3" json:"trigger_asset_input_id,omitempty"`
 	unknownFields                     protoimpl.UnknownFields
 	sizeCache                         protoimpl.SizeCache
 }
@@ -399,19 +401,36 @@ func (x *MotionEstimate) GetFilterReset() bool {
 	return false
 }
 
+func (x *MotionEstimate) GetConfigurationRevision() int64 {
+	if x != nil && x.ConfigurationRevision != nil {
+		return *x.ConfigurationRevision
+	}
+	return 0
+}
+
+func (x *MotionEstimate) GetTriggerAssetInputId() []byte {
+	if x != nil {
+		return x.TriggerAssetInputId
+	}
+	return nil
+}
+
 // EstimateCheckpoint is current state materialized by asset. Its compact-only
 // topic is co-partitioned with the asset input topic. The last record per key
 // survives expiry of the event topics.
 type EstimateCheckpoint struct {
-	state              protoimpl.MessageState     `protogen:"open.v1"`
-	SchemaVersion      uint32                     `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
-	Sequence           uint64                     `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	ObservedAtUnixNano int64                      `protobuf:"varint,3,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3" json:"observed_at_unix_nano,omitempty"`
-	Frame              []byte                     `protobuf:"bytes,4,opt,name=frame,proto3" json:"frame,omitempty"`
-	Axes               []*EstimateCheckpoint_Axis `protobuf:"bytes,5,rep,name=axes,proto3" json:"axes,omitempty"`
-	Position           []float64                  `protobuf:"fixed64,6,rep,packed,name=position,proto3" json:"position,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state               protoimpl.MessageState     `protogen:"open.v1"`
+	SchemaVersion       uint32                     `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	Sequence            uint64                     `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	ObservedAtUnixNano  int64                      `protobuf:"varint,3,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3" json:"observed_at_unix_nano,omitempty"`
+	Frame               []byte                     `protobuf:"bytes,4,opt,name=frame,proto3" json:"frame,omitempty"`
+	Axes                []*EstimateCheckpoint_Axis `protobuf:"bytes,5,rep,name=axes,proto3" json:"axes,omitempty"`
+	Position            []float64                  `protobuf:"fixed64,6,rep,packed,name=position,proto3" json:"position,omitempty"`
+	Candidates          []*AssetInput              `protobuf:"bytes,7,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	SelectedInputId     []byte                     `protobuf:"bytes,8,opt,name=selected_input_id,json=selectedInputId,proto3" json:"selected_input_id,omitempty"`
+	EvaluatedAtUnixNano int64                      `protobuf:"varint,9,opt,name=evaluated_at_unix_nano,json=evaluatedAtUnixNano,proto3" json:"evaluated_at_unix_nano,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *EstimateCheckpoint) Reset() {
@@ -486,14 +505,37 @@ func (x *EstimateCheckpoint) GetPosition() []float64 {
 	return nil
 }
 
+func (x *EstimateCheckpoint) GetCandidates() []*AssetInput {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+func (x *EstimateCheckpoint) GetSelectedInputId() []byte {
+	if x != nil {
+		return x.SelectedInputId
+	}
+	return nil
+}
+
+func (x *EstimateCheckpoint) GetEvaluatedAtUnixNano() int64 {
+	if x != nil {
+		return x.EvaluatedAtUnixNano
+	}
+	return 0
+}
+
 // EstimatorFrontier binds a partition's materialized state to the exact input
 // generation and next offset committed with it.
 type EstimatorFrontier struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	InputTopicId  []byte                 `protobuf:"bytes,1,opt,name=input_topic_id,json=inputTopicId,proto3" json:"input_topic_id,omitempty"`
-	NextOffset    int64                  `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	InputTopicId          []byte                 `protobuf:"bytes,1,opt,name=input_topic_id,json=inputTopicId,proto3" json:"input_topic_id,omitempty"`
+	NextOffset            int64                  `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	ConfigurationAware    bool                   `protobuf:"varint,3,opt,name=configuration_aware,json=configurationAware,proto3" json:"configuration_aware,omitempty"`
+	ConfigurationRevision int64                  `protobuf:"varint,4,opt,name=configuration_revision,json=configurationRevision,proto3" json:"configuration_revision,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *EstimatorFrontier) Reset() {
@@ -536,6 +578,20 @@ func (x *EstimatorFrontier) GetInputTopicId() []byte {
 func (x *EstimatorFrontier) GetNextOffset() int64 {
 	if x != nil {
 		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *EstimatorFrontier) GetConfigurationAware() bool {
+	if x != nil {
+		return x.ConfigurationAware
+	}
+	return false
+}
+
+func (x *EstimatorFrontier) GetConfigurationRevision() int64 {
+	if x != nil {
+		return x.ConfigurationRevision
 	}
 	return 0
 }
@@ -886,7 +942,7 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12!\n" +
 	"\ftrackable_id\x18\x03 \x01(\tR\vtrackableId\x12D\n" +
-	"\vobservation\x18\x04 \x01(\v2\".locationhub.stream.v1.ObservationR\vobservation\"\xe0\x03\n" +
+	"\vobservation\x18\x04 \x01(\v2\".locationhub.stream.v1.ObservationR\vobservation\"\xec\x04\n" +
 	"\x0eMotionEstimate\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12$\n" +
@@ -899,14 +955,22 @@ const file_observation_v1_proto_rawDesc = "" +
 	"%horizontal_velocity_meters_per_second\x18\t \x03(\x01R!horizontalVelocityMetersPerSecond\x12<\n" +
 	"\x1ahorizontal_accuracy_meters\x18\n" +
 	" \x01(\x01R\x18horizontalAccuracyMeters\x12!\n" +
-	"\ffilter_reset\x18\v \x01(\bR\vfilterReset\"\xbb\x03\n" +
+	"\ffilter_reset\x18\v \x01(\bR\vfilterReset\x12:\n" +
+	"\x16configuration_revision\x18\f \x01(\x03H\x00R\x15configurationRevision\x88\x01\x01\x123\n" +
+	"\x16trigger_asset_input_id\x18\r \x01(\fR\x13triggerAssetInputIdB\x19\n" +
+	"\x17_configuration_revision\"\xdf\x04\n" +
 	"\x12EstimateCheckpoint\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x121\n" +
 	"\x15observed_at_unix_nano\x18\x03 \x01(\x03R\x12observedAtUnixNano\x12\x14\n" +
 	"\x05frame\x18\x04 \x01(\fR\x05frame\x12B\n" +
 	"\x04axes\x18\x05 \x03(\v2..locationhub.stream.v1.EstimateCheckpoint.AxisR\x04axes\x12\x1a\n" +
-	"\bposition\x18\x06 \x03(\x01R\bposition\x1a\xb8\x01\n" +
+	"\bposition\x18\x06 \x03(\x01R\bposition\x12A\n" +
+	"\n" +
+	"candidates\x18\a \x03(\v2!.locationhub.stream.v1.AssetInputR\n" +
+	"candidates\x12*\n" +
+	"\x11selected_input_id\x18\b \x01(\fR\x0fselectedInputId\x123\n" +
+	"\x16evaluated_at_unix_nano\x18\t \x01(\x03R\x13evaluatedAtUnixNano\x1a\xb8\x01\n" +
 	"\x04Axis\x12\x1a\n" +
 	"\bposition\x18\x01 \x01(\x01R\bposition\x12\x1a\n" +
 	"\bvelocity\x18\x02 \x01(\x01R\bvelocity\x12+\n" +
@@ -914,11 +978,13 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\n" +
 	"covariance\x18\x04 \x01(\x01R\n" +
 	"covariance\x12+\n" +
-	"\x11velocity_variance\x18\x05 \x01(\x01R\x10velocityVariance\"Z\n" +
+	"\x11velocity_variance\x18\x05 \x01(\x01R\x10velocityVariance\"\xc2\x01\n" +
 	"\x11EstimatorFrontier\x12$\n" +
 	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
 	"\vnext_offset\x18\x02 \x01(\x03R\n" +
-	"nextOffset\"\x96\x03\n" +
+	"nextOffset\x12/\n" +
+	"\x13configuration_aware\x18\x03 \x01(\bR\x12configurationAware\x125\n" +
+	"\x16configuration_revision\x18\x04 \x01(\x03R\x15configurationRevision\"\x96\x03\n" +
 	"\x15ConfigurationRevision\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\"\n" +
 	"\rorigin_hub_id\x18\x02 \x01(\tR\voriginHubId\x12\x1a\n" +
@@ -971,12 +1037,13 @@ var file_observation_v1_proto_depIdxs = []int32{
 	0, // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
 	1, // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
 	8, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
-	9, // 3: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2, // 3: locationhub.stream.v1.EstimateCheckpoint.candidates:type_name -> locationhub.stream.v1.AssetInput
+	9, // 4: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -985,6 +1052,7 @@ func file_observation_v1_proto_init() {
 		return
 	}
 	file_observation_v1_proto_msgTypes[0].OneofWrappers = []any{}
+	file_observation_v1_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

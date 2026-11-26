@@ -84,7 +84,7 @@ func (s *Service) applyTrackableSelection(ctx context.Context, id string, tracka
 		if s.metadata != nil || s.queries != nil {
 			provider, _ = s.providerByID(ctx, candidate.value.ProviderId)
 		}
-		priority := locationRulePriority(rules, ruleContext{location: candidate.value, provider: provider, now: now})
+		priority := rules.Priority(candidate.value, provider, now)
 		newer := candidateTime(candidate).After(candidateTime(selected))
 		equal := candidateTime(candidate).Equal(candidateTime(selected))
 		previousCandidate := hadPrevious && dedupLocationKey(candidate.value) == dedupLocationKey(previous.value)

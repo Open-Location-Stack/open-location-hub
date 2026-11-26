@@ -50,6 +50,8 @@ message MotionEstimate {
   repeated double horizontal_velocity_meters_per_second = 9;
   double horizontal_accuracy_meters = 10;
   bool filter_reset = 11;
+  optional int64 configuration_revision = 12;
+  bytes trigger_asset_input_id = 13;
 }
 
 // EstimateCheckpoint is current state materialized by asset. Its compact-only
@@ -70,6 +72,9 @@ message EstimateCheckpoint {
   bytes frame = 4;
   repeated Axis axes = 5;
   repeated double position = 6;
+  repeated AssetInput candidates = 7;
+  bytes selected_input_id = 8;
+  int64 evaluated_at_unix_nano = 9;
 }
 
 // EstimatorFrontier binds a partition's materialized state to the exact input
@@ -77,6 +82,8 @@ message EstimateCheckpoint {
 message EstimatorFrontier {
   bytes input_topic_id = 1;
   int64 next_offset = 2;
+  bool configuration_aware = 3;
+  int64 configuration_revision = 4;
 }
 
 // ConfigurationRevision represents one committed single-hub database

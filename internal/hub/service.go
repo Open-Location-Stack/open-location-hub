@@ -17,6 +17,7 @@ import (
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-location-hub/internal/ids"
+	"github.com/formation-res/open-location-hub/internal/locating"
 	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
 	"github.com/formation-res/open-location-hub/internal/stream"
@@ -2441,7 +2442,7 @@ func normalizeProvider(body gen.LocationProviderWrite, forcedID string) (gen.Loc
 }
 
 func normalizeTrackable(body gen.TrackableWrite, forcedID uuid.UUID) (gen.Trackable, []byte, error) {
-	if _, err := compileLocatingRules(body.LocatingRules); err != nil {
+	if _, err := locating.Compile(body.LocatingRules); err != nil {
 		return gen.Trackable{}, nil, badRequest(err.Error())
 	}
 	id := forcedID

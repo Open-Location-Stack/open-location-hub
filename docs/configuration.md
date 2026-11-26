@@ -107,6 +107,21 @@ stops on an expired offset or an incompatible checkpoint frontier. Restore an
 aligned input and state generation or bootstrap a new checkpoint topic from an
 explicitly chosen retained input range before resuming.
 
+Set `HUB_CONFIG_READ_URL` to enable revision-aware selection. Use a dedicated
+PostgreSQL role with read access to `hub_metadata`, `hub_config_head`,
+`trackables` and `providers`. Supply the persisted `HUB_ID` and give the
+worker read access to `KAFKA_CONFIG_TOPIC`. Each replica loads a consistent
+snapshot and follows the same committed configuration topic. It stops if it
+cannot verify that the active revision is current within
+`HUB_CONFIG_MAX_STALE` (default `30s`).
+
+Use fresh checkpoint and output topics when first enabling this mode.
+Replicas must use the same mode, topic names and candidate lifetimes.
+Location and proximity candidate lifetimes use `STATE_LOCATION_TTL` and
+`STATE_PROXIMITY_TTL`. Each asset retains up to 128 provider/source candidates
+and 512 KiB of candidate bytes. Excess candidates are counted as
+`candidate_limit` when they produce no estimate.
+
 ### Configuration relay
 
 Apply the database migrations and start the Hub once to initialize its persisted

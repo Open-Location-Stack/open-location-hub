@@ -342,6 +342,30 @@ profile with 8,368 observations at about 174/s and zero recorded drops.
 The Kubernetes checks validated resource schemas. A full operator rollout
 and airport replay inside Kubernetes still require a worker node.
 
+The revision-aware estimator used two replicas on one local broker, with
+six asset partitions assigned to each. The workers handled all 168,111 inputs
+across the native and 1 Hz airport replays and a three-input locating rule
+fixture. A read-committed scan found 167,870 estimates with unique IDs,
+contiguous per-asset sequences and configuration revision attribution.
+Both replicas applied all four live configuration revisions. The fixture
+switched the preferred provider and selected its older retained observation
+with a filter reset and an advancing sequence.
+
+Stopping the replica that owned the fixture reassigned all 12 partitions
+to its peer. The peer restored the candidate state and emitted the next
+fixture estimate at sequence 3. Pausing the relay while PostgreSQL advanced
+from revision 7 to 8 caused both replicas to stop at the configured
+freshness limit.
+
+The native airport replay passed at about 178 observations/s. The 1 Hz
+publisher reached about 2,525/s. Estimator handler p99 across the runs was
+below 0.85 ms on both replicas, with queue-wait p99 below 97 ms.
+The 1 Hz functional gate still failed with 66,540 compatibility decision
+queue drops and 6,101 event-bus drops. The run confirms partition ownership
+and isolates the remaining bottleneck under this local workload.
+Multi-broker capacity and distributed spatial decisions still need
+qualification.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

@@ -28,7 +28,14 @@ type motionEstimator struct {
 }
 
 func (e motionEstimator) estimate(input *streampb.AssetInput, previous *streampb.EstimateCheckpoint) (*streampb.MotionEstimate, *streampb.EstimateCheckpoint, string, error) {
-	observation := input.GetObservation()
+	location, err := decodeObservationLocation(input.GetObservation())
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return e.estimateLocation(input, previous, location, false)
+}
+
+func decodeObservationLocation(observation *streampb.Observation) (gen.Location, error) {
 	var raw []byte
 	switch observation.GetKind() {
 	case Location:
@@ -36,20 +43,29 @@ func (e motionEstimator) estimate(input *streampb.AssetInput, previous *streampb
 	case Proximity:
 		raw = observation.GetResolvedProximityLocationJson()
 	default:
-		return nil, nil, "", fmt.Errorf("unknown observation kind")
+		return gen.Location{}, fmt.Errorf("unknown observation kind")
 	}
 	var loc gen.Location
 	if err := json.Unmarshal(raw, &loc); err != nil {
-		return nil, nil, "", fmt.Errorf("decode estimation location: %w", err)
+		return gen.Location{}, fmt.Errorf("decode estimation location: %w", err)
 	}
-	at := observation.GetObservedAtUnixNano()
-	if observation.ObservedAtUnixNano == nil {
-		at = observation.GetReceivedAtUnixNano()
+	return loc, nil
+}
+
+func observationTime(observation *streampb.Observation) int64 {
+	if observation.ObservedAtUnixNano != nil {
+		return observation.GetObservedAtUnixNano()
 	}
+	return observation.GetReceivedAtUnixNano()
+}
+
+func (e motionEstimator) estimateLocation(input *streampb.AssetInput, previous *streampb.EstimateCheckpoint, loc gen.Location, ruleSelection bool) (*streampb.MotionEstimate, *streampb.EstimateCheckpoint, string, error) {
+	observation := input.GetObservation()
+	at := observationTime(observation)
 	if at == 0 && observation.ObservedAtUnixNano == nil {
 		return nil, nil, "", fmt.Errorf("no source or ingest time on input")
 	}
-	if previous != nil && at <= previous.GetObservedAtUnixNano() {
+	if previous != nil && at <= previous.GetObservedAtUnixNano() && !ruleSelection {
 		return nil, nil, "out_of_order", nil
 	}
 
@@ -94,7 +110,7 @@ func (e motionEstimator) estimate(input *streampb.AssetInput, previous *streampb
 	if previous != nil {
 		dt = time.Unix(0, at).Sub(time.Unix(0, previous.GetObservedAtUnixNano()))
 	}
-	reset := previous == nil || !bytes.Equal(frame, previous.GetFrame()) || dt > maxEstimateGap
+	reset := previous == nil || !bytes.Equal(frame, previous.GetFrame()) || dt <= 0 || dt > maxEstimateGap
 	accuracy := defaultPositionAccuracy
 	if loc.Accuracy != nil && *loc.Accuracy > 0 {
 		accuracy = max(*loc.Accuracy, minimumPositionAccuracy)

@@ -372,6 +372,105 @@
             }
           ]
         }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Configuration activations/s",
+            "description": "Complete revisions applied by each estimator replica. Each replica reads the same revision stream."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (outcome, instance) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_activation\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Recorded revision to activation",
+            "description": "Time from the first change in the database transaction until the complete bundle becomes visible."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, instance) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_activation_age\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{instance}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, instance) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_activation_age\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{instance}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, instance) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_activation_age\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{instance}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -431,6 +530,24 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/panel-6"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-7"
+              }
+            },
+            {
+              "x": 12,
+              "y": 21,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-8"
               }
             }
           ]

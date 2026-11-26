@@ -45,6 +45,8 @@ kafka:
   configHistory: 6h
   routerReplicas: 1
   estimatorReplicas: 1
+  estimatorConfigSecret: ""
+  configMaxStale: 30s
 telemetry:
   metricsEndpoint: ""
   deployment: ""

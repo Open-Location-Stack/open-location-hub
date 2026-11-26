@@ -84,8 +84,8 @@ func describeEstimateStore(ctx context.Context, client *kgo.Client, options []kg
 func (s *estimateStore) records(batch map[int32]*partitionEstimates) ([]*kgo.Record, error) {
 	var records []*kgo.Record
 	for partition, updates := range batch {
-		for key, checkpoint := range updates.assets {
-			encoded, err := proto.Marshal(checkpoint)
+		for key, state := range updates.assets {
+			encoded, err := proto.Marshal(state.checkpoint)
 			if err != nil {
 				return nil, fmt.Errorf("marshal estimator checkpoint: %w", err)
 			}
@@ -116,7 +116,7 @@ func (s *estimateStore) restore(ctx context.Context, offsets map[int32]kgo.Offse
 			return nil, fmt.Errorf("partition %d exceeds the configured estimator topology", partition)
 		}
 		assigned[partition] = kgo.NewOffset().AtStart()
-		checkpoints[partition] = &partitionEstimates{assets: make(map[string]*streampb.EstimateCheckpoint)}
+		checkpoints[partition] = &partitionEstimates{assets: make(map[string]*assetEstimateState)}
 		barriers = append(barriers, &kgo.Record{Topic: s.topic, Partition: partition, Key: barrier, Value: []byte{1}})
 	}
 	if err := s.client.ProduceSync(ctx, barriers...).FirstErr(); err != nil {
@@ -188,8 +188,35 @@ func applyEstimateCheckpoint(checkpoints *partitionEstimates, record *kgo.Record
 		len(state.Axes) < 2 || len(state.Axes) > 3 || len(state.Position) < 2 || len(state.Position) > 3 {
 		return fmt.Errorf("invalid estimator checkpoint")
 	}
-	checkpoints.assets[string(record.Key)] = state
+	restored, err := restoreCandidates(state)
+	if err != nil {
+		return err
+	}
+	checkpoints.assets[string(record.Key)] = restored
 	return nil
+}
+
+func restoreCandidates(checkpoint *streampb.EstimateCheckpoint) (*assetEstimateState, error) {
+	if len(checkpoint.Candidates) > maxEstimateCandidates {
+		return nil, fmt.Errorf("estimator checkpoint exceeds the candidate limit")
+	}
+	state := &assetEstimateState{checkpoint: checkpoint}
+	totalBytes := 0
+	for _, candidate := range checkpoint.Candidates {
+		if candidate.GetObservation() == nil || candidate.GetObservation().GetReceivedAtUnixNano() == 0 {
+			return nil, fmt.Errorf("invalid retained candidate in estimator checkpoint")
+		}
+		cached, err := cacheLocationCandidate(candidate)
+		if err != nil {
+			return nil, fmt.Errorf("restore retained candidate: %w", err)
+		}
+		totalBytes += cached.size
+		if totalBytes > maxEstimateCandidateBytes {
+			return nil, fmt.Errorf("estimator checkpoint exceeds the candidate byte limit")
+		}
+		state.candidates = append(state.candidates, cached)
+	}
+	return state, nil
 }
 
 func validateEstimatorFrontier(checkpoints *partitionEstimates, inputID []byte, offset int64) error {

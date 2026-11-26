@@ -114,6 +114,13 @@ logs in `kafka.topicRetentionMs` using the keys in `kafka.topics`. The
 estimator checkpoint topic stores current state with a compaction policy.
 Broker resources and topic declarations remain outside the application release.
 
+Set `kafka.estimatorConfigSecret` to enable revision-aware selection. Its
+`POSTGRES_URL` key should use a dedicated read-only role with the table access
+described in the [configuration guide](../../docs/configuration.md#asset-motion-estimator).
+The estimator uses `kafka.configMaxStale` as its configuration freshness grace.
+Choose fresh estimate and checkpoint topic names on the first rollout of this
+mode, and provision the same names in the managed Kafka values.
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,
