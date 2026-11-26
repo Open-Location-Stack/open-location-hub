@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -247,7 +248,7 @@ func TestRunEventPublisherPublishesEvents(t *testing.T) {
 		published []hub.Event
 	)
 
-	done := runEventPublisher(ctx, zap.NewNop(), events, func(_ context.Context, event hub.Event) error {
+	done := runEventPublisher(ctx, zap.NewNop(), []<-chan hub.Event{events}, func(_ context.Context, event hub.Event) error {
 		mu.Lock()
 		published = append(published, event)
 		mu.Unlock()
@@ -287,7 +288,7 @@ func TestRunEventPublisherStopsOnCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	events := make(chan hub.Event)
 
-	done := runEventPublisher(ctx, zap.NewNop(), events, func(_ context.Context, event hub.Event) error {
+	done := runEventPublisher(ctx, zap.NewNop(), []<-chan hub.Event{events}, func(_ context.Context, event hub.Event) error {
 		t.Fatalf("unexpected published event: %+v", event)
 		return nil
 	})
@@ -298,6 +299,61 @@ func TestRunEventPublisherStopsOnCanceledContext(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for publisher shutdown after context cancellation")
+	}
+}
+
+func TestRunEventPublisherPreservesTrackableOrder(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	const count = 64
+	bus := hub.NewEventBus()
+	channels, unsubscribe := bus.SubscribeSharded(hub.EventSubscriberMQTT, count, 16, mqttPublishShard(16))
+	defer unsubscribe()
+	var published []time.Time
+	done := runEventPublisher(ctx, zap.NewNop(), channels, func(_ context.Context, event hub.Event) error {
+		published = append(published, event.EventTime)
+		return nil
+	})
+	for i := range count {
+		bus.Emit(hub.Event{
+			Kind:      hub.EventTrackableMotion,
+			EventTime: time.Unix(int64(i), 0),
+			Payload:   hub.TrackableMotionEnvelope{Motion: gen.TrackableMotion{Id: "asset"}},
+		})
+	}
+	unsubscribe()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("timed out draining MQTT events")
+	}
+	if len(published) != count {
+		t.Fatalf("published %d of %d events", len(published), count)
+	}
+	for i, timestamp := range published {
+		if !timestamp.Equal(time.Unix(int64(i), 0)) {
+			t.Fatalf("event %d published out of order at %s", i, timestamp)
+		}
+	}
+}
+
+func TestMQTTPublishShardsDistributeProviderSources(t *testing.T) {
+	const workers = 16
+	shardFor := mqttPublishShard(workers)
+	used := make(map[int]bool)
+	for i := range 100 {
+		event := hub.Event{Kind: hub.EventLocation, Payload: hub.LocationEnvelope{Location: gen.Location{ProviderId: "provider", Source: strconv.Itoa(i)}}}
+		shard := shardFor(event)
+		if shard == workers-1 || shard != shardFor(event) {
+			t.Fatalf("invalid or unstable shard %d for source %d", shard, i)
+		}
+		used[shard] = true
+	}
+	if len(used) < 2 || shardFor(hub.Event{Kind: hub.EventFenceEvent}) != workers-1 {
+		t.Fatal("provider sources or fence events were not isolated across workers")
 	}
 }
 

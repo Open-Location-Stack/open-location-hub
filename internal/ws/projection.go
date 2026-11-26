@@ -118,6 +118,9 @@ func matchesProjectionInput(sub subscription, event hub.Event, native bool) bool
 func (c *projectionCache) project(event hub.Event, crs, zone string, native bool) projectionResult {
 	switch envelope := event.Payload.(type) {
 	case hub.LocationEnvelope:
+		if crs == "EPSG:4326" && zone == "" && envelope.Location.Crs != nil && *envelope.Location.Crs == crs && envelope.GeoJSON.Type == "FeatureCollection" {
+			return projectionResult{event: event, ok: true}
+		}
 		loc, err := c.projector.ProjectLocation(context.Background(), envelope.Location, crs, zone)
 		if err != nil {
 			return projectionResult{}
@@ -125,6 +128,9 @@ func (c *projectionCache) project(event hub.Event, crs, zone string, native bool
 		event.Payload = hub.LocationEnvelope{Location: loc, GeoJSON: hub.LocationGeoJSON(loc)}
 	case hub.TrackableMotionEnvelope:
 		motion := envelope.Motion
+		if crs == "EPSG:4326" && zone == "" && motion.Location.Crs != nil && *motion.Location.Crs == crs && motion.Geometry == nil {
+			return projectionResult{event: event, ok: true}
+		}
 		if native && envelope.Original != nil {
 			motion = *envelope.Original
 		}
@@ -134,6 +140,9 @@ func (c *projectionCache) project(event hub.Event, crs, zone string, native bool
 		}
 		event.Payload = hub.TrackableMotionEnvelope{Motion: motion}
 	case hub.CollisionEnvelope:
+		if crs == "EPSG:4326" && zone == "" && event.Scope == hub.ScopeEPSG4326 {
+			return projectionResult{event: event, ok: true}
+		}
 		collision, err := c.projector.ProjectCollision(context.Background(), envelope.Event, crs, zone)
 		if err != nil {
 			return projectionResult{}

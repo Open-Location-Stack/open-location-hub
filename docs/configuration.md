@@ -18,6 +18,7 @@ Runtime lifecycle behavior:
 - `MQTT_BROKER_URL` (default `tcp://localhost:1883`)
 - `MQTT_HANDLER_WORKERS` (positive integer, default `4`)
 - `MQTT_HANDLER_BUFFER` (positive integer, default `1024`)
+- `MQTT_PUBLISH_WORKERS` (positive integer, default `16`)
 - `WEBSOCKET_WRITE_TIMEOUT` (duration, default `5s`)
 - `WEBSOCKET_READ_TIMEOUT` (duration, default `1m`)
 - `WEBSOCKET_PING_INTERVAL` (duration, default `30s`)
@@ -273,13 +274,15 @@ Stateful ingest behavior:
 - inbound MQTT handlers share a bounded queue and worker pool; `MQTT_HANDLER_WORKERS` limits active callbacks and `MQTT_HANDLER_BUFFER` limits queued messages
 - a full MQTT handler queue drops new work, records a runtime drop with `stage=mqtt_handler` and `reason=queue_full`, and logs the first and every hundredth drop; QoS 1 acknowledgment does not guarantee application processing after a queue drop
 - MQTT client shutdown cancels active handler contexts and abandons queued messages
+- MQTT event publication uses `MQTT_PUBLISH_WORKERS` workers with `EVENT_BUS_SUBSCRIBER_BUFFER` slots per worker. Workers preserve order for each provider/source location stream and each trackable motion stream. With multiple workers, one handles fence and collision events in a separate queue. Workers wait for QoS 1 acknowledgment before sending their next message.
 - duplicate location/proximity payloads inside `STATE_DEDUP_TTL` are suppressed in the in-memory processing state before fan-out work
 - latest provider-source location state, trackable latest-location state, proximity hysteresis state, fence membership state, and collision pair state are all kept in process memory with the configured expiry semantics
 - metadata is loaded from Postgres at startup, updated immediately after successful CRUD writes, and reconciled in the background every `METADATA_RECONCILE_INTERVAL`
 - durable hub metadata is also loaded from Postgres at startup before the service begins accepting traffic
-- WebSocket delivery uses a per-connection outbound queue capped by `WEBSOCKET_OUTBOUND_BUFFER`; when that queue fills, outbound payloads are dropped instead of backpressuring ingest or disconnecting the subscriber
+- WebSocket delivery queues up to `WEBSOCKET_OUTBOUND_BUFFER` position frames per connection. An extra 25 percent of that limit, rounded down with a minimum of one slot, is reserved for discrete events and protocol responses. Position frames coalesce when their limit is reached. Discrete frames can be dropped when the entire queue fills.
 - WebSocket liveness uses server ping frames every `WEBSOCKET_PING_INTERVAL` and considers the connection stale when no inbound message or pong arrives before `WEBSOCKET_READ_TIMEOUT`
-- internal event-bus subscribers such as MQTT and WebSocket consume behind `EVENT_BUS_SUBSCRIBER_BUFFER`
+- WebSocket uses separate event-bus queues for positions and discrete events, each with `EVENT_BUS_SUBSCRIBER_BUFFER` slots
+- the Perses Delivery dashboard breaks event-bus drops out by subscriber. Recent `/debug/runtime/drops` samples include the same transport label.
 - native location publication is queued behind `NATIVE_LOCATION_BUFFER` so ingest can decouple from transport fan-out
 - post-native decision work such as Kalman normalization, alternate-CRS publication, geofence evaluation, and collision evaluation is queued behind `DERIVED_LOCATION_BUFFER`
 - when the native, decision, event-bus, or outbound socket queues are full, the hub drops newer work on those non-critical paths instead of slowing raw location ingest

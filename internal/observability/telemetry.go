@@ -605,16 +605,17 @@ func (r *Runtime) RecordDependencyEvent(ctx context.Context, dependency, event, 
 		))
 }
 
-// RecordRuntimeDrop records a dropped work item or event with bounded cause labels.
-func (r *Runtime) RecordRuntimeDrop(ctx context.Context, stage, reason string) {
+// RecordRuntimeDrop records a dropped work item or event with bounded cause labels
+// and an optional transport subscriber label.
+func (r *Runtime) RecordRuntimeDrop(ctx context.Context, stage, reason string, subscriber ...string) {
 	if !r.metricsReady() {
 		return
 	}
-	r.instruments.runtimeDropEventsTotal.Add(ctx, 1,
-		metric.WithAttributes(
-			attribute.String("stage", stage),
-			attribute.String("reason", reason),
-		))
+	attrs := []attribute.KeyValue{attribute.String("stage", stage), attribute.String("reason", reason)}
+	if len(subscriber) > 0 {
+		attrs = append(attrs, attribute.String("subscriber", subscriber[0]))
+	}
+	r.instruments.runtimeDropEventsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 }
 
 // RecordMQTTPublish records MQTT publish duration and outcome.

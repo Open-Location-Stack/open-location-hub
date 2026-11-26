@@ -122,3 +122,30 @@ func TestNativeMotionFiltersUseOriginalObservation(t *testing.T) {
 		t.Fatal("native motion filter did not use the original observation")
 	}
 }
+
+func TestWGS84SubscriptionsReusePreparedPayloads(t *testing.T) {
+	projector := &countingProjector{}
+	location := testLocation(t)
+	wgs84 := "EPSG:4326"
+	location.Crs = &wgs84
+	events := []hub.Event{
+		{Kind: hub.EventLocation, Scope: hub.ScopeEPSG4326, Payload: hub.LocationEnvelope{Location: location, GeoJSON: hub.LocationGeoJSON(location)}},
+		{Kind: hub.EventTrackableMotion, Scope: hub.ScopeEPSG4326, Payload: hub.TrackableMotionEnvelope{Motion: gen.TrackableMotion{Location: location}}},
+		{Kind: hub.EventCollisionEvent, Scope: hub.ScopeEPSG4326, Payload: hub.CollisionEnvelope{}},
+	}
+	cache := newProjectionCache(projector)
+	for _, sub := range []subscription{
+		{topic: topicLocationUpdates, filter: locationFilter{}},
+		{topic: topicLocationGeoJSON, filter: locationFilter{}},
+		{topic: topicTrackableMotions, filter: motionFilter{}},
+		{topic: topicCollisionEvents, filter: collisionFilter{}},
+	} {
+		payload, ok := payloadBatchForSubscription(sub, events, cache)
+		if !ok || !json.Valid(payload) {
+			t.Fatalf("invalid %s payload %s", sub.topic, payload)
+		}
+	}
+	if projector.locationCalls != 0 || projector.motionCalls != 0 || projector.collisionCalls != 0 {
+		t.Fatal("reprojected observations already in the requested CRS")
+	}
+}

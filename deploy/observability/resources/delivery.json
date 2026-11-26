@@ -315,7 +315,7 @@
         "spec": {
           "display": {
             "name": "Delivery drops/s",
-            "description": "Observable event bus and WebSocket drop counters."
+            "description": "Event bus drops by transport subscriber and WebSocket connection drops."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -337,9 +337,9 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "sum by (hub_id) (rate(hub_runtime_event_bus_drops_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
+                    "query": "sum by (subscriber) (rate(hub_runtime_drop_events_total{stage=\"event_bus\",hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
                     "minStep": "15s",
-                    "seriesNameFormat": "Event bus"
+                    "seriesNameFormat": "Event bus · {{subscriber}}"
                   }
                 }
               }

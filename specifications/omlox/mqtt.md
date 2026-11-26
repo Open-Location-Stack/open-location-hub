@@ -400,6 +400,13 @@ or responses using the same queue. MQTT QoS 1 does not guarantee application
 processing after such a drop; callers may time out and availability may expire.
 These limits and overload behavior are repository implementation choices.
 
+Outbound event publication uses `MQTT_PUBLISH_WORKERS` (default 16) with a
+bounded queue per worker. A worker waits for each QoS 1 acknowledgment before
+publishing the next message. The hub sends locations in order for each provider
+and source, and motions in order for each trackable. Different sources on the
+same provider topic can be interleaved. With multiple workers, a separate worker
+handles fence and collision events.
+
 ## Reference implementation notes
 
 The following notes come from a public reference implementation. They are useful as reference implementation guidance, but they are not automatically normative for this repository unless they match the OMLOX PDF or we explicitly adopt them.

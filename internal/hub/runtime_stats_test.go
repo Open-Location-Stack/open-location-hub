@@ -58,7 +58,7 @@ func TestRuntimeStatsSnapshotIncludesRecentDropSamples(t *testing.T) {
 		Scope:       ScopeEPSG4326,
 		ProviderID:  "provider-a",
 		TrackableID: "trackable-a",
-	})
+	}, EventSubscriberMQTT)
 	stats.RecordNativeQueueDrop(derivedLocationWork{
 		Location: gen.Location{
 			ProviderId: "provider-b",
@@ -72,7 +72,7 @@ func TestRuntimeStatsSnapshotIncludesRecentDropSamples(t *testing.T) {
 	if len(snapshot.RecentDrops) != 4 {
 		t.Fatalf("expected 4 recent drops, got %d", len(snapshot.RecentDrops))
 	}
-	if snapshot.RecentDrops[0].Stage != "event_bus" || snapshot.RecentDrops[0].Reason != "subscriber_channel_full" {
+	if snapshot.RecentDrops[0].Stage != "event_bus" || snapshot.RecentDrops[0].Reason != "subscriber_channel_full" || snapshot.RecentDrops[0].Subscriber != "mqtt" {
 		t.Fatalf("unexpected first drop sample: %+v", snapshot.RecentDrops[0])
 	}
 	if snapshot.RecentDrops[1].Stage != "native_queue" || snapshot.RecentDrops[1].ProviderID != "provider-b" || snapshot.RecentDrops[1].Source != "source-b" {

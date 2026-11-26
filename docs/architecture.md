@@ -167,7 +167,7 @@ retention policy.
 7. Kalman throttling applies to selected trackable motion publication. Raw provider streams remain independent; fencing and collision work still run for selected normalized observations.
 8. Collision evaluation runs as its own downstream stage fed from the decision output so pairwise collision work does not block the rest of the derived path.
 9. Collision work evaluates normalized WGS84 motions only; streams without a safe WGS84 representation do not enter collision evaluation.
-10. MQTT and WebSocket consume the resulting internal event stream and publish transport-specific payloads in batches.
+10. MQTT and WebSocket use independent buffers on the internal event bus. MQTT publishes with parallel, ordered workers. WebSocket batches and filters events for each subscription.
 11. When any non-critical queue fills, the hub drops newer work on that path rather than backpressuring raw ingest.
 
 Implications:
@@ -188,8 +188,9 @@ Implications:
   an asset jumps out of candidate range.
 - pending internal events resume delivery when subscribers make room, even if no further events arrive; unsubscribe stops the flusher and synchronizes channel closure with concurrent emitters
 - WebSocket subscriptions match topic and observation filters before projection; a broadcast batch shares projections for each event, CRS, and target zone across connections
+- WebSocket reuses prepared JSON for locations, point-only motions, and collisions already in the requested WGS84 coordinates
 - lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
-- WebSocket fan-out coalesces multiple internal events into fewer wrapper messages and drops outbound payloads for slow subscribers instead of tearing the connection down immediately
+- WebSocket batches events into wrapper messages. The event bus isolates discrete events from positions, and each connection reserves send capacity for discrete events and protocol responses. Under sustained overload, the gateway can still coalesce positions or drop discrete messages.
 - hub-issued UUIDs for REST-managed resources, derived fence/collision events, and RPC caller IDs now use UUIDv7 so emitted identifiers are time-sortable
 - internal hub events carry the persisted `origin_hub_id` so downstream transports preserve source provenance
 - fence membership follows the published three-timer transition table; an indexed deadline scheduler emits exits without requiring another location update, using provider settings before trackable settings before fence settings

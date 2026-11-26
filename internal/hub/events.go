@@ -186,7 +186,7 @@ func Decode[T any](event Event) (T, error) {
 type EventBus struct {
 	mu          sync.RWMutex
 	nextID      int
-	subscribers map[int]*eventSubscriber
+	subscribers map[int]*eventSubscription
 	stats       *RuntimeStats
 }
 
@@ -206,6 +206,22 @@ type eventSubscriber struct {
 	pendingOrder []string
 }
 
+type eventSubscription struct {
+	name   EventSubscriber
+	shards []*eventSubscriber
+	shard  func(Event) int
+}
+
+// EventSubscriber identifies a transport in event bus diagnostics.
+type EventSubscriber string
+
+const (
+	// EventSubscriberMQTT identifies the MQTT bridge.
+	EventSubscriberMQTT EventSubscriber = "mqtt"
+	// EventSubscriberWebSocket identifies the WebSocket gateway.
+	EventSubscriberWebSocket EventSubscriber = "websocket"
+)
+
 type pendingEvent struct {
 	event   Event
 	version uint64
@@ -213,15 +229,30 @@ type pendingEvent struct {
 
 // NewEventBus constructs an EventBus.
 func NewEventBus() *EventBus {
-	return &EventBus{subscribers: map[int]*eventSubscriber{}, stats: newRuntimeStats()}
+	return &EventBus{subscribers: map[int]*eventSubscription{}, stats: newRuntimeStats()}
 }
 
 // Subscribe registers a buffered event subscriber.
 func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
+	channels, unsubscribe := b.SubscribeSharded("other", buffer, 1, nil)
+	return channels[0], unsubscribe
+}
+
+// SubscribeSharded registers independent buffers for a transport. The shard
+// function chooses a channel by its index. It is optional for a single shard.
+func (b *EventBus) SubscribeSharded(name EventSubscriber, buffer, count int, shard func(Event) int) ([]<-chan Event, func()) {
+	if name != EventSubscriberMQTT && name != EventSubscriberWebSocket {
+		name = "other"
+	}
 	if buffer <= 0 {
 		buffer = 1
 	}
-	sub := newEventSubscriber(buffer)
+	sub := &eventSubscription{name: name, shards: make([]*eventSubscriber, count), shard: shard}
+	channels := make([]<-chan Event, count)
+	for i := range count {
+		sub.shards[i] = newEventSubscriber(buffer)
+		channels[i] = sub.shards[i].ch
+	}
 	b.mu.Lock()
 	id := b.nextID
 	b.nextID++
@@ -231,11 +262,13 @@ func (b *EventBus) Subscribe(buffer int) (<-chan Event, func()) {
 	}
 	b.mu.Unlock()
 
-	return sub.ch, func() {
+	return channels, func() {
 		b.mu.Lock()
 		if existing, ok := b.subscribers[id]; ok {
 			delete(b.subscribers, id)
-			existing.close()
+			for _, shard := range existing.shards {
+				shard.close()
+			}
 		}
 		if b.stats != nil {
 			b.stats.SetEventBusSubscribers(int64(len(b.subscribers)))
@@ -264,7 +297,7 @@ func (b *EventBus) EmitBatch(events []Event) {
 	}
 	start := time.Now()
 	b.mu.RLock()
-	subs := make([]*eventSubscriber, 0, len(b.subscribers))
+	subs := make([]*eventSubscription, 0, len(b.subscribers))
 	for _, sub := range b.subscribers {
 		subs = append(subs, sub)
 	}
@@ -272,8 +305,12 @@ func (b *EventBus) EmitBatch(events []Event) {
 
 	for _, event := range events {
 		for _, sub := range subs {
-			if !sub.deliver(event) && b.stats != nil {
-				b.stats.RecordEventBusDrop(event)
+			shard := 0
+			if sub.shard != nil {
+				shard = sub.shard(event)
+			}
+			if !sub.shards[shard].deliver(event) && b.stats != nil {
+				b.stats.RecordEventBusDrop(event, sub.name)
 			}
 		}
 	}

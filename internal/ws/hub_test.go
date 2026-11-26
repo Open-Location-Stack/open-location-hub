@@ -237,21 +237,26 @@ func TestSendWrapperCoalescesHotTopicsWhenOutboundBufferIsFull(t *testing.T) {
 	}
 }
 
-func TestSendWrapperStillDropsNonCoalescibleTopicsWhenOutboundBufferIsFull(t *testing.T) {
+func TestSendWrapperReservesOutboundCapacityForDiscreteEvents(t *testing.T) {
 	t.Parallel()
 
 	bus := hub.NewEventBus()
 	h := New(zap.NewNop(), nil, bus, nil, nil, config.AuthConfig{Enabled: false, Mode: "none"}, time.Second, 3*time.Second, time.Second, 1, 32, true)
 	conn := &connection{
 		hub:     h,
-		send:    make(chan []byte, 1),
+		send:    make(chan []byte, 2),
 		pending: map[string][]byte{},
 		done:    make(chan struct{}),
 	}
 	subscriptionID := 9
 
 	conn.send <- []byte(`{"buffered":true}`)
-	conn.sendWrapper(wrapper{Event: "message", Topic: topicFenceEvents, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"id":"fence-1"}]`)})
+	fence := wrapper{Event: "message", Topic: topicFenceEvents, SubscriptionID: &subscriptionID, Payload: json.RawMessage(`[{"id":"fence-1"}]`)}
+	conn.sendWrapper(fence)
+	if got := h.stats.Snapshot().WebSocketOutboundDrops; got != 0 || len(conn.send) != 2 {
+		t.Fatalf("expected the fence event to use the reserved capacity, got %d drops and %d queued", got, len(conn.send))
+	}
+	conn.sendWrapper(fence)
 
 	if len(conn.pending) != 0 {
 		t.Fatal("expected discrete topic not to be coalesced")

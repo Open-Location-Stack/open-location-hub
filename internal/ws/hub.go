@@ -164,8 +164,8 @@ func New(logger *zap.Logger, service *hub.Service, bus *hub.EventBus, authentica
 		connections: map[*connection]struct{}{},
 	}
 	if bus != nil {
-		ch, _ := bus.Subscribe(subscriberBuffer)
-		go h.consume(ch)
+		channels, _ := bus.SubscribeSharded(hub.EventSubscriberWebSocket, subscriberBuffer, 2, websocketEventShard)
+		go h.consume(channels[0], channels[1])
 	}
 	return h
 }
@@ -191,7 +191,7 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 	c := &connection{
 		hub:     h,
 		conn:    conn,
-		send:    make(chan []byte, h.outboundBuffer),
+		send:    make(chan []byte, h.outboundBuffer+max(1, h.outboundBuffer/4)),
 		pending: map[string][]byte{},
 		subs:    map[int]subscription{},
 		done:    make(chan struct{}),
@@ -208,48 +208,54 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 	c.readLoop()
 }
 
-func (h *Hub) consume(ch <-chan hub.Event) {
+func websocketEventShard(event hub.Event) int {
+	if event.Kind == hub.EventLocation || event.Kind == hub.EventTrackableMotion {
+		return 0
+	}
+	return 1
+}
+
+func (h *Hub) consume(positions, discrete <-chan hub.Event) {
 	batch := make([]hub.Event, 0, eventDispatchBatchSize)
 	timer := time.NewTimer(time.Hour)
 	timer.Stop()
-	timerActive := false
+	defer timer.Stop()
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
-		out := append([]hub.Event(nil), batch...)
+		h.broadcastBatch(batch)
+		clear(batch)
 		batch = batch[:0]
-		h.broadcastBatch(out)
 	}
-	for {
+	for positions != nil || discrete != nil {
+		var event hub.Event
+		var ok bool
 		select {
-		case event, ok := <-ch:
+		case event, ok = <-positions:
 			if !ok {
-				flush()
-				return
+				positions = nil
+				continue
 			}
-			batch = append(batch, event)
-			if len(batch) == 1 && !timerActive {
-				timer.Reset(eventDispatchFlushWait)
-				timerActive = true
-			}
-			if len(batch) >= eventDispatchBatchSize {
-				if timerActive {
-					if !timer.Stop() {
-						select {
-						case <-timer.C:
-						default:
-						}
-					}
-					timerActive = false
-				}
-				flush()
+		case event, ok = <-discrete:
+			if !ok {
+				discrete = nil
+				continue
 			}
 		case <-timer.C:
-			timerActive = false
+			flush()
+			continue
+		}
+		batch = append(batch, event)
+		if len(batch) == 1 {
+			timer.Reset(eventDispatchFlushWait)
+		}
+		if len(batch) >= eventDispatchBatchSize {
+			timer.Stop()
 			flush()
 		}
 	}
+	flush()
 }
 
 func (h *Hub) broadcastBatch(events []hub.Event) {
@@ -504,7 +510,7 @@ func (c *connection) deliverBatch(events []hub.Event, projections *projectionCac
 
 func (c *connection) sendWrapper(msg wrapper) {
 	start := time.Now()
-	raw, err := json.Marshal(msg)
+	raw, err := marshalOutboundWrapper(msg)
 	if err != nil {
 		return
 	}
@@ -513,6 +519,17 @@ func (c *connection) sendWrapper(msg wrapper) {
 	c.closeMux.Unlock()
 	if closed {
 		return
+	}
+	key, coalescible := coalescibleWrapperKey(msg)
+	if coalescible {
+		c.sendMu.Lock()
+		defer c.sendMu.Unlock()
+		_, pending := c.pending[key]
+		if len(c.send) >= c.hub.outboundBuffer || pending {
+			c.pending[key] = raw
+			c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "coalesced", time.Since(start))
+			return
+		}
 	}
 	select {
 	case <-c.done:
@@ -523,7 +540,8 @@ func (c *connection) sendWrapper(msg wrapper) {
 		}
 		c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "queued", time.Since(start))
 	default:
-		if c.storePending(msg, raw) {
+		if coalescible {
+			c.pending[key] = raw
 			c.hub.telemetry().RecordWebSocketDispatch(context.Background(), msg.Topic, "coalesced", time.Since(start))
 			return
 		}
@@ -535,25 +553,36 @@ func (c *connection) sendWrapper(msg wrapper) {
 	}
 }
 
-func (c *connection) sendError(code int, description string) {
-	c.sendWrapper(wrapper{Event: "error", Code: &code, Description: &description})
+func marshalOutboundWrapper(msg wrapper) ([]byte, error) {
+	if msg.Event != "message" || len(msg.Payload) == 0 {
+		return json.Marshal(msg)
+	}
+	// Delivery batches consist of JSON items already encoded by the hub.
+	payload := msg.Payload
+	msg.Payload = nil
+	header, err := json.Marshal(msg)
+	if err != nil {
+		return nil, err
+	}
+	const payloadField = `,"payload":`
+	raw := make([]byte, 0, len(header)+len(payloadField)+len(payload))
+	raw = append(raw, header[:len(header)-1]...)
+	raw = append(raw, payloadField...)
+	raw = append(raw, payload...)
+	return append(raw, '}'), nil
 }
 
-func (c *connection) storePending(msg wrapper, raw []byte) bool {
-	key, ok := coalescibleWrapperKey(msg)
-	if !ok {
-		return false
-	}
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
-	c.pending[key] = raw
-	return true
+func (c *connection) sendError(code int, description string) {
+	c.sendWrapper(wrapper{Event: "error", Code: &code, Description: &description})
 }
 
 func (c *connection) flushPending() {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 	for key, raw := range c.pending {
+		if len(c.send) >= c.hub.outboundBuffer {
+			return
+		}
 		select {
 		case <-c.done:
 			return

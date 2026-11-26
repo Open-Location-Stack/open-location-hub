@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
@@ -269,10 +271,9 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	service.Start(ctx)
 	var cleanupMQTTPublisher func()
 	if eventBus != nil {
-		var ch <-chan hub.Event
-		var unsubscribeMQTTPublisher func()
-		ch, unsubscribeMQTTPublisher = eventBus.Subscribe(cfg.EventBusSubscriberBuffer)
-		mqttPublisherDone := runEventPublisher(ctx, logger, ch, rt.eventPublisherHandle(mq))
+		workers := max(1, cfg.MQTTPublishWorkers)
+		channels, unsubscribeMQTTPublisher := eventBus.SubscribeSharded(hub.EventSubscriberMQTT, cfg.EventBusSubscriberBuffer, workers, mqttPublishShard(workers))
+		mqttPublisherDone := runEventPublisher(ctx, logger, channels, rt.eventPublisherHandle(mq))
 		cleanupMQTTPublisher = func() {
 			unsubscribeMQTTPublisher()
 			<-mqttPublisherDone
@@ -444,25 +445,57 @@ func registerPprofRoutes(r chi.Router) {
 	}
 }
 
-func runEventPublisher(ctx context.Context, logger *zap.Logger, events <-chan hub.Event, publish func(context.Context, hub.Event) error) <-chan struct{} {
+func runEventPublisher(ctx context.Context, logger *zap.Logger, channels []<-chan hub.Event, publish func(context.Context, hub.Event) error) <-chan struct{} {
+	var running sync.WaitGroup
+	for _, events := range channels {
+		running.Go(func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case event, ok := <-events:
+					if !ok || ctx.Err() != nil {
+						return
+					}
+					if err := publish(ctx, event); err != nil && !errors.Is(err, context.Canceled) {
+						logger.Warn("mqtt event publish failed", observability.Error(err))
+					}
+				}
+			}
+		})
+	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case event, ok := <-events:
-				if !ok {
-					return
-				}
-				if err := publish(ctx, event); err != nil && !errors.Is(err, context.Canceled) {
-					logger.Warn("mqtt event publish failed", observability.Error(err))
-				}
-			}
-		}
+		running.Wait()
 	}()
 	return done
+}
+
+func mqttPublishShard(workers int) func(hub.Event) int {
+	if workers == 1 {
+		return nil
+	}
+	seed := maphash.MakeSeed()
+	return func(event hub.Event) int {
+		var key string
+		switch event.Kind {
+		case hub.EventLocation:
+			key = event.ProviderID
+			if location, ok := event.Payload.(hub.LocationEnvelope); ok {
+				key = location.Location.ProviderId + "\x00" + location.Location.Source
+			}
+		case hub.EventTrackableMotion:
+			key = event.TrackableID
+			if motion, ok := event.Payload.(hub.TrackableMotionEnvelope); ok {
+				key = motion.Motion.Id
+			}
+		default:
+			// Keep discrete events out of the queues carrying position updates.
+			return workers - 1
+		}
+		return int(maphash.String(seed, key) % uint64(workers-1))
+	}
 }
 
 func firstNonWhitespaceByte(payload []byte) byte {

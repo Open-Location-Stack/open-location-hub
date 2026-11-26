@@ -26,6 +26,7 @@ type DropSample struct {
 	FenceID     string    `json:"fence_id,omitempty"`
 	Source      string    `json:"source,omitempty"`
 	Topic       string    `json:"topic,omitempty"`
+	Subscriber  string    `json:"subscriber,omitempty"`
 }
 
 // RuntimeStats tracks hot-path overload conditions so callers can distinguish
@@ -163,7 +164,8 @@ func (s *RuntimeStats) AddWebSocketOutboundDepth(delta int64) int64 {
 	return s.websocketOutboundDepth.Add(delta)
 }
 
-func (s *RuntimeStats) RecordEventBusDrop(event Event) uint64 {
+// RecordEventBusDrop records an event rejected by a subscriber buffer.
+func (s *RuntimeStats) RecordEventBusDrop(event Event, subscriber EventSubscriber) uint64 {
 	const (
 		stage  = "event_bus"
 		reason = "subscriber_channel_full"
@@ -179,8 +181,9 @@ func (s *RuntimeStats) RecordEventBusDrop(event Event) uint64 {
 		ProviderID:  event.ProviderID,
 		TrackableID: event.TrackableID,
 		FenceID:     event.FenceID,
+		Subscriber:  string(subscriber),
 	})
-	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason, string(subscriber))
 	return total
 }
 

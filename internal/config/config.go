@@ -27,6 +27,7 @@ type Config struct {
 	MQTTBrokerURL                         string
 	MQTTHandlerWorkers                    int
 	MQTTHandlerBuffer                     int
+	MQTTPublishWorkers                    int
 	WebSocketWriteTimeout                 time.Duration
 	WebSocketReadTimeout                  time.Duration
 	WebSocketPingInterval                 time.Duration
@@ -134,6 +135,7 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 		PostgresURL:                           envWithLookup(lookup, "POSTGRES_URL", "postgres://postgres:postgres@localhost:5432/openrtls?sslmode=disable"),
 		MQTTHandlerWorkers:                    intEnvWithLookup(lookup, "MQTT_HANDLER_WORKERS", 4),
 		MQTTHandlerBuffer:                     intEnvWithLookup(lookup, "MQTT_HANDLER_BUFFER", 1024),
+		MQTTPublishWorkers:                    intEnvWithLookup(lookup, "MQTT_PUBLISH_WORKERS", 16),
 		MQTTBrokerURL:                         envWithLookup(lookup, "MQTT_BROKER_URL", "tcp://localhost:1883"),
 		WebSocketWriteTimeout:                 durationEnvWithLookup(lookup, "WEBSOCKET_WRITE_TIMEOUT", 5*time.Second),
 		WebSocketReadTimeout:                  durationEnvWithLookup(lookup, "WEBSOCKET_READ_TIMEOUT", time.Minute),
@@ -212,6 +214,9 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	}
 	if cfg.MQTTHandlerBuffer <= 0 {
 		return Config{}, fmt.Errorf("MQTT_HANDLER_BUFFER must be > 0")
+	}
+	if cfg.MQTTPublishWorkers <= 0 {
+		return Config{}, fmt.Errorf("MQTT_PUBLISH_WORKERS must be > 0")
 	}
 	if cfg.WebSocketOutboundBuffer <= 0 {
 		return Config{}, fmt.Errorf("WEBSOCKET_OUTBOUND_BUFFER must be > 0")

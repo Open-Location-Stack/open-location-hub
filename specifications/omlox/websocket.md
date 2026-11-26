@@ -384,10 +384,12 @@ The repository WebSocket surface covers:
 
 Current repository behavior notes:
 - authorization is evaluated per WebSocket message using dedicated WebSocket topic permissions from the auth registry
-- outbound delivery uses bounded per-connection buffers; coalescible location/motion messages are replaced by newer pending output, and non-coalescible messages can be dropped under overload
+- outbound delivery uses bounded per-connection queues with reserved capacity for discrete events and protocol responses. Newer pending location or motion output can replace older pending output. Discrete messages can be dropped when their queue is full.
 - duplicate subscriptions are allowed, with IDs allocated uniquely across connections during hub runtime
 - location/motion subscriptions default to a single EPSG:4326 variant; `crs=local` without a zone returns the original observation, and a target zone or named CRS projects position and geometry
+- location and point-only motion subscriptions reuse prepared payloads for observations already in the requested EPSG:4326 coordinates
 - collision projections transform every participant and the intersection boundary
+- collision subscriptions that use WGS84 reuse the prepared collision payload
 - floor filters and fence `object_type` filters are applied
 - invalid projection requests fail at subscription time with `10002`
 
