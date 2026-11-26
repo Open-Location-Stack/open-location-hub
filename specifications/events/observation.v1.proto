@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package locationhub.stream.v1;
+
+option go_package = "github.com/formation-res/open-location-hub/internal/stream/pb;streampb";
+
+// Observation is the internal ingress envelope. The payload uses the matching
+// OMLOX Location or Proximity JSON schema. Envelope fields evolve additively.
+message Observation {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_LOCATION = 1;
+    KIND_PROXIMITY = 2;
+  }
+
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  string origin_hub_id = 3;
+  string provider_id = 4;
+  string source = 5;
+  Kind kind = 6;
+  optional int64 observed_at_unix_nano = 7;
+  int64 received_at_unix_nano = 8;
+  string transport = 9;
+  bytes payload_json = 10;
+}

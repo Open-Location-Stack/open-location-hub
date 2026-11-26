@@ -29,6 +29,16 @@
   - collision pair state
 
 ## Event Fan-Out
+
+An optional Kafka shadow producer copies validated REST, MQTT and WebSocket
+observations to a topic keyed by origin hub, provider and source. The
+[Protobuf envelope](../specifications/events/observation.v1.proto) carries the
+source timestamp when supplied, receive time, transport and OMLOX JSON payload.
+Its content-derived ID groups exact retry payloads and has the same value for
+indistinguishable repeated samples. Compare Kafka appends with the existing
+processing path using the shadow outcome metrics. Kafka is currently a shadow
+sink. The path below still owns state, decisions and acknowledgements.
+
 1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
 3. A buffered native-publication stage emits native provider location events. Trackable motion publication waits for location selection.

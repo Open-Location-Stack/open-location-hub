@@ -24,6 +24,7 @@ import (
 	"github.com/formation-res/open-location-hub/internal/rpc"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/stream"
 	"github.com/formation-res/open-location-hub/internal/ws"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -163,6 +164,19 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	if err != nil {
 		return fmt.Errorf("hub metadata init failed: %w", err)
 	}
+	var mirrorObservation func(context.Context, stream.Observation)
+	if cfg.KafkaShadow.Enabled() {
+		mirror, err := stream.OpenShadow(ctx, cfg.KafkaShadow, hubMeta.HubID)
+		if err != nil {
+			return fmt.Errorf("initialize Kafka shadow producer: %w", err)
+		}
+		defer func() {
+			if err := mirror.Close(); err != nil {
+				logger.Warn("Kafka shadow drain failed", zap.Error(err))
+			}
+		}()
+		mirrorObservation = mirror.Mirror
+	}
 
 	mqttCtx, mqttSpan := telemetry.StartSpan(ctx, "runtime.mqtt.init")
 	mq, err := rt.newMQTT(logger, cfg.MQTTBrokerURL, mqtt.HandlerConfig{Workers: cfg.MQTTHandlerWorkers, Buffer: cfg.MQTTHandlerBuffer})
@@ -197,6 +211,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	eventBus := rt.newEventBus()
 	service, err := rt.newService(logger, queries, eventBus, hub.Config{
 		HubID:                                 hubMeta.HubID,
+		ObservationMirror:                     mirrorObservation,
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,

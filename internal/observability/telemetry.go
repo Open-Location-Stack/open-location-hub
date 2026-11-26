@@ -74,6 +74,8 @@ type Runtime struct {
 
 type telemetryInstruments struct {
 	ingestRecordsTotal        metric.Int64Counter
+	streamHandledTotal        metric.Int64Counter
+	streamServiceDuration     metric.Float64Histogram
 	processingDuration        metric.Float64Histogram
 	processingBatchSize       metric.Int64Histogram
 	processingBatchDuration   metric.Float64Histogram
@@ -295,6 +297,9 @@ func firstNonEmpty(values ...string) string {
 
 func (r *Runtime) initInstruments() {
 	r.instruments.ingestRecordsTotal, _ = r.meter.Int64Counter("hub.ingest.records_total")
+	r.instruments.streamHandledTotal, _ = r.meter.Int64Counter("hub.work.items.handled")
+	r.instruments.streamServiceDuration, _ = r.meter.Float64Histogram("hub.work.service.duration", metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5))
 	r.instruments.processingDuration, _ = r.meter.Float64Histogram("hub.processing.duration", metric.WithUnit("s"))
 	r.instruments.processingBatchSize, _ = r.meter.Int64Histogram("hub.processing.batch_size")
 	r.instruments.processingBatchDuration, _ = r.meter.Float64Histogram("hub.processing.batch_duration", metric.WithUnit("s"))
@@ -476,6 +481,28 @@ func (r *Runtime) RecordIngestRecord(ctx context.Context, signal, outcome string
 			attribute.String("transport", IngestTransportFromContext(ctx)),
 			attribute.String("outcome", outcome),
 		))
+}
+
+// RecordStreamHandled counts one completed stream work item by bounded operation and outcome.
+func (r *Runtime) RecordStreamHandled(ctx context.Context, stage, operation, machine, mode, outcome string) {
+	if !r.metricsReady() {
+		return
+	}
+	r.instruments.streamHandledTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("stage", stage), attribute.String("operation", operation),
+		attribute.String("machine", machine), attribute.String("traffic_mode", mode), attribute.String("outcome", outcome),
+	))
+}
+
+// RecordStreamServiceTime observes the handler's service time separately from queueing and commit.
+func (r *Runtime) RecordStreamServiceTime(ctx context.Context, stage, operation, machine, mode string, duration time.Duration) {
+	if !r.metricsReady() {
+		return
+	}
+	r.instruments.streamServiceDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("stage", stage), attribute.String("operation", operation),
+		attribute.String("machine", machine), attribute.String("traffic_mode", mode),
+	))
 }
 
 // RecordProcessingDuration records a stage duration in seconds.

@@ -1,8 +1,9 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 proj-env := 'PATH="$PWD/tools/bin:$PATH" PKG_CONFIG="$PWD/tools/bin/pkg-config"'
-staticcheck-version := "v0.8.1"
+staticcheck-version := "v0.8.2"
 govulncheck-version := "v1.8.0"
+protobuf-go-version := "v1.36.12"
 
 bootstrap:
 	@if ! command -v oapi-codegen >/dev/null || ! oapi-codegen -version 2>/dev/null | grep -q "v2.8.0"; then \
@@ -20,6 +21,9 @@ bootstrap:
 	@if ! command -v govulncheck >/dev/null || ! govulncheck -version 2>/dev/null | grep -q "{{govulncheck-version}}"; then \
 		go install golang.org/x/vuln/cmd/govulncheck@{{govulncheck-version}}; \
 	fi
+	@if ! command -v protoc-gen-go >/dev/null || ! protoc-gen-go --version | grep -q ' {{protobuf-go-version}}$'; then \
+		go install google.golang.org/protobuf/cmd/protoc-gen-go@{{protobuf-go-version}}; \
+	fi
 
 proj-check:
 	@{{proj-env}} pkg-config --exists proj || { \
@@ -32,6 +36,10 @@ proj-check:
 generate:
 	oapi-codegen -config tools/openapi/oapi-codegen.server.yaml specifications/openapi/omlox-hub.v0.yaml
 	sqlc generate
+	@output_dir="$(mktemp -d)"; \
+	trap 'rm -rf "$output_dir"' EXIT; \
+	protoc -I specifications/events --go_out="$output_dir" --go_opt=paths=source_relative specifications/events/observation.v1.proto; \
+	sed '/^\/\/[[:space:]]*protoc[[:space:]]/d' "$output_dir/observation.v1.pb.go" > internal/stream/pb/observation.v1.pb.go
 
 migrate-up:
 	goose -dir migrations postgres "$POSTGRES_URL" up
@@ -44,6 +52,10 @@ run: proj-check
 
 compose-up:
 	docker compose --env-file .env.example up --build -d
+
+# Start the local stack with a pre-migrated database and the Kafka shadow topic.
+compose-shadow-up:
+	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml up --build -d
 
 compose-down:
 	docker compose down -v
@@ -68,7 +80,7 @@ fmt:
 
 lint-generated:
 	just generate
-	git diff --exit-code -- internal/httpapi/gen/api.gen.go internal/storage/postgres/sqlcgen
+	git diff --exit-code -- internal/httpapi/gen/api.gen.go internal/storage/postgres/sqlcgen internal/stream/pb
 
 lint-mod:
 	go mod tidy

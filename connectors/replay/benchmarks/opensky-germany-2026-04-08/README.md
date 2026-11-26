@@ -47,3 +47,23 @@ env \
     --batch-window-ms 25 \
     --max-batch-size 256
 ```
+
+## Functional profile
+
+Run on a disposable Hub with `COLLISIONS_ENABLED=true` and an administrator
+token. Point both commands at the same Hub with `HUB_HTTP_URL`, `HUB_WS_URL`
+and `HUB_TOKEN` in the environment.
+
+```bash
+OPENSKY_AIRPORT_PRESET=germany uv run --project connectors/opensky \
+  python connectors/opensky/airport_fences.py
+uv run --project connectors/replay python connectors/replay/benchmark.py \
+  --require-airport-events --rates 1 --target-duration-seconds 60 \
+  --timeout-seconds 145 --observer-drain-seconds 5
+```
+
+To exercise shadow ingest on the local Docker stack, create the usual `.env`
+file, apply the PostgreSQL migrations and run `just compose-shadow-up`.
+Inspect the topic's end offsets before and after replay to verify mirrored
+record counts independently from live delivery. Run with a new topic or record
+both starting and ending offsets for each partition.

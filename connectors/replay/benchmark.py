@@ -7,7 +7,6 @@ import argparse
 import csv
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -16,6 +15,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 import websocket
 
@@ -28,15 +28,11 @@ DEFAULT_TARGET_DURATION_SECONDS = 30.0
 DEFAULT_TIMEOUT_SECONDS = 35.0
 DEFAULT_BATCH_WINDOW_MS = 25.0
 DEFAULT_MAX_BATCH_SIZE = 256
-DEFAULT_CONTAINER_NAME = "local-hub-hub-1"
 DEFAULT_TRACKABLE_RADIUS_METERS = 50.0
 DEFAULT_OBSERVER_DRAIN_SECONDS = 1.0
 BENCHMARK_TOPICS = ("location_updates", "trackable_motions", "fence_events", "collision_events")
 
-DROP_PATTERNS = {
-    "native": re.compile(r'"msg":"native location queue full; dropping location work".*"dropped":(\d+)'),
-    "decision": re.compile(r'"msg":"decision location queue full; dropping location work".*"dropped":(\d+)'),
-}
+DROP_COUNTERS = ("native_queue_drops", "decision_queue_drops", "event_bus_drops", "websocket_outbound_drops")
 
 
 @dataclass(frozen=True)
@@ -72,6 +68,8 @@ class BenchmarkRow:
     native_drop_delta: int
     decision_drop_delta: int
     total_drop_delta: int
+    event_bus_drop_delta: int
+    websocket_drop_delta: int
     drop_free: bool
     collision_topic_enabled: bool
     raw_location_updates: int
@@ -229,7 +227,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hub-http-url", default=os.getenv("HUB_HTTP_URL", "http://localhost:8080"))
     parser.add_argument("--hub-ws-url", default=os.getenv("HUB_WS_URL", "ws://localhost:8080/v2/ws/socket"))
     parser.add_argument("--hub-token", default=os.getenv("HUB_TOKEN"))
-    parser.add_argument("--hub-container-name", default=os.getenv("HUB_DOCKER_CONTAINER", DEFAULT_CONTAINER_NAME))
+    parser.add_argument(
+        "--require-airport-events",
+        action="store_true",
+        help="Fail if replay does not complete or the airport entry/exit, motion, and required collision checks fail.",
+    )
     parser.add_argument("--target-duration-seconds", type=float, default=DEFAULT_TARGET_DURATION_SECONDS)
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--batch-window-ms", type=float, default=DEFAULT_BATCH_WINDOW_MS)
@@ -305,7 +307,7 @@ def main() -> int:
         run_prefix = f"{suite_stamp}-{format_rate(rate)}hz"
         log_path = reports_dir / f"{run_prefix}.log"
 
-        baseline = latest_drop_counters(args.hub_container_name)
+        baseline = latest_drop_counters(args.hub_http_url, token)
         started_at = datetime.now(UTC)
         observer = BenchmarkObserver(args.hub_ws_url, token)
         observer.start()
@@ -327,10 +329,13 @@ def main() -> int:
         finally:
             observed = observer.stop(args.observer_drain_seconds)
         finished_at = datetime.now(UTC)
-        after = latest_drop_counters(args.hub_container_name)
+        after = latest_drop_counters(args.hub_http_url, token)
 
-        native_drop_delta = after["native"] - baseline["native"]
-        decision_drop_delta = after["decision"] - baseline["decision"]
+        deltas = {key: after[key] - baseline[key] for key in DROP_COUNTERS}
+        if min(deltas.values()) < 0:
+            raise RuntimeError("hub runtime counters reset during replay")
+        native_drop_delta = deltas["native_queue_drops"]
+        decision_drop_delta = deltas["decision_queue_drops"]
         total_drop_delta = native_drop_delta + decision_drop_delta
 
         rows.append(
@@ -355,6 +360,8 @@ def main() -> int:
                 native_drop_delta=native_drop_delta,
                 decision_drop_delta=decision_drop_delta,
                 total_drop_delta=total_drop_delta,
+                event_bus_drop_delta=deltas["event_bus_drops"],
+                websocket_drop_delta=deltas["websocket_outbound_drops"],
                 drop_free=(total_drop_delta == 0),
                 collision_topic_enabled=observed.collision_topic_enabled,
                 raw_location_updates=observed.raw_location_updates,
@@ -365,7 +372,7 @@ def main() -> int:
                 collisions=observed.collisions,
                 collision_free=(observed.collisions == 0),
                 average_replayed_locations_per_second=(
-                    stats.scheduled_locations / actual_runtime_seconds if actual_runtime_seconds > 0 else 0.0
+                    stats.scheduled_locations / actual_runtime_seconds if completed and actual_runtime_seconds > 0 else 0.0
                 ),
                 log_path=str(log_path),
             )
@@ -376,7 +383,29 @@ def main() -> int:
     write_csv(latest_path, rows)
     print(f"wrote benchmark report to {csv_path}")
     print(f"updated latest report at {latest_path}")
+    if args.require_airport_events:
+        failed = False
+        for row in rows:
+            failures = airport_acceptance_failures(row)
+            if failures:
+                print(f"{row.interpolation_rate_hz:g} Hz functional replay failed: {', '.join(failures)}", file=sys.stderr)
+                failed = True
+        if failed:
+            return 1
     return 0
+
+
+def airport_acceptance_failures(row: BenchmarkRow) -> list[str]:
+    checks = (
+        (row.completed, "publisher did not finish successfully"),
+        (row.drop_free, "ingest or decision work was dropped"),
+        (row.raw_location_updates > 0, "no raw location updates"),
+        (row.trackable_updates > 0, "no trackable motions"),
+        (row.geofence_entries > 0, "no geofence entries"),
+        (row.geofence_exits > 0, "no geofence exits"),
+        (row.collision_topic_enabled and row.collisions > 0, "no collision events"),
+    )
+    return [description for passed, description in checks if not passed]
 
 
 def compute_schedule_stats(
@@ -471,22 +500,11 @@ def run_replay(
     return time.monotonic() - started, completed, exit_code
 
 
-def latest_drop_counters(container_name: str) -> dict[str, int]:
-    command = ["docker", "logs", container_name]
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        raise RuntimeError("docker CLI is required for benchmark drop-counter collection") from exc
-    if result.returncode != 0:
-        raise RuntimeError(f"docker logs failed for {container_name}: {result.stderr.strip()}")
-
-    counters = {"native": 0, "decision": 0}
-    for line in result.stdout.splitlines():
-        for key, pattern in DROP_PATTERNS.items():
-            match = pattern.search(line)
-            if match:
-                counters[key] = int(match.group(1))
-    return counters
+def latest_drop_counters(hub_http_url: str, token: str) -> dict[str, int]:
+    request = Request(f"{hub_http_url.rstrip('/')}/debug/runtime/drops", headers={"Authorization": f"Bearer {token}"})
+    with urlopen(request, timeout=10) as response:
+        counters = json.load(response)
+    return {key: int(counters[key]) for key in DROP_COUNTERS}
 
 
 def fetch_demo_token() -> str | None:

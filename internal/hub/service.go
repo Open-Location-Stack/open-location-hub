@@ -19,6 +19,7 @@ import (
 	"github.com/formation-res/open-location-hub/internal/ids"
 	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
+	"github.com/formation-res/open-location-hub/internal/stream"
 	"github.com/formation-res/open-location-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,6 +35,7 @@ import (
 // behavior.
 type Config struct {
 	HubID                                 string
+	ObservationMirror                     func(context.Context, stream.Observation)
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
 	DedupTTL                              time.Duration
@@ -1059,8 +1061,8 @@ func (s *Service) ListFenceProviders(ctx context.Context, id openapi_types.UUID)
 // ProcessLocations validates, stores, and republishes provider location
 // updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
-	for _, location := range locations {
-		location = s.applyLocationDefaults(ctx, location)
+	for _, input := range locations {
+		location := s.applyLocationDefaults(ctx, input)
 		if locationCRS(location) == "local" {
 			if _, err := s.zoneForLocationSource(ctx, location); err != nil {
 				return err
@@ -1089,6 +1091,10 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 			s.telemetry().RecordIngestRecord(itemCtx, "location", "failed")
 			span.End()
 			return err
+		}
+		if mirror := s.cfg.ObservationMirror; mirror != nil {
+			mirror(itemCtx, stream.Observation{Kind: stream.Location, ProviderID: input.ProviderId,
+				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "location_ingest", "location", time.Since(start))
 		span.End()
@@ -1149,7 +1155,8 @@ func trackablesForProvider(trackables []gen.Trackable, providerID string) []gen.
 // ProcessProximities validates, resolves, and republishes provider proximity
 // updates.
 func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
-	for _, proximity := range proximities {
+	for _, input := range proximities {
+		proximity := input
 		if proximity.TimestampGenerated == nil {
 			now := s.now().UTC()
 			proximity.TimestampGenerated = &now
@@ -1191,6 +1198,10 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
 			span.End()
 			return err
+		}
+		if mirror := s.cfg.ObservationMirror; mirror != nil {
+			mirror(itemCtx, stream.Observation{Kind: stream.Proximity, ProviderID: input.ProviderId,
+				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "proximity_ingest", "proximity", time.Since(start))
 		span.End()

@@ -42,6 +42,26 @@ HTTP request decoding behavior:
 - the REST/RPC handler layer accepts exactly one JSON document per request body and rejects trailing JSON tokens
 - unknown JSON object fields remain allowed so forwards-compatible clients are not rejected solely for extension data
 
+### Kafka shadow ingest
+
+Set `KAFKA_SHADOW_BROKERS` to a comma-separated list of Kafka `host:port`
+addresses to mirror validated location and proximity observations. Provision
+`KAFKA_SHADOW_TOPIC` before starting the Hub. Its default is
+`location-hub.observations.v1`. The Hub verifies the topic at startup and the
+producer waits for all in-sync replicas to acknowledge each mirrored record.
+The mirror is asynchronous, with 16,384 buffered records, a 32 MiB buffer and
+a 15-second delivery timeout. A full buffer or failed append increments the
+shadow failure metrics. The existing ingest and decision path remains active.
+
+The broker connection verifies TLS by default. Use `KAFKA_SHADOW_CA_FILE` for a
+private CA. Set `KAFKA_SHADOW_CLIENT_CERT_FILE` and
+`KAFKA_SHADOW_CLIENT_KEY_FILE` together for mTLS, or supply
+`KAFKA_SHADOW_USERNAME` and `KAFKA_SHADOW_PASSWORD` for SCRAM-SHA-256. Use
+`KAFKA_SHADOW_INSECURE_LOCAL=true` only with the isolated development broker.
+The local Compose overlay configures six-hour retention; set
+`KAFKA_SHADOW_RETENTION_MS` before creating the topic to override it. For an
+existing topic, change retention through the broker's provisioning workflow.
+
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)
 - `STATE_PROXIMITY_TTL` (duration, default `5m`)

@@ -56,7 +56,7 @@ The lint stack now verifies:
 - `staticcheck`
 - `govulncheck`
 - `go mod tidy` leaves [go.mod](../go.mod) and [go.sum](../go.sum) unchanged
-- `just generate` leaves [internal/httpapi/gen/api.gen.go](../internal/httpapi/gen/api.gen.go) and [internal/storage/postgres/sqlcgen](../internal/storage/postgres/sqlcgen) unchanged
+- `just generate` leaves [REST bindings](../internal/httpapi/gen/api.gen.go), [SQL bindings](../internal/storage/postgres/sqlcgen), and [event bindings](../internal/stream/pb) unchanged
 
 ## Dependency validation
 
@@ -101,6 +101,11 @@ Run integration tests with Docker/Testcontainers:
 ```bash
 just test-int
 ```
+
+For the mixed airport replay workload, use the
+[airport functional profile](../connectors/replay/benchmarks/opensky-germany-2026-04-08/README.md#functional-profile).
+On the Kafka shadow stack, verify the broker offset delta against the replay's
+scheduled location count, in addition to checking legacy OMLOX event delivery.
 
 The suite boots Postgres, Valkey, and Mosquitto containers and performs migration smoke checks.
 If Docker is unavailable, tests should skip.

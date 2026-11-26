@@ -1,0 +1,58 @@
+# Local overlay for docker-compose.yml. The broker is reachable only inside
+# the project's Docker network.
+services:
+  kafka:
+    image: apache/kafka:4.3.0
+    environment:
+      CLUSTER_ID: bG9jYXRpb24taHViLWRldg
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - shadow-kafka:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  kafka-init:
+    image: apache/kafka:4.3.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      OBSERVATION_TOPIC: "${KAFKA_SHADOW_TOPIC:-location-hub.observations.v1}"
+      TOPIC_RETENTION_MS: "${KAFKA_SHADOW_RETENTION_MS:-21600000}"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        case "$$TOPIC_RETENTION_MS" in
+          ""|0|*[!0-9]*) echo "KAFKA_SHADOW_RETENTION_MS must be a positive integer" >&2; exit 2 ;;
+        esac
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic "$$OBSERVATION_TOPIC" \
+          --partitions 12 --replication-factor 1 \
+          --config cleanup.policy=delete --config message.timestamp.type=LogAppendTime \
+          --config "retention.ms=$$TOPIC_RETENTION_MS" --config segment.ms=300000
+
+  app:
+    environment:
+      KAFKA_SHADOW_BROKERS: kafka:9092
+      KAFKA_SHADOW_INSECURE_LOCAL: "true"
+      KAFKA_SHADOW_TOPIC: "${KAFKA_SHADOW_TOPIC:-location-hub.observations.v1}"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+volumes:
+  shadow-kafka:

@@ -9,7 +9,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      APT_PACKAGES: just pkg-config libproj-dev proj-data
+      APT_PACKAGES: just pkg-config libproj-dev proj-data protobuf-compiler
     steps:
       - uses: actions/checkout@v7.0.1
 

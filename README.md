@@ -43,12 +43,12 @@ laptop development.
 The hub uses native CRS transformation support via PROJ, so local builds need Go 1.27.1 or newer and PROJ development libraries.
 
 macOS with Homebrew:
-- `brew install just pkgconf proj`
+- `brew install just pkgconf proj protobuf`
 - the repository `just` workflows use the repo-local `tools/bin/pkg-config` shim when `pkg-config` is not available on the shell path
 
 Debian/Ubuntu:
 - `sudo apt-get update`
-- `sudo apt-get install -y golang-go just build-essential pkg-config libproj-dev proj-data`
+- `sudo apt-get install -y golang-go just build-essential pkg-config libproj-dev proj-data protobuf-compiler`
 
 Notes:
 - `just bootstrap` installs the pinned Go code generators and analysis tools used by this repository

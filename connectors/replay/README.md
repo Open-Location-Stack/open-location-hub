@@ -173,11 +173,16 @@ replay window is compressed to the target duration. For each run it records:
 - expected replay window and actual runtime
 - logged, scheduled, and synthetic location counts
 - whether the run finished before timeout
-- native and decision queue drop deltas from the hub runtime
+- native, decision, event-bus and WebSocket delivery drop deltas from the Hub's authenticated runtime diagnostics
 - raw `location_updates` observed during replay
 - derived `trackable_motions` observed during replay
 - `fence_events` split into entry and exit counts
 - `collision_events` count plus whether collision reporting was enabled
+
+Use the [airport functional profile](benchmarks/opensky-germany-2026-04-08/README.md#functional-profile)
+to require successful replay, location and motion delivery, airport fence
+entry and exit, and collision events. The reported replay rate is the publisher
+rate. Observed WebSocket counts reflect batching, throttling and coalescing.
 
 Run it against the shared local hub:
 

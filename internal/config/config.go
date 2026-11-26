@@ -23,6 +23,7 @@ type Config struct {
 	HubLabel                              string
 	ResetHubID                            bool
 	PostgresURL                           string
+	KafkaShadow                           KafkaShadowConfig
 	MQTTBrokerURL                         string
 	MQTTHandlerWorkers                    int
 	MQTTHandlerBuffer                     int
@@ -285,6 +286,11 @@ func fromLookupEnv(lookup lookupEnvFunc) (Config, error) {
 	if err := cfg.Telemetry.Validate(); err != nil {
 		return Config{}, err
 	}
+	kafkaShadow, err := loadKafkaShadow(lookup)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.KafkaShadow = kafkaShadow
 	return cfg, nil
 }
 
