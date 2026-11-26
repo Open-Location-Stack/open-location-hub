@@ -5,31 +5,21 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/formation-res/open-location-hub/internal/ingest"
 	"time"
 
 	streampb "github.com/formation-res/open-location-hub/internal/stream/pb"
 	"google.golang.org/protobuf/proto"
 )
 
-// Observation is a validated location or proximity received by the Hub.
-type Observation struct {
-	Kind                      streampb.Observation_Kind
-	ProviderID                string
-	Source                    string
-	ObservedAt                *time.Time
-	Payload                   any
-	ResolvedTrackableIDs      []string
-	ResolvedProximityLocation any
-}
+type Observation = ingest.Observation
 
 const (
-	// Location represents an OMLOX location observation.
-	Location = streampb.Observation_KIND_LOCATION
-	// Proximity represents an OMLOX proximity observation.
-	Proximity = streampb.Observation_KIND_PROXIMITY
+	Location  = ingest.Location
+	Proximity = ingest.Proximity
 )
 
-func (o Observation) encode(hubID, transport string, receivedAt time.Time) (key, value []byte, err error) {
+func encodeObservation(o Observation, hubID, transport string, receivedAt time.Time) (key, value []byte, err error) {
 	switch o.Kind {
 	case streampb.Observation_KIND_LOCATION, streampb.Observation_KIND_PROXIMITY:
 	default:

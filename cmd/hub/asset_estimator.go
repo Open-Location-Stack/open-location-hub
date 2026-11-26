@@ -40,6 +40,10 @@ func runAssetEstimator(ctx context.Context) error {
 	ctx = observability.WithRuntime(ctx, telemetry)
 	group, workerCtx := errgroup.WithContext(ctx)
 	var estimatorConfiguration *stream.EstimatorConfiguration
+	fenceInputTopic := strings.TrimSpace(os.Getenv("KAFKA_FENCE_INPUT_TOPIC"))
+	if fenceInputTopic != "" && strings.TrimSpace(os.Getenv("HUB_CONFIG_READ_URL")) == "" {
+		return fmt.Errorf("HUB_CONFIG_READ_URL is required for fence routing")
+	}
 	if snapshotURL := strings.TrimSpace(os.Getenv("HUB_CONFIG_READ_URL")); snapshotURL != "" {
 		if cfg.HubID == "" {
 			return fmt.Errorf("HUB_ID is required for the estimator configuration watch")
@@ -57,13 +61,14 @@ func runAssetEstimator(ctx context.Context) error {
 			return fmt.Errorf("open estimator configuration database: %w", err)
 		}
 		defer db.Close()
-		watch, err := stream.OpenConfigurationWatch(ctx, cfg.KafkaShadow, db, topic, cfg.HubID, maxStale)
+		watch, err := stream.OpenConfigurationWatch(ctx, cfg.KafkaShadow, db, topic, cfg.HubID, maxStale, fenceInputTopic != "")
 		if err != nil {
 			return fmt.Errorf("initialize estimator configuration watch: %w", err)
 		}
 		defer watch.Close()
 		estimatorConfiguration = &stream.EstimatorConfiguration{
 			Watch: watch, LocationTTL: cfg.StateLocationTTL, ProximityTTL: cfg.StateProximityTTL,
+			FenceInputTopic: fenceInputTopic,
 		}
 	}
 	worker, err := stream.OpenEstimateWorker(workerCtx, cfg.KafkaShadow, input, output, state, instance, estimatorConfiguration)

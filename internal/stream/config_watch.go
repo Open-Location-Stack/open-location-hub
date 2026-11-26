@@ -48,11 +48,13 @@ type ConfigurationWatch struct {
 type locatingConfiguration struct {
 	revision int64
 	shards   [configCacheShards]locatingConfigurationShard
+	geometry *fenceConfiguration
 }
 
 type locatingConfigurationShard struct {
-	rules     map[string]locating.Rules
-	providers map[string]gen.LocationProvider
+	rules      map[string]locating.Rules
+	providers  map[string]gen.LocationProvider
+	trackables map[string]gen.Trackable
 }
 
 func configurationShard(id string) int {
@@ -79,7 +81,7 @@ type configAssembly struct {
 
 // OpenConfigurationWatch captures committed Kafka offsets before taking the
 // PostgreSQL snapshot, so revisions committed after the snapshot stay in view.
-func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, db *pgxpool.Pool, topic, hubID string, maxStale time.Duration) (*ConfigurationWatch, error) {
+func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, db *pgxpool.Pool, topic, hubID string, maxStale time.Duration, fenceRouting bool) (*ConfigurationWatch, error) {
 	if !cfg.Enabled() || db == nil || topic == "" || hubID == "" || maxStale < time.Second {
 		return nil, fmt.Errorf("configuration watch requires Kafka, PostgreSQL, a topic, a Hub ID and at least one second of allowed staleness")
 	}
@@ -93,7 +95,7 @@ func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, d
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := loadLocatingConfiguration(ctx, db, hubID)
+	snapshot, err := loadLocatingConfiguration(ctx, db, hubID, fenceRouting)
 	if err != nil {
 		return nil, fmt.Errorf("load locating configuration snapshot: %w", err)
 	}
@@ -154,7 +156,7 @@ func configurationOffsets(ctx context.Context, options []kgo.Opt, topic string) 
 	return offsets, nil
 }
 
-func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID string) (*locatingConfiguration, error) {
+func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID string, fenceRouting bool) (*locatingConfiguration, error) {
 	snapshot := newLocatingConfiguration(0)
 	err := pgx.BeginTxFunc(ctx, db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		q := sqlcgen.New(tx)
@@ -174,31 +176,49 @@ func loadLocatingConfiguration(ctx context.Context, db *pgxpool.Pool, hubID stri
 			return err
 		}
 		for _, row := range trackables {
-			rules, err := compileTrackable(row.Payload)
+			trackable, rules, err := decodeTrackable(row.Payload)
 			if err != nil {
 				return fmt.Errorf("compile trackable %s: %w", row.ID.String(), err)
 			}
 			id := row.ID.String()
-			snapshot.shards[configurationShard(id)].rules[id] = rules
+			shard := &snapshot.shards[configurationShard(id)]
+			shard.rules[id] = rules
+			if fenceRouting {
+				if shard.trackables == nil {
+					shard.trackables = make(map[string]gen.Trackable)
+				}
+				shard.trackables[id] = trackable
+			}
 		}
 		providers, err := q.ListProviders(ctx)
 		if err != nil {
 			return err
 		}
 		for _, row := range providers {
-			snapshot.shards[configurationShard(row.ID)].providers[row.ID] = providerForLocating(row.ID, row.Type, row.Name)
+			provider := providerForLocating(row.ID, row.Type, row.Name)
+			if fenceRouting {
+				if err := json.Unmarshal(row.Payload, &provider); err != nil {
+					return fmt.Errorf("decode provider %s: %w", row.ID, err)
+				}
+			}
+			snapshot.shards[configurationShard(row.ID)].providers[row.ID] = provider
+		}
+		if fenceRouting {
+			snapshot.geometry, err = loadFenceConfiguration(ctx, q)
+			return err
 		}
 		return nil
 	})
 	return snapshot, err
 }
 
-func compileTrackable(payload []byte) (locating.Rules, error) {
+func decodeTrackable(payload []byte) (gen.Trackable, locating.Rules, error) {
 	var trackable gen.Trackable
 	if err := json.Unmarshal(payload, &trackable); err != nil {
-		return nil, err
+		return trackable, nil, err
 	}
-	return locating.Compile(trackable.LocatingRules)
+	rules, err := locating.Compile(trackable.LocatingRules)
+	return trackable, rules, err
 }
 
 func providerForLocating(id, providerType string, name pgtype.Text) gen.LocationProvider {
@@ -292,7 +312,7 @@ func (w *ConfigurationWatch) applyRecord(ctx context.Context, record *kgo.Record
 		return nil
 	}
 	start := time.Now()
-	changes, err := decodeLocatingChanges(bundle.Changes)
+	changes, err := decodeLocatingChanges(bundle.Changes, current.geometry != nil)
 	if err != nil {
 		return err
 	}
@@ -310,17 +330,30 @@ func (current *locatingConfiguration) withChanges(revision int64, changes []loca
 	next.revision = revision
 	var updatedRules, updatedProviders [configCacheShards]bool
 	for _, change := range changes {
+		if change.kind == "fence" || change.kind == "zone" {
+			continue
+		}
 		index := configurationShard(change.id)
 		shard := &next.shards[index]
 		if change.kind == "trackable" {
 			if !updatedRules[index] {
 				shard.rules = maps.Clone(shard.rules)
+				if next.geometry != nil {
+					shard.trackables = maps.Clone(shard.trackables)
+					if shard.trackables == nil {
+						shard.trackables = make(map[string]gen.Trackable)
+					}
+				}
 				updatedRules[index] = true
 			}
 			if change.remove {
 				delete(shard.rules, change.id)
+				delete(shard.trackables, change.id)
 			} else {
 				shard.rules[change.id] = change.rules
+				if shard.trackables != nil {
+					shard.trackables[change.id] = change.trackable
+				}
 			}
 			continue
 		}
@@ -333,6 +366,9 @@ func (current *locatingConfiguration) withChanges(revision int64, changes []loca
 		} else {
 			shard.providers[change.id] = change.provider
 		}
+	}
+	if next.geometry != nil {
+		next.geometry = next.geometry.withChanges(changes)
 	}
 	return &next
 }
@@ -372,17 +408,20 @@ func (a *configAssembly) append(part *streampb.ConfigurationRevisionPart) (*stre
 }
 
 type locatingChange struct {
-	kind, id string
-	remove   bool
-	rules    locating.Rules
-	provider gen.LocationProvider
+	kind, id  string
+	remove    bool
+	rules     locating.Rules
+	provider  gen.LocationProvider
+	trackable gen.Trackable
+	zone      gen.Zone
+	fence     gen.Fence
 }
 
-func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change) ([]locatingChange, error) {
+func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change, fenceRouting bool) ([]locatingChange, error) {
 	changes := make([]locatingChange, 0, len(rows))
 	for _, row := range rows {
 		kind := row.GetResourceKind()
-		if kind != "trackable" && kind != "location_provider" {
+		if kind != "trackable" && kind != "location_provider" && !(fenceRouting && (kind == "zone" || kind == "fence")) {
 			continue
 		}
 		change := locatingChange{kind: kind}
@@ -406,14 +445,29 @@ func decodeLocatingChanges(rows []*streampb.ConfigurationRevision_Change) ([]loc
 		}
 		change.id = entry.ID
 		if !change.remove {
-			if kind == "trackable" {
-				rules, err := compileTrackable(entry.Payload)
+			switch kind {
+			case "trackable":
+				trackable, rules, err := decodeTrackable(entry.Payload)
 				if err != nil {
 					return nil, fmt.Errorf("compile trackable %s: %w", entry.ID, err)
 				}
 				change.rules = rules
-			} else {
+				change.trackable = trackable
+			case "location_provider":
 				change.provider = gen.LocationProvider{Id: entry.ID, Type: entry.Type, Name: entry.Name}
+				if fenceRouting {
+					if err := json.Unmarshal(entry.Payload, &change.provider); err != nil {
+						return nil, fmt.Errorf("decode provider %s: %w", entry.ID, err)
+					}
+				}
+			case "zone":
+				if err := decodeFenceResource(entry.ID, entry.Payload, &change.zone); err != nil {
+					return nil, err
+				}
+			case "fence":
+				if err := decodeFenceResource(entry.ID, entry.Payload, &change.fence); err != nil {
+					return nil, err
+				}
 			}
 		}
 		changes = append(changes, change)

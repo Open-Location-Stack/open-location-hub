@@ -41,11 +41,13 @@ kafka:
     estimates: location-hub.motion-estimates.v1
     estimatorState: location-hub.estimator-state.v1
     configuration: location-hub.configuration.v1
+    fenceEvaluations: location-hub.fence-evaluations.v1
   routerGroup: location-hub.asset-router.v1
   configHistory: 6h
   routerReplicas: 1
   estimatorReplicas: 1
   estimatorConfigSecret: ""
+  fenceRouting: false
   configMaxStale: 30s
 telemetry:
   metricsEndpoint: ""

@@ -40,6 +40,8 @@ services:
       ESTIMATOR_STATE_TOPIC: "${KAFKA_ESTIMATOR_STATE_TOPIC:-location-hub.estimator-state.v1}"
       CONFIG_TOPIC: "${KAFKA_CONFIG_TOPIC:-location-hub.configuration.v1}"
       CONFIG_RETENTION_MS: "${KAFKA_CONFIG_RETENTION_MS:-${KAFKA_LOG_RETENTION_MS:-21600000}}"
+      FENCE_INPUT_TOPIC: "${KAFKA_FENCE_INPUT_TOPIC:-}"
+      FENCE_INPUT_RETENTION_MS: "${KAFKA_FENCE_INPUT_RETENTION_MS:-${KAFKA_LOG_RETENTION_MS:-21600000}}"
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -57,7 +59,8 @@ services:
             --config "retention.ms=$$2" --config "segment.ms=$$segment_ms"
         }
         topics=,
-        for topic in "$$OBSERVATION_TOPIC" "$$ASSET_INPUT_TOPIC" "$$ESTIMATE_TOPIC" "$$ESTIMATOR_STATE_TOPIC" "$$CONFIG_TOPIC"; do
+        for topic in "$$OBSERVATION_TOPIC" "$$ASSET_INPUT_TOPIC" "$$ESTIMATE_TOPIC" "$$ESTIMATOR_STATE_TOPIC" "$$CONFIG_TOPIC" "$$FENCE_INPUT_TOPIC"; do
+          if test -z "$$topic"; then continue; fi
           case "$$topics" in
             *,"$$topic",*) echo "reused topic name $$topic" >&2; exit 2 ;;
           esac
@@ -67,6 +70,9 @@ services:
         create_topic "$$ASSET_INPUT_TOPIC" "$$ASSET_INPUT_RETENTION_MS"
         create_topic "$$ESTIMATE_TOPIC" "$$ESTIMATE_RETENTION_MS"
         create_topic "$$CONFIG_TOPIC" "$$CONFIG_RETENTION_MS"
+        if test -n "$$FENCE_INPUT_TOPIC"; then
+          create_topic "$$FENCE_INPUT_TOPIC" "$$FENCE_INPUT_RETENTION_MS"
+        fi
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
           --create --if-not-exists --topic "$$ESTIMATOR_STATE_TOPIC" \
           --partitions 12 --replication-factor 1 --config cleanup.policy=compact
@@ -80,6 +86,7 @@ services:
       KAFKA_ESTIMATE_TOPIC: "${KAFKA_ESTIMATE_TOPIC:-location-hub.motion-estimates.v1}"
       KAFKA_ESTIMATOR_STATE_TOPIC: "${KAFKA_ESTIMATOR_STATE_TOPIC:-location-hub.estimator-state.v1}"
       KAFKA_CONFIG_TOPIC: "${KAFKA_CONFIG_TOPIC:-location-hub.configuration.v1}"
+      KAFKA_FENCE_INPUT_TOPIC: "${KAFKA_FENCE_INPUT_TOPIC:-}"
       HUB_CONFIG_HISTORY: "${HUB_CONFIG_HISTORY:-6h}"
       HUB_CONFIG_READ_URL: "${HUB_CONFIG_READ_URL:-}"
       HUB_CONFIG_MAX_STALE: "${HUB_CONFIG_MAX_STALE:-30s}"

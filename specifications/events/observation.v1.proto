@@ -75,6 +75,7 @@ message EstimateCheckpoint {
   repeated AssetInput candidates = 7;
   bytes selected_input_id = 8;
   int64 evaluated_at_unix_nano = 9;
+  FenceRoutingCheckpoint fence_routing = 10;
 }
 
 // EstimatorFrontier binds a partition's materialized state to the exact input
@@ -84,6 +85,50 @@ message EstimatorFrontier {
   int64 next_offset = 2;
   bool configuration_aware = 3;
   int64 configuration_revision = 4;
+  bool fence_routing = 5;
+  bytes fence_input_topic_id = 6;
+  int32 fence_input_partitions = 7;
+}
+
+// FenceRoutingCheckpoint retains possible memberships across cell jumps and
+// replica reassignment. Safe expiry is measured in the input processing clock.
+message FenceRoutingCheckpoint {
+  message Interest {
+    string fence_id = 1;
+    optional int64 certainly_expired_at_unix_nano = 2;
+  }
+  int64 processed_at_unix_nano = 1;
+  int64 configuration_revision = 2;
+  repeated Interest interests = 3;
+}
+
+// FenceEvaluation is keyed by the origin, fence and trackable. Candidates for
+// one asset are produced in estimate sequence, including departed coverage.
+message FenceEvaluation {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_EVALUATE = 1;
+    ACTION_CANCEL = 2;
+  }
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  bytes estimate_id = 3;
+  string origin_hub_id = 4;
+  string fence_id = 5;
+  string trackable_id = 6;
+  uint64 asset_sequence = 7;
+  int64 configuration_revision = 8;
+  uint32 topology_version = 9;
+  int64 processed_at_unix_nano = 10;
+  bytes location_json = 11;
+  bytes fence_json = 12;
+  double trackable_radius = 13;
+  optional double trackable_extrusion = 14;
+  double exit_tolerance = 15;
+  int64 fence_timeout_nanos = 16;
+  int64 tolerance_timeout_nanos = 17;
+  int64 exit_delay_nanos = 18;
+  Action action = 19;
 }
 
 // ConfigurationRevision represents one committed single-hub database

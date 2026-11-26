@@ -67,7 +67,7 @@ func testEstimateInput(t *testing.T, at time.Time, provider string, longitude fl
 			"position": map[string]any{"type": "Point", "coordinates": []float64{longitude, 0, 30}},
 		},
 	}
-	_, value, err := input.encode("hub", "websocket", at)
+	_, value, err := encodeObservation(input, "hub", "websocket", at)
 	if err != nil {
 		t.Fatal(err)
 	}

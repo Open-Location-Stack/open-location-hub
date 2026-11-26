@@ -121,6 +121,14 @@ The estimator uses `kafka.configMaxStale` as its configuration freshness grace.
 Choose fresh estimate and checkpoint topic names on the first rollout of this
 mode, and provision the same names in the managed Kafka values.
 
+Enable `kafka.fenceRouting` to produce shadow fence evaluation inputs.
+Keep the configuration secret enabled and extend its reader grants to
+`zones` and `fences`. Set `kafka.topics.fenceEvaluations` to the same value
+in both charts. The broker chart creates that topic and grants the estimator
+write access. Use a fresh estimate and checkpoint topic for the first
+routing rollout. Set `kafka.topicRetentionMs.fenceEvaluations` to override
+the shared six-hour event-log retention.
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,

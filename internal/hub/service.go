@@ -17,10 +17,10 @@ import (
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 	"github.com/formation-res/open-location-hub/internal/ids"
+	"github.com/formation-res/open-location-hub/internal/ingest"
 	"github.com/formation-res/open-location-hub/internal/locating"
 	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/formation-res/open-location-hub/internal/storage/postgres/sqlcgen"
-	"github.com/formation-res/open-location-hub/internal/stream"
 	"github.com/formation-res/open-location-hub/internal/transform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,7 +36,7 @@ import (
 // behavior.
 type Config struct {
 	HubID                                 string
-	ObservationMirror                     func(context.Context, stream.Observation)
+	ObservationMirror                     func(context.Context, ingest.Observation)
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
 	DedupTTL                              time.Duration
@@ -1094,7 +1094,7 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 			return err
 		}
 		if mirror := s.cfg.ObservationMirror; mirror != nil {
-			mirror(itemCtx, stream.Observation{Kind: stream.Location, ProviderID: input.ProviderId,
+			mirror(itemCtx, ingest.Observation{Kind: ingest.Location, ProviderID: input.ProviderId,
 				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
 				ResolvedTrackableIDs: stringSliceValue(resolvedLocation.Trackables)})
 		}
@@ -1202,7 +1202,7 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 			return err
 		}
 		if mirror := s.cfg.ObservationMirror; mirror != nil {
-			mirror(itemCtx, stream.Observation{Kind: stream.Proximity, ProviderID: input.ProviderId,
+			mirror(itemCtx, ingest.Observation{Kind: ingest.Proximity, ProviderID: input.ProviderId,
 				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
 				ResolvedTrackableIDs: stringSliceValue(location.Trackables), ResolvedProximityLocation: location})
 		}

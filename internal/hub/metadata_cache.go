@@ -690,11 +690,31 @@ func (s metadataSnapshot) fenceCandidatesWithRadius(location gen.Location, radiu
 		return nil, err
 	}
 	results := index.search(query)
+	var seen map[string]bool
+	if scopeKey == "crs:EPSG:4326" {
+		for _, shift := range []float64{-360, 360} {
+			if (shift < 0 && maxX > 180) || (shift > 0 && minX < -180) {
+				wrapped, err := rtreego.NewRect(rtreego.Point{minX + shift, minY}, []float64{maxX - minX, maxY - minY})
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, index.search(wrapped)...)
+				seen = make(map[string]bool)
+			}
+		}
+	}
 	fences := make([]gen.Fence, 0, len(results))
 	for _, spatial := range results {
 		entry, ok := spatial.(indexedFence)
 		if !ok {
 			continue
+		}
+		if seen != nil {
+			id := entry.fence.Id.String()
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
 		}
 		if !fenceMatchesFloor(entry.fence, location) {
 			continue

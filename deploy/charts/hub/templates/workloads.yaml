@@ -161,6 +161,10 @@ spec:
                   key: POSTGRES_URL
             - name: HUB_CONFIG_MAX_STALE
               value: {{ $root.Values.kafka.configMaxStale | quote }}
+            {{- if $root.Values.kafka.fenceRouting }}
+            - name: KAFKA_FENCE_INPUT_TOPIC
+              value: {{ required "Set kafka.topics.fenceEvaluations" $root.Values.kafka.topics.fenceEvaluations | quote }}
+            {{- end }}
             {{- end }}
             {{- if $root.Values.telemetry.metricsEndpoint }}
             - name: OTEL_ENABLED

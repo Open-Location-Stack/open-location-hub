@@ -366,6 +366,23 @@ and isolates the remaining bottleneck under this local workload.
 Multi-broker capacity and distributed spatial decisions still need
 qualification.
 
+With fixed-cell fence routing enabled, two estimator replicas shared 12 input
+partitions in the local Kafka stack. The native airport profile passed at 177
+updates/s with zero reported drops. The 1 Hz publisher replayed 159,740
+observations at 2,501/s. The compatibility path reported 68,205 decision
+queue drops and 4,340 event-bus drops during that profile.
+
+A read-committed scan across those runs and a two-input jump fixture found
+167,870 estimates and 5,182 fence evaluation inputs. The inputs referenced
+committed estimates, had unique event IDs, and advanced in order per
+membership key. Forty-three membership keys used all 12 fence partitions.
+The fixture moved more than 30 km from inside a 60 m fence, and its departure
+reached the same membership partition as its entry. The observed per-estimate
+routing p99 was below 0.1 ms on both replicas in this workload. The fence
+topic reported six-hour retention. This run covers candidate routing, with
+exact membership decisions and timer execution still handled by the
+compatibility runtime.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

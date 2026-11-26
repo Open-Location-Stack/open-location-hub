@@ -21,11 +21,11 @@ func TestAssetRoutingKeepsOneKeyAcrossProviders(t *testing.T) {
 		Payload: map[string]any{"source": "gate"}, ResolvedTrackableIDs: []string{"forklift"},
 		ResolvedProximityLocation: map[string]any{"source": "zone"},
 	}
-	_, original, err := first.encode("hub", "rest", now)
+	_, original, err := encodeObservation(first, "hub", "rest", now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, later, err := second.encode("hub", "mqtt", now)
+	_, later, err := encodeObservation(second, "hub", "mqtt", now)
 	if err != nil {
 		t.Fatal(err)
 	}

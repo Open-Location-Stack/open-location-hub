@@ -29,13 +29,15 @@ type EstimateWorker struct {
 	partitions    map[int32]*partitionEstimates
 	configuration *ConfigurationWatch
 	retention     candidateRetention
+	fences        *fenceRouter
 }
 
 // EstimatorConfiguration enables locating rules and defines candidate lifetimes.
 type EstimatorConfiguration struct {
-	Watch        *ConfigurationWatch
-	LocationTTL  time.Duration
-	ProximityTTL time.Duration
+	Watch           *ConfigurationWatch
+	LocationTTL     time.Duration
+	ProximityTTL    time.Duration
+	FenceInputTopic string
 }
 
 type partitionEstimates struct {
@@ -71,6 +73,23 @@ func OpenEstimateWorker(ctx context.Context, cfg config.KafkaShadowConfig, input
 		}
 		worker.configuration = configuration.Watch
 		worker.retention = candidateRetention{location: configuration.LocationTTL, proximity: configuration.ProximityTTL}
+		if topic := configuration.FenceInputTopic; topic != "" {
+			if topic == cfg.Topic || topic == input || topic == output || topic == state || topic == configuration.Watch.topic ||
+				configuration.Watch.cache.Load().geometry == nil {
+				stop(nil)
+				store.client.Close()
+				return nil, fmt.Errorf("fence routing requires a separate input topic and geometry snapshot")
+			}
+			checkCtx, finish := context.WithTimeout(ctx, 5*time.Second)
+			metadata, err := topicMetadata(checkCtx, store.client, topic)
+			finish()
+			if err != nil || metadata.TopicID == [16]byte{} || len(metadata.Partitions) == 0 {
+				stop(nil)
+				store.client.Close()
+				return nil, fmt.Errorf("fence input topic topology is unavailable: %v", err)
+			}
+			worker.fences = &fenceRouter{topic: topic, topicID: metadata.TopicID, partitions: int32(len(metadata.Partitions))}
+		}
 	}
 	group := state + ".estimator"
 	session, err := kgo.NewGroupTransactSession(append(options,
@@ -150,6 +169,14 @@ func (w *EstimateWorker) restorePartitions(ctx context.Context, offsets map[stri
 			w.stop(err)
 			return nil, err
 		}
+		if frontier := materialized.frontier; frontier != nil {
+			if frontier.FenceRouting != (w.fences != nil) || w.fences != nil &&
+				(!bytes.Equal(frontier.FenceInputTopicId, w.fences.topicID[:]) || frontier.FenceInputPartitions != w.fences.partitions) {
+				err := fmt.Errorf("partition %d checkpoint belongs to another fence routing topology", partition)
+				w.stop(err)
+				return nil, err
+			}
+		}
 		if w.configuration != nil && materialized.frontier != nil &&
 			materialized.frontier.ConfigurationRevision > w.configuration.cache.Load().revision {
 			err := fmt.Errorf("partition %d checkpoint requires a newer configuration revision", partition)
@@ -191,6 +218,13 @@ func (w *EstimateWorker) process(ctx context.Context, fetches kgo.Fetches) error
 			}
 			current.frontier = updates.frontier
 		}
+		if w.fences != nil {
+			for _, record := range results {
+				if record.Topic == w.fences.topic {
+					telemetry.RecordStreamHandled(ctx, "spatial_router", "candidate", "fence_membership", "shadow", "committed")
+				}
+			}
+		}
 	}
 	for _, outcome := range outcomes {
 		if !committed {
@@ -225,14 +259,12 @@ func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[
 		}
 		start := time.Now()
 		telemetry.RecordQueueWait(ctx, "asset_estimator", max(0, start.Sub(record.Timestamp)))
-		result, outcome, err := w.estimateRecord(record, previous, updates, configuration)
+		outputs, outcome, err := w.estimateRecord(ctx, record, previous, updates, configuration)
 		telemetry.RecordStreamServiceTime(ctx, "asset_estimator", "estimate", "motion", "shadow", time.Since(start))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("estimate partition %d offset %d: %w", record.Partition, record.Offset, err)
 		}
-		if result != nil {
-			results = append(results, result)
-		}
+		results = append(results, outputs...)
 		outcomes = append(outcomes, outcome)
 		updates.frontier = &streampb.EstimatorFrontier{
 			InputTopicId: w.store.inputID[:], NextOffset: record.Offset + 1,
@@ -241,11 +273,16 @@ func (w *EstimateWorker) prepare(ctx context.Context, fetches kgo.Fetches) (map[
 		if configuration != nil {
 			updates.frontier.ConfigurationRevision = configuration.revision
 		}
+		if w.fences != nil {
+			updates.frontier.FenceRouting = true
+			updates.frontier.FenceInputTopicId = w.fences.topicID[:]
+			updates.frontier.FenceInputPartitions = w.fences.partitions
+		}
 	}
 	return batch, results, outcomes, nil
 }
 
-func (w *EstimateWorker) estimateRecord(record *kgo.Record, previous, updates *partitionEstimates, configuration *locatingConfiguration) (*kgo.Record, string, error) {
+func (w *EstimateWorker) estimateRecord(ctx context.Context, record *kgo.Record, previous, updates *partitionEstimates, configuration *locatingConfiguration) ([]*kgo.Record, string, error) {
 	var input streampb.AssetInput
 	if err := proto.Unmarshal(record.Value, &input); err != nil {
 		return nil, "", fmt.Errorf("decode asset input: %w", err)
@@ -276,15 +313,29 @@ func (w *EstimateWorker) estimateRecord(record *kgo.Record, previous, updates *p
 	if err != nil {
 		return nil, outcome, err
 	}
-	if next != nil {
-		updates.assets[string(key)] = next
-	}
 	if result == nil {
+		if next != nil {
+			updates.assets[string(key)] = next
+		}
 		return nil, outcome, nil
 	}
 	encoded, err := proto.Marshal(result)
 	if err != nil {
 		return nil, "", fmt.Errorf("marshal motion estimate: %w", err)
 	}
-	return &kgo.Record{Topic: w.outputTopic, Partition: record.Partition, Key: key, Value: encoded}, outcome, nil
+	outputs := []*kgo.Record{{Topic: w.outputTopic, Partition: record.Partition, Key: key, Value: encoded}}
+	if w.fences != nil {
+		started := time.Now()
+		evaluations, routing, err := w.fences.route(ctx, result, checkpoint.filter().GetFenceRouting(), configuration, record.Timestamp.UnixNano())
+		if err != nil {
+			return nil, "", err
+		}
+		telemetry := observability.RuntimeFromContext(ctx)
+		telemetry.RecordStreamServiceTime(ctx, "spatial_router", "route", "fence_membership", "shadow", time.Since(started))
+		telemetry.RecordBatchProcessing(ctx, "spatial_router", len(evaluations), time.Since(started))
+		next.checkpoint.FenceRouting = routing
+		outputs = append(outputs, evaluations...)
+	}
+	updates.assets[string(key)] = next
+	return outputs, outcome, nil
 }

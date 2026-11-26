@@ -122,6 +122,23 @@ Location and proximity candidate lifetimes use `STATE_LOCATION_TTL` and
 and 512 KiB of candidate bytes. Excess candidates are counted as
 `candidate_limit` when they produce no estimate.
 
+### Spatial fence routing
+
+Set `KAFKA_FENCE_INPUT_TOPIC` on the asset estimator to enable trackable fence
+routing. Enable revision-aware selection and grant its PostgreSQL role
+read access to `zones` and `fences`. All estimator replicas must use the same
+fence input topic. Grant the estimator Kafka Write and Describe permissions on
+that topic. The fence input topic can have a different fixed partition count
+from the estimator input. Provision fresh estimate, estimator checkpoint and
+fence input topics when enabling routing. The estimator rejects a changed
+fence input topic ID or partition count after a checkpoint exists.
+
+Fence evaluation records are shadow inputs. The Compose topic initializer
+uses `KAFKA_FENCE_INPUT_RETENTION_MS`, which defaults to the shared six-hour
+event-log window. The Perses worker performance dashboard lists routing
+under stage `spatial_router`, including the per-estimate service duration and
+committed candidate count.
+
 ### Configuration relay
 
 Apply the database migrations and start the Hub once to initialize its persisted

@@ -81,7 +81,7 @@ func (w *ShadowWriter) Mirror(ctx context.Context, observation Observation) {
 	}
 	metricCtx := context.WithoutCancel(ctx)
 	telemetry := observability.Global()
-	key, value, err := observation.encode(w.hubID, transport, receivedAt)
+	key, value, err := encodeObservation(observation, w.hubID, transport, receivedAt)
 	telemetry.RecordStreamServiceTime(metricCtx, "shadow_ingress", operation, "none", "shadow", time.Since(receivedAt))
 	if err != nil {
 		telemetry.RecordStreamHandled(metricCtx, "shadow_ingress", operation, "none", "shadow", "encode_failed")

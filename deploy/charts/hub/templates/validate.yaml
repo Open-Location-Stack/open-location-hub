@@ -23,3 +23,6 @@
 {{- if and .Values.ingress.enabled (not (and .Values.ingress.host .Values.ingress.tlsSecret)) -}}
 {{- fail "Ingress requires a hostname and TLS Secret" -}}
 {{- end -}}
+{{- if and .Values.kafka.fenceRouting (not (and .Values.kafka.enabled .Values.kafka.estimatorConfigSecret)) -}}
+{{- fail "Fence routing requires Kafka and kafka.estimatorConfigSecret" -}}
+{{- end -}}

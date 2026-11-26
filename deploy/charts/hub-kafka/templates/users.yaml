@@ -29,6 +29,7 @@
     (dict "type" "topic" "name" $t.assetInputs "ops" $topicRead)
     (dict "type" "topic" "name" $t.configuration "ops" $topicRead)
     (dict "type" "topic" "name" $t.estimates "ops" $topicWrite)
+    (dict "type" "topic" "name" $t.fenceEvaluations "ops" $topicWrite)
     (dict "type" "topic" "name" $t.estimatorState "ops" (list "Read" "Write" "Describe" "DescribeConfigs"))
     (dict "type" "cluster" "ops" (list "IdempotentWrite"))
     (dict "type" "group" "name" $estimateGroup "ops" $groupRead)

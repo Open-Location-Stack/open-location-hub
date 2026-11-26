@@ -21,7 +21,7 @@ func TestObservationEncodingPreservesIdentityAcrossRetries(t *testing.T) {
 	var keys [2][]byte
 	for i, transport := range []string{"rest", "websocket"} {
 		at := observed.Add(time.Duration(i+1) * time.Second)
-		key, encoded, err := input.encode("hub-a", transport, at)
+		key, encoded, err := encodeObservation(input, "hub-a", transport, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestObservationEncodingPreservesIdentityAcrossRetries(t *testing.T) {
 		!bytes.Equal(decoded[0].GetEventId(), decoded[1].GetEventId()) {
 		t.Fatal("retry changed the partition key or event identity")
 	}
-	otherKey, _, err := input.encode("hub-b", "rest", observed)
+	otherKey, _, err := encodeObservation(input, "hub-b", "rest", observed)
 	if err != nil || bytes.Equal(otherKey, keys[0]) {
 		t.Fatalf("origin hubs do not have distinct partition keys: %v", err)
 	}

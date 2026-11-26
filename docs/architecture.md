@@ -86,6 +86,18 @@ on the next asset input. Stationary-asset reevaluation, provider association
 changes after ingress, bounded reordering and exact replay of the original
 revision assignments still require additional stages.
 
+Optional shadow fence routing indexes the committed geometry in fixed spatial
+cells and caches native and projected copies. The estimator routes each
+trackable estimate to nearby fences and to fences it may still occupy. Its
+checkpoint retains those interests so crossing multiple cells or changing
+estimator replicas still reaches the previously visited fence. Each fence and
+trackable pair maps to a stable Kafka partition. The selected location, fence
+geometry and effective timer policy travel with the configuration revision.
+The estimate, fence inputs and checkpoint commit together. Candidate routing
+does not change public fence events. Exact membership decisions, timer
+execution, provider-only routing and stationary re-evaluation still run outside
+this shadow stage.
+
 The configuration relay publishes changes to zones, fences, trackables and
 location providers from a PostgreSQL outbox. It emits one revision per
 committed transaction, including SQL inserts, updates and deletes. All
