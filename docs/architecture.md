@@ -17,6 +17,11 @@
 - The hub loads those resources into an immutable in-memory metadata snapshot before it accepts traffic.
 - Successful CRUD writes update Postgres first, then update the in-memory snapshot, invalidate any affected derived metadata such as zone transforms, and emit a `metadata_changes` bus event.
 - Metadata writers serialize snapshot preparation and take the reader lock only to publish the completed snapshot. A fence edit reprojects that fence and reuses other world geometries; zone changes rebuild world geometry. Spatial trees are rebuilt from the resulting snapshot. Readers continue on the previous immutable snapshot during preparation.
+- Fence candidate lookup uses fixed cells within each coordinate scope. Fences
+  that overlap several cells are indexed in each one and matched once per
+  query. A scope-wide index handles large footprints, while a separate index
+  keeps large fences visible to ordinary cell queries. Exact geometry, floor,
+  height and active membership checks still use the existing rules.
 - Provider location reads use a provider-to-source index maintained on writes, deletion, and expiry. Provider-to-trackable reads use the metadata assignment index.
 - A background reconcile loop reloads durable metadata periodically and emits the same `metadata_changes` notifications when it detects out-of-band create, update, or delete drift.
 - Decision-critical ingest state is kept in process memory:
@@ -38,6 +43,15 @@ Its content-derived ID groups exact retry payloads and has the same value for
 indistinguishable repeated samples. Compare Kafka appends with the existing
 processing path using the shadow outcome metrics. Kafka is currently a shadow
 sink. The path below still owns state, decisions and acknowledgements.
+
+The optional `asset-router` process consumes the mirrored log and writes one
+input per associated trackable to a second Kafka topic. Each asset has a stable
+partition key derived from origin hub and trackable ID. This co-locates inputs
+from multiple providers. The Kafka transaction commits the consumed offsets and
+the asset input records together. Association is captured at ingress during
+this phase. Asset order reflects arrival in the output log, with event-time
+reordering still needed in the estimator. Unassociated observations remain in
+the original log for provider-scoped processing.
 
 1. REST, MQTT, or WebSocket ingest enters the shared hub service. MQTT callbacks enqueue messages for `MQTT_HANDLER_WORKERS` workers behind `MQTT_HANDLER_BUFFER`; full queues drop new messages with a runtime drop metric and a throttled warning. The broker receive loop stays available for publish acknowledgments.
 2. The hub validates, normalizes, deduplicates, and updates in-memory transient state on the ingest path.
@@ -63,6 +77,10 @@ Implications:
 - switching a selected provider/source or selecting an older retained observation resets the optional Kalman filter to avoid blending unrelated coordinate frames
 - when Kalman filtering is enabled, `trackable_motion` publication can be rate-limited independently from decision logic
 - collision evaluation remains WGS84-only so downstream collision payloads stay in one coordinate space
+- the collision worker maintains an incremental spatial index over active motions,
+  with removal on expiry and administrative deletion. Candidate search uses the
+  current metadata snapshot's radius bound. Active pairs are still checked when
+  an asset jumps out of candidate range.
 - pending internal events resume delivery when subscribers make room, even if no further events arrive; unsubscribe stops the flusher and synchronizes channel closure with concurrent emitters
 - WebSocket subscriptions match topic and observation filters before projection; a broadcast batch shares projections for each event, CRS, and target zone across connections
 - lagging internal subscribers coalesce hot `location` and `trackable_motion` events to the latest value per object instead of dropping them immediately, while discrete fence/collision/metadata edges remain non-coalesced
@@ -79,7 +97,7 @@ Implications:
 - Child spans isolate proximity resolution, native publication, decision processing, fence evaluation, collision evaluation, metadata reconcile, auth, and runtime dependency work so slow stages can be inspected directly.
 - Asset-, provider-, zone-, and fence-centric identifiers belong on traces and structured logs only. They are intentionally excluded from normal metric labels so dashboards remain queryable under sustained ingest volume.
 - Zap remains the application logging API. When OTLP logs are enabled, the logger tees into the OpenTelemetry bridge so the same structured events still appear locally while also being exported to the collector.
-- Runtime drop counters and gauges for queue occupancy, event-bus subscribers, and WebSocket connections are exposed from `internal/hub` through observable instruments so the e2e stack can dashboard overload and degraded states without adding lock-heavy bookkeeping to the ingest path.
+- Runtime drop counters and gauges for queue occupancy, event-bus subscribers, and WebSocket connections are exposed from `internal/hub` through observable instruments so the e2e stack can dashboard overload and degraded states without adding lock-heavy bookkeeping to the ingest path. Collision queue drops are counted by work batch and appear in runtime diagnostics and the stage-specific drop metric.
 - Per-drop OTLP attribution is also exported via `hub.runtime.drop_events_total{stage,reason}` so dashboards can break overload down by bounded cause labels without relying on the local debug endpoint.
 - For local troubleshooting, the hub also exposes an auth-protected `/debug/runtime/drops` endpoint that returns the current drop counters plus a bounded set of recent sampled drops with stage and object context.
 - When `PPROF_ENABLED=true`, the same auth-protected HTTP surface also exposes `/debug/pprof/*`; optional runtime mutex and block profiler rates can be enabled from env so replay benchmarks can produce direct contention evidence instead of only throughput symptoms.

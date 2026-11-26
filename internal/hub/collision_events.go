@@ -25,27 +25,14 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 	defer func() {
 		s.telemetry().RecordProcessingDuration(stageCtx, "collision_evaluation", "location", time.Since(started))
 	}()
-	active := s.processingState().listCollisionMotions()
-	latest := make(map[string]gen.TrackableMotion, len(active)+len(motions))
-	indexed := make([]indexedCollisionMotion, 0, len(active))
-	maxRadius := 0.0
-	for _, motion := range active {
-		latest[motion.Id] = motion
-		point, err := point2D(motion.Location.Position)
-		if err != nil {
-			continue
-		}
-		if entry, ok := newIndexedCollisionMotion(motion, point); ok {
-			indexed = append(indexed, entry)
-		}
-		if trackable, err := s.trackableByID(ctx, motion.Id); err == nil {
-			maxRadius = math.Max(maxRadius, trackableRadius(trackable))
-		}
+	trackables, maxRadius, err := s.collisionTrackables(ctx)
+	if err != nil {
+		return err
 	}
-	index := newCollisionSpatialIndex(indexed)
+	state := s.processingState()
 	for _, motion := range motions {
-		left, err := s.trackableByID(ctx, motion.Id)
-		if err != nil {
+		left, ok := trackables[motion.Id]
+		if !ok {
 			continue
 		}
 		point, err := point2D(motion.Location.Position)
@@ -53,24 +40,24 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 			return err
 		}
 		candidates := map[string]gen.TrackableMotion{}
-		for _, candidate := range index.Nearby(motion.Location, point, trackableRadius(left)+maxRadius) {
-			if candidate.motion.Id != motion.Id {
-				candidates[candidate.motion.Id] = latest[candidate.motion.Id]
+		for _, candidate := range state.closestCollisionMotions(motion.Location, point, trackableRadius(left)+maxRadius) {
+			if candidate.Id != motion.Id {
+				candidates[candidate.Id] = candidate
 			}
 		}
-		for _, pair := range s.processingState().collisionsForTrackable(motion.Id) {
+		for _, pair := range state.collisionsForTrackable(motion.Id) {
 			other := pair.leftMotion
 			if other.Id == motion.Id {
 				other = pair.rightMotion
 			}
-			if recent, ok := latest[other.Id]; ok {
+			if recent, ok := state.getCollisionMotion(other.Id); ok {
 				other = recent
 			}
 			candidates[other.Id] = other
 		}
 		for _, other := range candidates {
-			right, err := s.trackableByID(ctx, other.Id)
-			if err != nil {
+			right, ok := trackables[other.Id]
+			if !ok {
 				continue
 			}
 			if err = s.transitionCollision(ctx, motion, left, other, right); err != nil {
@@ -78,14 +65,33 @@ func (s *Service) publishCollisionEvents(ctx context.Context, motions []gen.Trac
 				return err
 			}
 		}
-		latest[motion.Id] = motion
-		s.processingState().setCollisionMotion(motion.Id, motion, s.cfg.CollisionStateTTL)
-		maxRadius = math.Max(maxRadius, trackableRadius(left))
-		if entry, ok := newIndexedCollisionMotion(motion, point); ok {
-			index.add(entry)
-		}
+		state.setCollisionMotion(motion, point, s.cfg.CollisionStateTTL)
 	}
 	return nil
+}
+
+func (s *Service) collisionTrackables(ctx context.Context) (map[string]gen.Trackable, float64, error) {
+	if cache := s.metadataCache(); cache != nil {
+		snapshot := cache.current()
+		return snapshot.trackablesByID, snapshot.maxTrackableRadius, nil
+	}
+	items, err := s.ListTrackables(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	trackables := make(map[string]gen.Trackable, len(items))
+	for _, item := range items {
+		trackables[item.Id.String()] = item
+	}
+	return trackables, largestTrackableRadius(items), nil
+}
+
+func largestTrackableRadius(trackables []gen.Trackable) float64 {
+	radius := 0.0
+	for _, trackable := range trackables {
+		radius = math.Max(radius, trackableRadius(trackable))
+	}
+	return radius
 }
 
 func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) error {

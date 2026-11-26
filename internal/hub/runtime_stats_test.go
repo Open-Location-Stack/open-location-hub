@@ -66,10 +66,11 @@ func TestRuntimeStatsSnapshotIncludesRecentDropSamples(t *testing.T) {
 		},
 	}, 17)
 	stats.RecordWebSocketOutboundDrop("trackable_motions", 5)
+	stats.recordCollisionQueueDrop("trackable-c", 23)
 
 	snapshot := stats.Snapshot()
-	if len(snapshot.RecentDrops) != 3 {
-		t.Fatalf("expected 3 recent drops, got %d", len(snapshot.RecentDrops))
+	if len(snapshot.RecentDrops) != 4 {
+		t.Fatalf("expected 4 recent drops, got %d", len(snapshot.RecentDrops))
 	}
 	if snapshot.RecentDrops[0].Stage != "event_bus" || snapshot.RecentDrops[0].Reason != "subscriber_channel_full" {
 		t.Fatalf("unexpected first drop sample: %+v", snapshot.RecentDrops[0])
@@ -79,5 +80,9 @@ func TestRuntimeStatsSnapshotIncludesRecentDropSamples(t *testing.T) {
 	}
 	if snapshot.RecentDrops[2].Stage != "websocket_outbound" || snapshot.RecentDrops[2].Topic != "trackable_motions" {
 		t.Fatalf("unexpected third drop sample: %+v", snapshot.RecentDrops[2])
+	}
+	drop := snapshot.RecentDrops[3]
+	if snapshot.CollisionQueueDrops != 1 || drop.Stage != "collision_queue" || drop.TrackableID != "trackable-c" || drop.QueueDepth != 23 {
+		t.Fatalf("unexpected collision queue drop count and sample: %d, %+v", snapshot.CollisionQueueDrops, drop)
 	}
 }

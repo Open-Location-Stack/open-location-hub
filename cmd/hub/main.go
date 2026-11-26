@@ -116,10 +116,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx); err != nil {
+	if err := runCommand(ctx, os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "open-location-hub: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runCommand(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		return run(ctx)
+	}
+	if len(args) == 1 && args[0] == "asset-router" {
+		return runAssetRouter(ctx)
+	}
+	return fmt.Errorf("expected no arguments or asset-router")
 }
 
 func run(ctx context.Context) error {

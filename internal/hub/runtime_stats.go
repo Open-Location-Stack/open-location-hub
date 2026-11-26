@@ -34,6 +34,7 @@ type RuntimeStats struct {
 	eventBusDrops          atomic.Uint64
 	nativeQueueDrops       atomic.Uint64
 	decisionQueueDrops     atomic.Uint64
+	collisionQueueDrops    atomic.Uint64
 	websocketOutboundDrops atomic.Uint64
 	nativeQueueDepth       atomic.Int64
 	decisionQueueDepth     atomic.Int64
@@ -49,6 +50,7 @@ type RuntimeStatsSnapshot struct {
 	EventBusDrops          uint64       `json:"event_bus_drops"`
 	NativeQueueDrops       uint64       `json:"native_queue_drops"`
 	DecisionQueueDrops     uint64       `json:"decision_queue_drops"`
+	CollisionQueueDrops    uint64       `json:"collision_queue_drops"`
 	WebSocketOutboundDrops uint64       `json:"websocket_outbound_drops"`
 	NativeQueueDepth       int64        `json:"native_queue_depth"`
 	DecisionQueueDepth     int64        `json:"decision_queue_depth"`
@@ -73,6 +75,7 @@ func (s *RuntimeStats) Snapshot() RuntimeStatsSnapshot {
 		EventBusDrops:          s.eventBusDrops.Load(),
 		NativeQueueDrops:       s.nativeQueueDrops.Load(),
 		DecisionQueueDrops:     s.decisionQueueDrops.Load(),
+		CollisionQueueDrops:    s.collisionQueueDrops.Load(),
 		WebSocketOutboundDrops: s.websocketOutboundDrops.Load(),
 		NativeQueueDepth:       s.nativeQueueDepth.Load(),
 		DecisionQueueDepth:     s.decisionQueueDepth.Load(),
@@ -217,6 +220,20 @@ func (s *RuntimeStats) RecordDecisionQueueDrop(work derivedLocationWork, depth i
 	})
 	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 	return total
+}
+
+// recordCollisionQueueDrop counts one dropped collision work batch.
+func (s *RuntimeStats) recordCollisionQueueDrop(trackableID string, depth int64) {
+	if s == nil {
+		return
+	}
+	const stage, reason = "collision_queue", "queue_full"
+	total := s.collisionQueueDrops.Add(1)
+	s.recordDrop(DropSample{
+		Stage: stage, Reason: reason, Total: total, RecordedAt: time.Now().UTC(),
+		QueueDepth: depth, TrackableID: trackableID,
+	})
+	observability.Global().RecordRuntimeDrop(context.Background(), stage, reason)
 }
 
 func (s *RuntimeStats) RecordWebSocketOutboundDrop(topic string, depth int64) uint64 {

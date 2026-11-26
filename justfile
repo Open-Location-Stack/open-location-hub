@@ -57,6 +57,10 @@ compose-up:
 compose-shadow-up:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml up --build -d
 
+# Run the asset input router against the topics created by compose-shadow-up.
+compose-shadow-router:
+	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app asset-router
+
 compose-down:
 	docker compose down -v
 

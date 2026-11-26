@@ -32,7 +32,9 @@ DEFAULT_TRACKABLE_RADIUS_METERS = 50.0
 DEFAULT_OBSERVER_DRAIN_SECONDS = 1.0
 BENCHMARK_TOPICS = ("location_updates", "trackable_motions", "fence_events", "collision_events")
 
-DROP_COUNTERS = ("native_queue_drops", "decision_queue_drops", "event_bus_drops", "websocket_outbound_drops")
+DROP_COUNTERS = (
+    "native_queue_drops", "decision_queue_drops", "collision_queue_drops", "event_bus_drops", "websocket_outbound_drops",
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,7 @@ class BenchmarkRow:
     exit_code: int | None
     native_drop_delta: int
     decision_drop_delta: int
+    collision_drop_delta: int
     total_drop_delta: int
     event_bus_drop_delta: int
     websocket_drop_delta: int
@@ -336,7 +339,8 @@ def main() -> int:
             raise RuntimeError("hub runtime counters reset during replay")
         native_drop_delta = deltas["native_queue_drops"]
         decision_drop_delta = deltas["decision_queue_drops"]
-        total_drop_delta = native_drop_delta + decision_drop_delta
+        collision_drop_delta = deltas["collision_queue_drops"]
+        total_drop_delta = native_drop_delta + decision_drop_delta + collision_drop_delta
 
         rows.append(
             BenchmarkRow(
@@ -359,6 +363,7 @@ def main() -> int:
                 exit_code=exit_code,
                 native_drop_delta=native_drop_delta,
                 decision_drop_delta=decision_drop_delta,
+                collision_drop_delta=collision_drop_delta,
                 total_drop_delta=total_drop_delta,
                 event_bus_drop_delta=deltas["event_bus_drops"],
                 websocket_drop_delta=deltas["websocket_outbound_drops"],
@@ -398,7 +403,8 @@ def main() -> int:
 def airport_acceptance_failures(row: BenchmarkRow) -> list[str]:
     checks = (
         (row.completed, "publisher did not finish successfully"),
-        (row.drop_free, "ingest or decision work was dropped"),
+        (row.drop_free, "ingest, decision or collision work was dropped"),
+        (row.event_bus_drop_delta == 0 and row.websocket_drop_delta == 0, "live events were dropped"),
         (row.raw_location_updates > 0, "no raw location updates"),
         (row.trackable_updates > 0, "no trackable motions"),
         (row.geofence_entries > 0, "no geofence entries"),

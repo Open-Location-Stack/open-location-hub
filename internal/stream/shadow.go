@@ -25,6 +25,25 @@ type ShadowWriter struct {
 
 // OpenShadow verifies that the configured Kafka topic already exists and opens the mirror.
 func OpenShadow(ctx context.Context, cfg config.KafkaShadowConfig, hubID string) (*ShadowWriter, error) {
+	opts, err := kafkaClientOptions(cfg)
+	if err != nil {
+		return nil, err
+	}
+	client, err := kgo.NewClient(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := requireTopic(ctx, client, cfg.Topic); err != nil {
+		client.Close()
+		return nil, err
+	}
+	return &ShadowWriter{client: client, hubID: hubID, topic: cfg.Topic}, nil
+}
+
+func kafkaClientOptions(cfg config.KafkaShadowConfig) ([]kgo.Opt, error) {
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
@@ -43,18 +62,7 @@ func OpenShadow(ctx context.Context, cfg config.KafkaShadowConfig, hubID string)
 	if cfg.Username != "" {
 		opts = append(opts, kgo.SASL(scram.Auth{User: cfg.Username, Pass: cfg.Password}.AsSha256Mechanism()))
 	}
-	client, err := kgo.NewClient(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := requireTopic(ctx, client, cfg.Topic); err != nil {
-		client.Close()
-		return nil, err
-	}
-	return &ShadowWriter{client: client, hubID: hubID, topic: cfg.Topic}, nil
+	return opts, nil
 }
 
 // Mirror serializes a validated input and queues a bounded, asynchronous shadow

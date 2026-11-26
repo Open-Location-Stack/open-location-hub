@@ -57,6 +57,7 @@ type ProcessingState struct {
 	fenceMembership         map[string]map[string]expiringFenceMembership
 	motions                 map[string]expiringMotion
 	collisionMotions        map[string]expiringMotion
+	collisionIndex          collisionSpatialIndex
 	collisions              map[string]expiringCollisionState
 	collisionPairs          map[string]map[string]struct{}
 	kalmanTracks            map[string]expiringKalmanTrack
@@ -79,6 +80,7 @@ func NewProcessingState(now func() time.Time) *ProcessingState {
 		fenceMembership:         map[string]map[string]expiringFenceMembership{},
 		motions:                 map[string]expiringMotion{},
 		collisionMotions:        map[string]expiringMotion{},
+		collisionIndex:          newCollisionSpatialIndex(nil),
 		collisions:              map[string]expiringCollisionState{},
 		collisionPairs:          map[string]map[string]struct{}{},
 		kalmanTracks:            map[string]expiringKalmanTrack{},
@@ -380,24 +382,47 @@ func (s *ProcessingState) ListActiveMotions() []gen.TrackableMotion {
 	return motions
 }
 
-func (s *ProcessingState) setCollisionMotion(id string, value gen.TrackableMotion, ttl time.Duration) {
+func (s *ProcessingState) setCollisionMotion(motion gen.TrackableMotion, point [2]float64, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.collisionMotions[id] = expiringMotion{value: value, expiresAt: s.nowUTC().Add(ttl)}
+	s.collisionMotions[motion.Id] = expiringMotion{value: motion, expiresAt: s.nowUTC().Add(ttl)}
+	if entry, ok := newIndexedCollisionMotion(motion, point); ok {
+		s.collisionIndex.add(entry)
+	} else {
+		s.collisionIndex.remove(motion.Id)
+	}
 }
-func (s *ProcessingState) listCollisionMotions() []gen.TrackableMotion {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
+func (s *ProcessingState) closestCollisionMotions(location gen.Location, point [2]float64, radius float64) []gen.TrackableMotion {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	now := s.nowUTC()
-	out := make([]gen.TrackableMotion, 0, len(s.collisionMotions))
-	for id, item := range s.collisionMotions {
-		if !item.expiresAt.After(now) {
-			delete(s.collisionMotions, id)
-			continue
+	nearby := s.collisionIndex.Nearby(location, point, radius)
+	out := make([]gen.TrackableMotion, 0, len(nearby))
+	for _, entry := range nearby {
+		if item := s.collisionMotions[entry.motion.Id]; item.expiresAt.After(now) {
+			out = append(out, item.value)
 		}
-		out = append(out, item.value)
 	}
 	return out
+}
+
+func (s *ProcessingState) getCollisionMotion(id string) (gen.TrackableMotion, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item := s.collisionMotions[id]
+	return item.value, item.expiresAt.After(s.nowUTC())
+}
+
+func (s *ProcessingState) deleteCollisionMotion(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleteCollisionMotionLocked(id)
+}
+
+func (s *ProcessingState) deleteCollisionMotionLocked(id string) {
+	delete(s.collisionMotions, id)
+	s.collisionIndex.remove(id)
 }
 
 func (s *ProcessingState) GetCollisionState(key string) (activeCollisionState, bool) {
@@ -558,7 +583,7 @@ func (s *ProcessingState) SweepExpired() {
 	}
 	for key, item := range s.collisionMotions {
 		if !item.expiresAt.After(now) {
-			delete(s.collisionMotions, key)
+			s.deleteCollisionMotionLocked(key)
 		}
 	}
 	for key, item := range s.collisions {

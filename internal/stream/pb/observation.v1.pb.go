@@ -72,19 +72,21 @@ func (Observation_Kind) EnumDescriptor() ([]byte, []int) {
 // Observation is the internal ingress envelope. The payload uses the matching
 // OMLOX Location or Proximity JSON schema. Envelope fields evolve additively.
 type Observation struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	SchemaVersion      uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
-	EventId            []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	OriginHubId        string                 `protobuf:"bytes,3,opt,name=origin_hub_id,json=originHubId,proto3" json:"origin_hub_id,omitempty"`
-	ProviderId         string                 `protobuf:"bytes,4,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
-	Source             string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
-	Kind               Observation_Kind       `protobuf:"varint,6,opt,name=kind,proto3,enum=locationhub.stream.v1.Observation_Kind" json:"kind,omitempty"`
-	ObservedAtUnixNano *int64                 `protobuf:"varint,7,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3,oneof" json:"observed_at_unix_nano,omitempty"`
-	ReceivedAtUnixNano int64                  `protobuf:"varint,8,opt,name=received_at_unix_nano,json=receivedAtUnixNano,proto3" json:"received_at_unix_nano,omitempty"`
-	Transport          string                 `protobuf:"bytes,9,opt,name=transport,proto3" json:"transport,omitempty"`
-	PayloadJson        []byte                 `protobuf:"bytes,10,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion                 uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	EventId                       []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	OriginHubId                   string                 `protobuf:"bytes,3,opt,name=origin_hub_id,json=originHubId,proto3" json:"origin_hub_id,omitempty"`
+	ProviderId                    string                 `protobuf:"bytes,4,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	Source                        string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	Kind                          Observation_Kind       `protobuf:"varint,6,opt,name=kind,proto3,enum=locationhub.stream.v1.Observation_Kind" json:"kind,omitempty"`
+	ObservedAtUnixNano            *int64                 `protobuf:"varint,7,opt,name=observed_at_unix_nano,json=observedAtUnixNano,proto3,oneof" json:"observed_at_unix_nano,omitempty"`
+	ReceivedAtUnixNano            int64                  `protobuf:"varint,8,opt,name=received_at_unix_nano,json=receivedAtUnixNano,proto3" json:"received_at_unix_nano,omitempty"`
+	Transport                     string                 `protobuf:"bytes,9,opt,name=transport,proto3" json:"transport,omitempty"`
+	PayloadJson                   []byte                 `protobuf:"bytes,10,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	ResolvedTrackableIds          []string               `protobuf:"bytes,11,rep,name=resolved_trackable_ids,json=resolvedTrackableIds,proto3" json:"resolved_trackable_ids,omitempty"`
+	ResolvedProximityLocationJson []byte                 `protobuf:"bytes,12,opt,name=resolved_proximity_location_json,json=resolvedProximityLocationJson,proto3" json:"resolved_proximity_location_json,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *Observation) Reset() {
@@ -187,11 +189,95 @@ func (x *Observation) GetPayloadJson() []byte {
 	return nil
 }
 
+func (x *Observation) GetResolvedTrackableIds() []string {
+	if x != nil {
+		return x.ResolvedTrackableIds
+	}
+	return nil
+}
+
+func (x *Observation) GetResolvedProximityLocationJson() []byte {
+	if x != nil {
+		return x.ResolvedProximityLocationJson
+	}
+	return nil
+}
+
+// AssetInput is an observation addressed to exactly one trackable. Kafka keys
+// these records by origin hub and trackable, independently of provider/source.
+type AssetInput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	EventId       []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	TrackableId   string                 `protobuf:"bytes,3,opt,name=trackable_id,json=trackableId,proto3" json:"trackable_id,omitempty"`
+	Observation   *Observation           `protobuf:"bytes,4,opt,name=observation,proto3" json:"observation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AssetInput) Reset() {
+	*x = AssetInput{}
+	mi := &file_observation_v1_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssetInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssetInput) ProtoMessage() {}
+
+func (x *AssetInput) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssetInput.ProtoReflect.Descriptor instead.
+func (*AssetInput) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AssetInput) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *AssetInput) GetEventId() []byte {
+	if x != nil {
+		return x.EventId
+	}
+	return nil
+}
+
+func (x *AssetInput) GetTrackableId() string {
+	if x != nil {
+		return x.TrackableId
+	}
+	return ""
+}
+
+func (x *AssetInput) GetObservation() *Observation {
+	if x != nil {
+		return x.Observation
+	}
+	return nil
+}
+
 var File_observation_v1_proto protoreflect.FileDescriptor
 
 const file_observation_v1_proto_rawDesc = "" +
 	"\n" +
-	"\x14observation.v1.proto\x12\x15locationhub.stream.v1\"\xf4\x03\n" +
+	"\x14observation.v1.proto\x12\x15locationhub.stream.v1\"\xf3\x04\n" +
 	"\vObservation\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12\"\n" +
@@ -204,12 +290,20 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x15received_at_unix_nano\x18\b \x01(\x03R\x12receivedAtUnixNano\x12\x1c\n" +
 	"\ttransport\x18\t \x01(\tR\ttransport\x12!\n" +
 	"\fpayload_json\x18\n" +
-	" \x01(\fR\vpayloadJson\"C\n" +
+	" \x01(\fR\vpayloadJson\x124\n" +
+	"\x16resolved_trackable_ids\x18\v \x03(\tR\x14resolvedTrackableIds\x12G\n" +
+	" resolved_proximity_location_json\x18\f \x01(\fR\x1dresolvedProximityLocationJson\"C\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rKIND_LOCATION\x10\x01\x12\x12\n" +
 	"\x0eKIND_PROXIMITY\x10\x02B\x18\n" +
-	"\x16_observed_at_unix_nanoBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
+	"\x16_observed_at_unix_nano\"\xb7\x01\n" +
+	"\n" +
+	"AssetInput\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12!\n" +
+	"\ftrackable_id\x18\x03 \x01(\tR\vtrackableId\x12D\n" +
+	"\vobservation\x18\x04 \x01(\v2\".locationhub.stream.v1.ObservationR\vobservationBHZFgithub.com/formation-res/open-location-hub/internal/stream/pb;streampbb\x06proto3"
 
 var (
 	file_observation_v1_proto_rawDescOnce sync.Once
@@ -224,18 +318,20 @@ func file_observation_v1_proto_rawDescGZIP() []byte {
 }
 
 var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_observation_v1_proto_goTypes = []any{
 	(Observation_Kind)(0), // 0: locationhub.stream.v1.Observation.Kind
 	(*Observation)(nil),   // 1: locationhub.stream.v1.Observation
+	(*AssetInput)(nil),    // 2: locationhub.stream.v1.AssetInput
 }
 var file_observation_v1_proto_depIdxs = []int32{
 	0, // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -250,7 +346,7 @@ func file_observation_v1_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_observation_v1_proto_rawDesc), len(file_observation_v1_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

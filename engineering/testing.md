@@ -106,6 +106,9 @@ For the mixed airport replay workload, use the
 [airport functional profile](../connectors/replay/benchmarks/opensky-germany-2026-04-08/README.md#functional-profile).
 On the Kafka shadow stack, verify the broker offset delta against the replay's
 scheduled location count, in addition to checking legacy OMLOX event delivery.
+When the asset router runs, verify source group lag and count asset records
+with a read-committed consumer. Transaction markers also occupy offsets, so
+end-offset deltas are insufficient for counting asset records.
 
 The suite boots Postgres, Valkey, and Mosquitto containers and performs migration smoke checks.
 If Docker is unavailable, tests should skip.

@@ -23,4 +23,15 @@ message Observation {
   int64 received_at_unix_nano = 8;
   string transport = 9;
   bytes payload_json = 10;
+  repeated string resolved_trackable_ids = 11;
+  bytes resolved_proximity_location_json = 12;
+}
+
+// AssetInput is an observation addressed to exactly one trackable. Kafka keys
+// these records by origin hub and trackable, independently of provider/source.
+message AssetInput {
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  string trackable_id = 3;
+  Observation observation = 4;
 }

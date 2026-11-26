@@ -13,11 +13,13 @@ import (
 
 // Observation is a validated location or proximity received by the Hub.
 type Observation struct {
-	Kind       streampb.Observation_Kind
-	ProviderID string
-	Source     string
-	ObservedAt *time.Time
-	Payload    any
+	Kind                      streampb.Observation_Kind
+	ProviderID                string
+	Source                    string
+	ObservedAt                *time.Time
+	Payload                   any
+	ResolvedTrackableIDs      []string
+	ResolvedProximityLocation any
 }
 
 const (
@@ -50,15 +52,23 @@ func (o Observation) encode(hubID, transport string, receivedAt time.Time) (key,
 	_, _ = identity.Write(payload)
 
 	record := &streampb.Observation{
-		SchemaVersion:      1,
-		EventId:            identity.Sum(nil),
-		OriginHubId:        hubID,
-		ProviderId:         o.ProviderID,
-		Source:             o.Source,
-		Kind:               o.Kind,
-		ReceivedAtUnixNano: receivedAt.UnixNano(),
-		Transport:          transport,
-		PayloadJson:        payload,
+		SchemaVersion:        1,
+		EventId:              identity.Sum(nil),
+		OriginHubId:          hubID,
+		ProviderId:           o.ProviderID,
+		Source:               o.Source,
+		Kind:                 o.Kind,
+		ReceivedAtUnixNano:   receivedAt.UnixNano(),
+		Transport:            transport,
+		PayloadJson:          payload,
+		ResolvedTrackableIds: o.ResolvedTrackableIDs,
+	}
+	if o.ResolvedProximityLocation != nil {
+		resolved, err := json.Marshal(o.ResolvedProximityLocation)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode resolved proximity location: %w", err)
+		}
+		record.ResolvedProximityLocationJson = resolved
 	}
 	if o.ObservedAt != nil {
 		record.ObservedAtUnixNano = proto.Int64(o.ObservedAt.UnixNano())

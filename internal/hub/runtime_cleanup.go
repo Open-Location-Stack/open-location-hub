@@ -54,9 +54,7 @@ func (s *Service) clearTrackableRuntime(id string) {
 		state.DeleteCollisionState(key)
 		s.eventScheduler().schedule(key, time.Time{}, nil)
 	}
-	state.mu.Lock()
-	delete(state.collisionMotions, id)
-	state.mu.Unlock()
+	state.deleteCollisionMotion(id)
 	s.collisionMu.Unlock()
 }
 

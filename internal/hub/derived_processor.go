@@ -310,6 +310,7 @@ func (p *collisionMotionProcessor) Submit(work collisionWork) {
 	select {
 	case p.queue <- work:
 	default:
+		p.service.stats.recordCollisionQueueDrop(work.Motions[0].Id, int64(len(p.queue)))
 		p.logger.Debug("collision queue full; dropping collision work", zap.Int("motions", len(work.Motions)))
 	}
 }

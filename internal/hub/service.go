@@ -1094,7 +1094,8 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 		}
 		if mirror := s.cfg.ObservationMirror; mirror != nil {
 			mirror(itemCtx, stream.Observation{Kind: stream.Location, ProviderID: input.ProviderId,
-				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input})
+				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
+				ResolvedTrackableIDs: stringSliceValue(resolvedLocation.Trackables)})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "location_ingest", "location", time.Since(start))
 		span.End()
@@ -1201,7 +1202,8 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 		}
 		if mirror := s.cfg.ObservationMirror; mirror != nil {
 			mirror(itemCtx, stream.Observation{Kind: stream.Proximity, ProviderID: input.ProviderId,
-				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input})
+				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
+				ResolvedTrackableIDs: stringSliceValue(location.Trackables), ResolvedProximityLocation: location})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "proximity_ingest", "proximity", time.Since(start))
 		span.End()

@@ -8,8 +8,8 @@ be replayed into the hub for repeatable throughput and latency benchmarking.
 - File: `location_updates.ndjson`
 - Source: `connectors/opensky` Germany region preset
 - Capture date: `2026-04-08`
-- Capture duration: about 5 minutes
-- Raw location updates: `8,367`
+- Source timestamp span: about 14 minutes 56 seconds
+- Raw location updates: `8,368`
 - Unique assets: `687`
 
 The file is the raw NDJSON output from `scripts/log_locations.py`. It includes
@@ -27,9 +27,9 @@ The current stress profile replays this dataset with:
 
 Those settings expand the capture to:
 
-- Scheduled replay emissions: `1,581,177`
-- Synthetic interpolation points: `1,572,810`
-- Expansion factor over raw updates: about `189x`
+- Scheduled replay emissions: `1,590,133`
+- Synthetic interpolation points: `1,581,765`
+- Expansion factor over raw updates: about `190x`
 
 ## Example
 
@@ -58,12 +58,19 @@ and `HUB_TOKEN` in the environment.
 OPENSKY_AIRPORT_PRESET=germany uv run --project connectors/opensky \
   python connectors/opensky/airport_fences.py
 uv run --project connectors/replay python connectors/replay/benchmark.py \
-  --require-airport-events --rates 1 --target-duration-seconds 60 \
-  --timeout-seconds 145 --observer-drain-seconds 5
+  --require-airport-events --rates 0 --target-duration-seconds 45 \
+  --timeout-seconds 100 --observer-drain-seconds 5
 ```
+
+For the accelerated workload, use `--rates 1 --target-duration-seconds 60
+--timeout-seconds 145` with the same gate. This workload schedules 159,740
+observations, including interpolation, and can expose decision-path drops.
 
 To exercise shadow ingest on the local Docker stack, create the usual `.env`
 file, apply the PostgreSQL migrations and run `just compose-shadow-up`.
 Inspect the topic's end offsets before and after replay to verify mirrored
 record counts independently from live delivery. Run with a new topic or record
 both starting and ending offsets for each partition.
+With `just compose-shadow-router` running, also compare the consumer group's
+lag and the count of read-committed asset inputs. The airport capture uses one
+trackable per observation.

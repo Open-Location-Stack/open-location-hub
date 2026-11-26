@@ -62,6 +62,22 @@ The local Compose overlay configures six-hour retention; set
 `KAFKA_SHADOW_RETENTION_MS` before creating the topic to override it. For an
 existing topic, change retention through the broker's provisioning workflow.
 
+### Asset input router
+
+Start `open-location-hub asset-router` as a separate process. It uses the same
+`KAFKA_SHADOW_*` connection settings. Provision `KAFKA_ASSET_INPUT_TOPIC`
+(default `location-hub.asset-inputs.v1`) and grant the worker read access to the
+observation topic, write access to the output topic, and Kafka permissions for
+its consumer group and transactional ID. `KAFKA_ASSET_ROUTER_GROUP` defaults to
+`location-hub.asset-router.v1`. Set `KAFKA_ASSET_ROUTER_INSTANCE` to a unique
+instance name when colocating workers on one host. Otherwise use the hostname.
+Use the same group across replicas. The router stops when a committed offset
+has expired, so the operator can establish a new processing boundary explicitly.
+
+Use `just compose-shadow-router` after the local shadow stack has started.
+`KAFKA_ASSET_INPUT_RETENTION_MS` overrides the local six-hour default before topic
+creation. The observation and asset input topics have independent retention.
+
 ## Stateful Processing
 - `STATE_LOCATION_TTL` (duration, default `10m`)
 - `STATE_PROXIMITY_TTL` (duration, default `5m`)

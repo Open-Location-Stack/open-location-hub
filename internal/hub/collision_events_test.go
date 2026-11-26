@@ -62,6 +62,38 @@ func TestCollisionLargeJumpEmitsEndAndEveryIntersectingUpdateEmitsColliding(t *t
 	}
 }
 
+func TestCollisionIndexUsesUpdatedRadiusAndExpiresStationaryMotions(t *testing.T) {
+	now := time.Now()
+	s, left, right := collisionTestService(t, func() time.Time { return now })
+	ctx := context.Background()
+	ch, stop := s.bus.Subscribe(16)
+	defer stop()
+	if err := right.Location.Position.Coordinates.FromGeoJsonPosition2D([]float64{10, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.publishCollisionEvents(ctx, []gen.TrackableMotion{left, right}); err != nil {
+		t.Fatal(err)
+	}
+	if got := collectEvents(ch, 1); len(got) != 0 {
+		t.Fatal("separated objects collided before the radius edit")
+	}
+	trackable, _ := s.trackableByID(ctx, right.Id)
+	trackable.Radius = float64Ptr(10)
+	s.metadata.UpsertTrackable(trackable, "larger radius")
+	if err := s.publishCollisionEvents(ctx, []gen.TrackableMotion{left}); err != nil {
+		t.Fatal(err)
+	}
+	events := collectEvents(ch, 1)
+	if len(events) != 1 {
+		t.Fatal("stationary object with expanded radius was omitted from the index query")
+	}
+	now = now.Add(s.cfg.CollisionStateTTL + time.Second)
+	s.processingState().SweepExpired()
+	if got := s.state.closestCollisionMotions(left.Location, [2]float64{0, 0}, 100); len(got) != 0 {
+		t.Fatalf("expired motions remained in the spatial index: %v", got)
+	}
+}
+
 func TestCollisionToleranceUsesMaximumAfterProviderOverrideAndExpiresWithoutMotion(t *testing.T) {
 	now := time.Now()
 	s, left, right := collisionTestService(t, func() time.Time { return now })

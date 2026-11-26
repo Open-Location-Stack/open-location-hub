@@ -33,12 +33,17 @@ func newCollisionSpatialIndex(motions []indexedCollisionMotion) collisionSpatial
 	return index
 }
 func (i collisionSpatialIndex) add(motion indexedCollisionMotion) {
-	if old := i.entries[motion.motion.Id]; old != nil {
-		i.tree.Delete(old)
-	}
+	i.remove(motion.motion.Id)
 	entry := &collisionIndexEntry{indexedCollisionMotion: motion, rect: motion.position.ToRect(1e-7)}
 	i.entries[motion.motion.Id] = entry
 	i.tree.Insert(entry)
+}
+
+func (i collisionSpatialIndex) remove(id string) {
+	if old := i.entries[id]; old != nil {
+		i.tree.Delete(old)
+		delete(i.entries, id)
+	}
 }
 func (i collisionSpatialIndex) Nearby(location gen.Location, point [2]float64, distance float64) []indexedCollisionMotion {
 	position, space, ok := collisionIndexPosition(location, point)

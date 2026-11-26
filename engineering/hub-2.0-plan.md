@@ -337,6 +337,33 @@ and the Hub reported zero native, decision, event-bus and WebSocket drops. The
 observer saw 186 fence entries, 188 exits and 296 collision events. Publisher
 throughput was about 180/s with the 45-second target.
 
+The asset-router process passed the same un-interpolated profile. Its input
+group reached zero lag across all 12 partitions, and a read-committed consumer
+found 8,368 asset inputs with distinct output offsets. The router partitions by
+origin and trackable and commits input offsets and output in one Kafka
+transaction. Worker state, event-time ordering and public decision delivery
+still require the downstream stages.
+
+In a separate backlog test, one asset router consumed 168,108 broker records
+in 7.86 seconds including process startup and the lag poll, about 21,400/s.
+The broker and worker ran on one local Docker host with replication factor one.
+This measures stateless repartitioning. Stateful decision throughput needs its
+own measurement.
+
+The collision queue gained its own drop counter after the first runs. With
+that counter enabled, the old rebuild-per-observation index dropped 3,492
+collision batches on the un-interpolated workload. The incremental index passed
+the same workload with zero reported native, decision, collision, event-bus or
+WebSocket drops. The observer received 210 fence entries, 178 exits and 306
+collision events. These numbers describe the compatibility processing path
+running alongside Kafka routing.
+
+The incremental index also recorded zero collision queue drops in the 1 Hz
+workload at about 2,547 publisher observations/s. The same run still dropped
+68,134 legacy decision work items and 1,663 event-bus deliveries. The Kafka
+asset router caught up to the end of all 12 input partitions. This isolates a
+remaining bottleneck in the compatibility decision and delivery paths.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

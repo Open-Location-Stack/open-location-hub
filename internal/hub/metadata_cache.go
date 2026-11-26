@@ -37,6 +37,7 @@ type metadataSnapshot struct {
 	worldFenceIndexes      map[string]*fenceSpatialIndex
 	trackables             []gen.Trackable
 	trackablesByID         map[string]gen.Trackable
+	maxTrackableRadius     float64
 	trackablesByProviderID map[string][]gen.Trackable
 	trackableSignatures    map[string]string
 	providers              []gen.LocationProvider
@@ -49,11 +50,6 @@ const (
 	fenceIndexMinEntries = 8
 	fenceIndexMaxEntries = 32
 )
-
-type fenceSpatialIndex struct {
-	tree    *rtreego.Rtree
-	entries map[string]indexedFence
-}
 
 type indexedFence struct {
 	fence gen.Fence
@@ -225,6 +221,7 @@ func newMetadataSnapshot(zones []zoneRecord, fences []fenceRecord, trackables []
 		item := record.Trackable
 		snapshot.trackables = append(snapshot.trackables, item)
 		snapshot.trackablesByID[item.Id.String()] = item
+		snapshot.maxTrackableRadius = math.Max(snapshot.maxTrackableRadius, trackableRadius(item))
 		indexTrackableProviders(snapshot.trackablesByProviderID, item)
 		snapshot.trackableSignatures[item.Id.String()] = record.Signature
 	}
@@ -434,6 +431,7 @@ func (c *MetadataCache) UpsertTrackable(item gen.Trackable, signature string) {
 	defer c.writeMu.Unlock()
 	next := c.current()
 	next.trackables = upsertByTrackableID(next.trackables, item)
+	next.maxTrackableRadius = largestTrackableRadius(next.trackables)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
 	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
 	next.trackableSignatures = cloneStringMap(next.trackableSignatures)
@@ -454,6 +452,7 @@ func (c *MetadataCache) DeleteTrackable(id openapi_types.UUID) {
 	defer c.writeMu.Unlock()
 	next := c.current()
 	next.trackables = removeTrackableByID(next.trackables, id)
+	next.maxTrackableRadius = largestTrackableRadius(next.trackables)
 	next.trackablesByID = cloneTrackableMap(next.trackablesByID)
 	next.trackablesByProviderID = cloneTrackableSliceMap(next.trackablesByProviderID)
 	next.trackableSignatures = cloneStringMap(next.trackableSignatures)
@@ -653,15 +652,10 @@ func buildFenceIndexes(fences []gen.Fence) map[string]*fenceSpatialIndex {
 		}
 		index := indexes[scopeKey]
 		if index == nil {
-			index = &fenceSpatialIndex{
-				tree:    rtreego.NewTree(fenceIndexDimensions, fenceIndexMinEntries, fenceIndexMaxEntries),
-				entries: make(map[string]indexedFence),
-			}
+			index = newFenceSpatialIndex(scopeKey)
 			indexes[scopeKey] = index
 		}
-		entry := indexedFence{fence: fence, rect: rect}
-		index.entries[fence.Id.String()] = entry
-		index.tree.Insert(entry)
+		index.insert(indexedFence{fence: fence, rect: rect})
 	}
 	return indexes
 }
@@ -679,7 +673,7 @@ func (s metadataSnapshot) fenceCandidatesWithRadius(location gen.Location, radiu
 		return nil, nil
 	}
 	index := s.fenceIndexes[scopeKey]
-	if index == nil || index.tree == nil {
+	if index == nil {
 		return nil, nil
 	}
 	point, err := point2D(location.Position)
@@ -695,7 +689,7 @@ func (s metadataSnapshot) fenceCandidatesWithRadius(location gen.Location, radiu
 	if err != nil {
 		return nil, err
 	}
-	results := index.tree.SearchIntersect(query)
+	results := index.search(query)
 	fences := make([]gen.Fence, 0, len(results))
 	for _, spatial := range results {
 		entry, ok := spatial.(indexedFence)

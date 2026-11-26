@@ -173,7 +173,7 @@ replay window is compressed to the target duration. For each run it records:
 - expected replay window and actual runtime
 - logged, scheduled, and synthetic location counts
 - whether the run finished before timeout
-- native, decision, event-bus and WebSocket delivery drop deltas from the Hub's authenticated runtime diagnostics
+- native, decision, collision, event-bus and WebSocket delivery drop deltas from the Hub's authenticated runtime diagnostics
 - raw `location_updates` observed during replay
 - derived `trackable_motions` observed during replay
 - `fence_events` split into entry and exit counts
