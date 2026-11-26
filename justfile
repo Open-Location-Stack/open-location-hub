@@ -77,6 +77,10 @@ compose-shadow-fences:
 compose-shadow-collision-cells:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app collision-cell-worker
 
+# Evaluate exact contact and commit shadow collision events by pair.
+compose-shadow-collision-pairs:
+	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app collision-pair-worker
+
 # Write committed PostgreSQL configuration revisions to the shadow configuration topic.
 compose-shadow-config-relay:
 	docker compose --env-file .env.example -f docker-compose.yml -f deploy/kafka/compose.shadow.yaml run --no-deps --rm app config-relay

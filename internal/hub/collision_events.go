@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
+	"github.com/formation-res/open-location-hub/internal/ids"
 	"go.uber.org/zap"
 )
 
@@ -102,38 +103,22 @@ func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMot
 	}()
 	key := collisionPairKey(left.Id, right.Id)
 	state, active := s.processingState().GetCollisionState(key)
-	lp, err := point2D(left.Location.Position)
+	contact, err := CollisionContactForPair(left, lt, right, rt)
 	if err != nil {
 		return err
 	}
-	rp, err := point2D(right.Location.Position)
-	if err != nil {
-		return err
-	}
-	colliding, area, distance := motionsCollide(left, lt, right, rt, lp, rp, 0)
-	compatible := collisionFramesMatch(left.Location, right.Location)
-	if !compatible {
-		colliding = false
-		area = nil
-	}
-	if !active && !colliding {
+	if !active && !contact.Inside {
 		return nil
 	}
 	policy, tolerance := s.collisionExitPolicy(ctx, left, lt, right, rt)
-	physical := exitOutside
-	if colliding {
-		physical = exitInside
-	} else if compatible && math.Hypot(math.Max(0, distance-trackableRadius(lt)-trackableRadius(rt)), locationHeightGap(left.Location, lt.Extrusion, right.Location, rt.Extrusion)) <= tolerance {
-		physical = exitTolerance
-	}
 	now := s.processingState().nowUTC()
 	if !active {
 		state = activeCollisionState{Active: true, StartTime: now}
 	}
 	state.leftMotion, state.rightMotion, state.leftTrackable, state.rightTrackable = left, right, lt, rt
-	state.distance = distance
+	state.distance = contact.Distance
 	state.LastSeen = now
-	state.timers = state.timers.advance(now, physical, policy)
+	state.timers = state.timers.advance(now, contact.ExitArea(tolerance), policy)
 	// Collision membership follows table 14, not the observation cache TTL.
 	s.processingState().SetCollisionState(key, state, 0)
 	deadline := state.timers.deadline()
@@ -147,7 +132,7 @@ func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMot
 			s.logger.Error("collision timeout publication failed", zap.Error(err))
 		}
 	})
-	if !colliding {
+	if !contact.Inside {
 		return nil
 	}
 	kind := gen.Colliding
@@ -155,15 +140,20 @@ func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMot
 		kind = gen.CollisionStart
 		outcome = "entry"
 	}
-	event := collisionEventForPair(kind, now, state.StartTime, left, lt, right, rt, area, distance, 0)
+	event := CollisionEventForPair(ids.NewUUID(), kind, now, state.StartTime, left, lt, right, rt, contact.Area, contact.Distance)
 	return s.emitCollision(event, left)
 }
 
 func (s *Service) collisionExitPolicy(ctx context.Context, left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) (exitTimerPolicy, float64) {
 	lp, _ := s.providerByID(ctx, left.Location.ProviderId)
 	rp, _ := s.providerByID(ctx, right.Location.ProviderId)
-	l, r := ResolveCollisionAssetPolicy(lt, lp), ResolveCollisionAssetPolicy(rt, rp)
-	maximum := func(a, b time.Duration) time.Duration {
+	policy := CollisionPolicyForPair(ResolveCollisionAssetPolicy(lt, lp), ResolveCollisionAssetPolicy(rt, rp))
+	return exitTimerPolicy{fenceTimeout: -1, toleranceTimeout: time.Duration(policy.ToleranceTimeoutNanos), exitDelay: time.Duration(policy.ExitDelayNanos)}, policy.ExitTolerance
+}
+
+// CollisionPolicyForPair applies the OMLOX maximum timer and summed tolerance.
+func CollisionPolicyForPair(left, right CollisionAssetPolicy) FenceRoutingPolicy {
+	maximum := func(a, b int64) int64 {
 		if a < 0 || b < 0 {
 			return -1
 		}
@@ -172,7 +162,8 @@ func (s *Service) collisionExitPolicy(ctx context.Context, left gen.TrackableMot
 		}
 		return b
 	}
-	return exitTimerPolicy{fenceTimeout: -1, toleranceTimeout: maximum(time.Duration(l.ToleranceTimeoutNanos), time.Duration(r.ToleranceTimeoutNanos)), exitDelay: maximum(time.Duration(l.ExitDelayNanos), time.Duration(r.ExitDelayNanos))}, l.ExitTolerance + r.ExitTolerance
+	return FenceRoutingPolicy{FenceTimeoutNanos: -1, ToleranceTimeoutNanos: maximum(left.ToleranceTimeoutNanos, right.ToleranceTimeoutNanos),
+		ExitDelayNanos: maximum(left.ExitDelayNanos, right.ExitDelayNanos), ExitTolerance: left.ExitTolerance + right.ExitTolerance}
 }
 
 // CollisionAssetPolicy holds the per-asset extent and timer overrides used in pairs.
@@ -208,8 +199,7 @@ func (s *Service) expireCollision(key string, deadline time.Time) (err error) {
 	s.telemetry().RecordQueueWait(ctx, "collision_pair_timer", s.processingState().nowUTC().Sub(deadline))
 	s.processingState().DeleteCollisionState(key)
 	s.eventScheduler().schedule(key, time.Time{}, nil)
-	event := collisionEventForPair(gen.CollisionEnd, deadline, state.StartTime, state.leftMotion, state.leftTrackable, state.rightMotion, state.rightTrackable, nil, state.distance, 0)
-	event.EndTime = &deadline
+	event := CollisionEventForPair(ids.NewUUID(), gen.CollisionEnd, deadline, state.StartTime, state.leftMotion, state.leftTrackable, state.rightMotion, state.rightTrackable, nil, state.distance)
 	return s.emitCollision(event, state.leftMotion)
 }
 func (s *Service) emitCollision(event gen.CollisionEvent, leading gen.TrackableMotion) error {

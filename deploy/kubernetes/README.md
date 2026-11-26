@@ -148,6 +148,14 @@ Kafka, set `kafka.authSecrets.collision-cell-worker` to its credentials
 Secret. The event topics take independent retention overrides via
 `kafka.topicRetentionMs.collisionCells` and `kafka.topicRetentionMs.collisionPairs`.
 
+Set `kafka.collisionPairReplicas` to run the exact collision and timer workers
+against the pair topic. Keep `collisionPairs`, `collisionTransitions` and
+`collisionPairState` at the same partition count. The broker chart creates
+the pair-worker credentials. For an external broker, supply the Secret as
+`kafka.authSecrets.collision-pair-worker`. The pair input requires broker
+append timestamps. Set `kafka.topicRetentionMs.collisionTransitions` to
+override the default six-hour transition retention.
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,

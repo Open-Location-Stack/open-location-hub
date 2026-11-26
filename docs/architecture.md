@@ -124,10 +124,19 @@ expiry schedule after partition reassignment.
 
 Cell workers publish ordered pair keys with the two sample versions as shadow
 candidates. Multiple cells may emit the same version pair under the same
-candidate ID. Exact contact, collision timers and public delivery remain on
-the compatibility path. A later pair worker must merge candidates by both
-asset sequences, including when two cells observe the samples in different
-order.
+candidate ID. A pair worker merges each asset's sequence independently, then
+applies the same geometry, frame checks and exit timers as the compatibility
+runtime. It caches decoded poses and commits version checkpoints, transition
+records and input offsets together. Pending deadlines survive worker
+reassignment. The worker appends deadline hints to the same partition as
+pair inputs and rejects obsolete hints by sample generation.
+
+The transition topic carries shadow OMLOX events with stable IDs. The
+compatibility path owns public delivery. Pair evaluation rejects candidates
+whose samples had already expired when the broker appended them. An active
+pair can remain open if its last eligible samples age out or no cell publishes
+a later candidate. Trackable deletion, active-pair reconciliation, and timing
+parity under upstream lag need end-to-end verification before cutover.
 
 The configuration relay publishes changes to zones, fences, trackables and
 location providers from a PostgreSQL outbox. It emits one revision per

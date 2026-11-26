@@ -428,9 +428,33 @@ After its peer restored the checkpoint, one asset jumped 33 km. A
 withdrawal paired the newer position with the restored neighbor on the
 same pair partition. After the samples expired, the cell group had zero lag
 on all partitions and the compacted store had zero live cell entries. The
-pair topic carries candidate inputs. Distributed
-exact contact, timer decisions and public delivery still need qualification
-against the compatibility events under concurrent changes and upstream lag.
+pair topic carries candidate inputs for exact contact and timer evaluation.
+
+Two pair workers ran on the next fresh airport topic generation. The native
+profile passed at 179 updates/s with zero reported drops. The 1 Hz profile
+reached 2,528 updates/s, with 78,472 compatibility decision-queue drops
+and 7,548 event-bus drops.
+
+The native replay produced 306 shadow collision events, the same total as
+the compatibility observer. The shadow log recorded 58 starts, 209 ongoing
+contacts and 39 ends. The replay validated totals and invariants across
+the new stream. Per-event legacy parity still needs a side-by-side comparison
+on deterministic input.
+
+The read-committed scan found 9,742 pair candidates across both replays,
+including 305 repeats of an existing sample pair. Across all twelve
+partitions, the workers committed 141 starts, 6,519 ongoing contacts and
+121 ends during the replay window. The scan verified unique internal and
+public event IDs, stable pair ordering, and matching start and end times.
+Pair observation p99 was below 4.6 ms, pair queue-wait p99 below 240 ms
+and pair batch commit p99 below 92 ms on both workers in this run.
+
+A separate fixture captured a pending exit in the read-committed pair
+checkpoint, then stopped its owner before the deadline. The peer restored
+the checkpoint and committed exactly one end on the original partition and
+at the saved deadline, with no new input from either asset. Complete
+parity still depends on how active pairs follow assets after stale cells
+are evicted, and how projection and public delivery handle upstream delay.
 
 ### Delivery sequence
 

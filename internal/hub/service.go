@@ -1962,14 +1962,15 @@ type activeCollisionState struct {
 	LastEmitted    time.Time `json:"last_emitted"`
 }
 
-func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float64, defaultRadiusMeters float64) gen.CollisionEvent {
+// CollisionEventForPair builds an OMLOX event with the triggering asset first.
+func CollisionEventForPair(id uuid.UUID, kind gen.CollisionEventCollisionType, at, start time.Time, leftMotion gen.TrackableMotion, leftTrackable gen.Trackable, rightMotion gen.TrackableMotion, rightTrackable gen.Trackable, area *gen.CollisionEvent_CollisionArea, distance float64) gen.CollisionEvent {
 	event := gen.CollisionEvent{
-		Id:            openapi_types.UUID(ids.NewUUID()),
+		Id:            id,
 		CollisionType: kind,
 		CollisionTime: &at,
 		Collisions: []gen.Collision{
-			collisionFromMotion(leftMotion, leftTrackable, defaultRadiusMeters),
-			collisionFromMotion(rightMotion, rightTrackable, defaultRadiusMeters),
+			collisionFromMotion(leftMotion, leftTrackable),
+			collisionFromMotion(rightMotion, rightTrackable),
 		},
 		CenterDistance: &distance,
 	}
@@ -1979,10 +1980,13 @@ func collisionEventForPair(kind gen.CollisionEventCollisionType, at, start time.
 	if area != nil {
 		event.CollisionArea = area
 	}
+	if kind == gen.CollisionEnd {
+		event.EndTime = &at
+	}
 	return event
 }
 
-func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable, defaultRadiusMeters float64) gen.Collision {
+func collisionFromMotion(motion gen.TrackableMotion, trackable gen.Trackable) gen.Collision {
 	id := uuid.Nil
 	if parsed, err := uuid.Parse(motion.Id); err == nil {
 		id = parsed

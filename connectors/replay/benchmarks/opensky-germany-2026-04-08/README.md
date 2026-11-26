@@ -90,3 +90,9 @@ that the cell worker group catches up and that repeated sample versions from
 different cells keep the same candidate ID and pair partition. Include two
 overlapping tracks followed by one track jumping away to check that a
 withdrawal delivers the newer position to the original pair key.
+
+Run `just compose-shadow-collision-pairs` to test exact contact and exit timers
+on the pair stream. Audit the read-committed transition topic for unique
+event IDs, start and end order, and agreement with the two sample versions.
+Stop the replica that owns a pair with a pending exit. Its peer should emit
+the exit at the original effective deadline without another location update.

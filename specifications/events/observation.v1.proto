@@ -200,6 +200,7 @@ message CollisionSample {
   int64 tolerance_timeout_nanos = 13;
   int64 exit_delay_nanos = 14;
   bool eligible = 15;
+  bytes geometry_json = 16;
 }
 
 // CollisionCellInput updates one owned cell, including previously covered cells.
@@ -228,6 +229,41 @@ message CollisionPairInput {
   CollisionSample left = 5;
   CollisionSample right = 6;
   int64 evaluated_at_unix_nano = 7;
+  string updated_trackable_id = 8;
+  bytes deadline_generation = 9;
+  int64 deadline_at_unix_nano = 10;
+}
+
+// CollisionPairCheckpoint retains the latest version of each asset and any open contact.
+message CollisionPairCheckpoint {
+  CollisionSample left = 1;
+  CollisionSample right = 2;
+  int64 evaluated_at_unix_nano = 3;
+  int64 started_at_unix_nano = 4;
+  uint32 physical_area = 5;
+  int64 tolerance_deadline_unix_nano = 6;
+  int64 outside_deadline_unix_nano = 7;
+  double center_distance_meters = 8;
+  string leading_trackable_id = 9;
+}
+
+// CollisionTransition contains an OMLOX collision event and its input versions.
+message CollisionTransition {
+  uint32 schema_version = 1;
+  bytes event_id = 2;
+  bytes cause_id = 3;
+  CollisionSample left = 4;
+  CollisionSample right = 5;
+  int64 occurred_at_unix_nano = 6;
+  bytes collision_event_json = 7;
+}
+
+// CollisionPairFrontier binds pair checkpoints to the input and transition topics.
+message CollisionPairFrontier {
+  bytes input_topic_id = 1;
+  int64 next_offset = 2;
+  bytes transition_topic_id = 3;
+  uint32 topology_version = 4;
 }
 
 // CollisionCellFrontier binds cell checkpoints to a fixed topic topology.

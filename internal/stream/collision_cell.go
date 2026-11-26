@@ -142,16 +142,24 @@ func collisionPairRecord(output string, partitions int32, input *streampb.Collis
 	if left.TrackableId > right.TrackableId {
 		left, right = right, left
 	}
-	key := appendKeyPart(nil, left.OriginHubId)
-	key = appendKeyPart(key, left.TrackableId)
-	key = appendKeyPart(key, right.TrackableId)
-	id := sha256.Sum256(append(append([]byte("collision-pair-input:v1:"), left.EstimateId...), right.EstimateId...))
+	key := collisionPairKey(left, right)
 	value, err := proto.Marshal(&streampb.CollisionPairInput{
-		SchemaVersion: 1, TopologyVersion: collisionTopologyVersion, EventId: id[:], TriggerCellInputId: input.EventId,
-		Left: left, Right: right, EvaluatedAtUnixNano: max(left.ProcessedAtUnixNano, right.ProcessedAtUnixNano),
+		SchemaVersion: 1, TopologyVersion: collisionTopologyVersion, EventId: collisionPairVersionID(left, right), TriggerCellInputId: input.EventId,
+		Left: left, Right: right, EvaluatedAtUnixNano: max(left.ProcessedAtUnixNano, right.ProcessedAtUnixNano), UpdatedTrackableId: input.Sample.TrackableId,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &kgo.Record{Topic: output, Partition: int32(crc32.ChecksumIEEE(key) % uint32(partitions)), Key: key, Value: value}, nil
+}
+
+func collisionPairKey(left, right *streampb.CollisionSample) []byte {
+	key := appendKeyPart(nil, left.OriginHubId)
+	key = appendKeyPart(key, left.TrackableId)
+	return appendKeyPart(key, right.TrackableId)
+}
+
+func collisionPairVersionID(left, right *streampb.CollisionSample) []byte {
+	id := sha256.Sum256(append(append([]byte("collision-pair-input:v1:"), left.EstimateId...), right.EstimateId...))
+	return id[:]
 }

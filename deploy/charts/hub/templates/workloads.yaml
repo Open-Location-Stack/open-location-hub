@@ -12,6 +12,9 @@
 {{- if gt (int .Values.kafka.collisionCellReplicas) 0 -}}
 {{- $roles = append $roles (dict "name" "collision-cell-worker" "replicas" .Values.kafka.collisionCellReplicas "database" "" "port" 8081) -}}
 {{- end -}}
+{{- if gt (int .Values.kafka.collisionPairReplicas) 0 -}}
+{{- $roles = append $roles (dict "name" "collision-pair-worker" "replicas" .Values.kafka.collisionPairReplicas "database" "" "port" 8081) -}}
+{{- end -}}
 {{- range $role := $roles }}
 {{- $configReader := and (eq $role.name "asset-estimator") $root.Values.kafka.estimatorConfigSecret }}
 ---
@@ -191,6 +194,14 @@ spec:
               value: {{ required "Set kafka.topics.collisionPairs" $root.Values.kafka.topics.collisionPairs | quote }}
             - name: KAFKA_COLLISION_CELL_STATE_TOPIC
               value: {{ required "Set kafka.topics.collisionCellState" $root.Values.kafka.topics.collisionCellState | quote }}
+            {{- end }}
+            {{- if eq $role.name "collision-pair-worker" }}
+            - name: KAFKA_COLLISION_PAIR_TOPIC
+              value: {{ required "Set kafka.topics.collisionPairs" $root.Values.kafka.topics.collisionPairs | quote }}
+            - name: KAFKA_COLLISION_TRANSITION_TOPIC
+              value: {{ required "Set kafka.topics.collisionTransitions" $root.Values.kafka.topics.collisionTransitions | quote }}
+            - name: KAFKA_COLLISION_PAIR_STATE_TOPIC
+              value: {{ required "Set kafka.topics.collisionPairState" $root.Values.kafka.topics.collisionPairState | quote }}
             {{- end }}
             {{- if $root.Values.telemetry.metricsEndpoint }}
             - name: OTEL_ENABLED

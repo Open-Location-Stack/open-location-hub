@@ -13,6 +13,7 @@ kafka:
     asset-estimator: location-hub-kafka-estimator
     fence-worker: location-hub-kafka-fences
     collision-cell-worker: location-hub-kafka-collision-cells
+    collision-pair-worker: location-hub-kafka-collision-pairs
     config-relay: location-hub-kafka-relay
   caSecret: location-hub-kafka-ca
 telemetry:

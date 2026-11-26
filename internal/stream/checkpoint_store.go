@@ -59,29 +59,40 @@ func describeCheckpointStore(ctx context.Context, client *kgo.Client, options []
 			return nil, fmt.Errorf("topic %q has %d partitions, input has %d", name, len(metadata.Partitions), len(inputMetadata.Partitions))
 		}
 	}
-	req := kmsg.NewPtrDescribeConfigsRequest()
-	req.Resources = []kmsg.DescribeConfigsRequestResource{{
-		ResourceType: kmsg.ConfigResourceTypeTopic, ResourceName: topic,
-		ConfigNames: []string{"cleanup.policy"},
-	}}
-	configs, err := req.RequestWith(ctx, client)
+	policy, err := topicSetting(ctx, client, topic, "cleanup.policy")
 	if err != nil {
-		return nil, fmt.Errorf("describe checkpoint topic: %w", err)
+		return nil, err
 	}
-	if len(configs.Resources) != 1 || len(configs.Resources[0].Configs) != 1 {
-		return nil, fmt.Errorf("checkpoint topic %q did not return its cleanup policy", topic)
-	}
-	if err := kerr.ErrorForCode(configs.Resources[0].ErrorCode); err != nil {
-		return nil, fmt.Errorf("describe checkpoint topic %q: %w", topic, err)
-	}
-	policy := configs.Resources[0].Configs[0].Value
-	if policy == nil || *policy != "compact" {
+	if policy != "compact" {
 		return nil, fmt.Errorf("checkpoint topic %q requires cleanup.policy=compact", topic)
 	}
 	return &checkpointStore{
 		client: client, options: options, topic: topic, inputID: inputMetadata.TopicID, outputID: outputID,
 		partitions: int32(len(inputMetadata.Partitions)),
 	}, nil
+}
+
+func topicSetting(ctx context.Context, client *kgo.Client, topic, setting string) (string, error) {
+	req := kmsg.NewPtrDescribeConfigsRequest()
+	req.Resources = []kmsg.DescribeConfigsRequestResource{{
+		ResourceType: kmsg.ConfigResourceTypeTopic, ResourceName: topic,
+		ConfigNames: []string{setting},
+	}}
+	configs, err := req.RequestWith(ctx, client)
+	if err != nil {
+		return "", fmt.Errorf("describe topic %q: %w", topic, err)
+	}
+	if len(configs.Resources) != 1 {
+		return "", fmt.Errorf("expected one configuration result for topic %q", topic)
+	}
+	if err := kerr.ErrorForCode(configs.Resources[0].ErrorCode); err != nil {
+		return "", fmt.Errorf("describe topic %q: %w", topic, err)
+	}
+	values := configs.Resources[0].Configs
+	if len(values) != 1 || values[0].Name != setting || values[0].Value == nil {
+		return "", fmt.Errorf("topic %q did not return %s", topic, setting)
+	}
+	return *values[0].Value, nil
 }
 
 func (s *checkpointStore) scan(ctx context.Context, offsets map[int32]kgo.Offset, apply func(*kgo.Record) error) error {

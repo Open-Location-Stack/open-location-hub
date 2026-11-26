@@ -35,3 +35,6 @@
 {{- if and (gt (int .Values.kafka.collisionCellReplicas) 0) (not .Values.kafka.collisionRouting) -}}
 {{- fail "Collision cell workers require kafka.collisionRouting" -}}
 {{- end -}}
+{{- if and (gt (int .Values.kafka.collisionPairReplicas) 0) (not (gt (int .Values.kafka.collisionCellReplicas) 0)) -}}
+{{- fail "Collision pair workers require kafka.collisionCellReplicas" -}}
+{{- end -}}

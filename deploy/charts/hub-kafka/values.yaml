@@ -23,6 +23,8 @@ kafka:
     collisionCells: location-hub.collision-cells.v1
     collisionPairs: location-hub.collision-pairs.v1
     collisionCellState: location-hub.collision-cell-state.v1
+    collisionTransitions: location-hub.collision-transitions.v1
+    collisionPairState: location-hub.collision-pair-state.v1
   routerGroup: location-hub.asset-router.v1
   partitions: 12
   logRetentionMs: 21600000

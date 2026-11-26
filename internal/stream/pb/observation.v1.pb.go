@@ -1444,6 +1444,7 @@ type CollisionSample struct {
 	ToleranceTimeoutNanos int64                  `protobuf:"varint,13,opt,name=tolerance_timeout_nanos,json=toleranceTimeoutNanos,proto3" json:"tolerance_timeout_nanos,omitempty"`
 	ExitDelayNanos        int64                  `protobuf:"varint,14,opt,name=exit_delay_nanos,json=exitDelayNanos,proto3" json:"exit_delay_nanos,omitempty"`
 	Eligible              bool                   `protobuf:"varint,15,opt,name=eligible,proto3" json:"eligible,omitempty"`
+	GeometryJson          []byte                 `protobuf:"bytes,16,opt,name=geometry_json,json=geometryJson,proto3" json:"geometry_json,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -1583,6 +1584,13 @@ func (x *CollisionSample) GetEligible() bool {
 	return false
 }
 
+func (x *CollisionSample) GetGeometryJson() []byte {
+	if x != nil {
+		return x.GeometryJson
+	}
+	return nil
+}
+
 // CollisionCellInput updates one owned cell, including previously covered cells.
 type CollisionCellInput struct {
 	state           protoimpl.MessageState    `protogen:"open.v1"`
@@ -1679,6 +1687,9 @@ type CollisionPairInput struct {
 	Left                *CollisionSample       `protobuf:"bytes,5,opt,name=left,proto3" json:"left,omitempty"`
 	Right               *CollisionSample       `protobuf:"bytes,6,opt,name=right,proto3" json:"right,omitempty"`
 	EvaluatedAtUnixNano int64                  `protobuf:"varint,7,opt,name=evaluated_at_unix_nano,json=evaluatedAtUnixNano,proto3" json:"evaluated_at_unix_nano,omitempty"`
+	UpdatedTrackableId  string                 `protobuf:"bytes,8,opt,name=updated_trackable_id,json=updatedTrackableId,proto3" json:"updated_trackable_id,omitempty"`
+	DeadlineGeneration  []byte                 `protobuf:"bytes,9,opt,name=deadline_generation,json=deadlineGeneration,proto3" json:"deadline_generation,omitempty"`
+	DeadlineAtUnixNano  int64                  `protobuf:"varint,10,opt,name=deadline_at_unix_nano,json=deadlineAtUnixNano,proto3" json:"deadline_at_unix_nano,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1762,6 +1773,298 @@ func (x *CollisionPairInput) GetEvaluatedAtUnixNano() int64 {
 	return 0
 }
 
+func (x *CollisionPairInput) GetUpdatedTrackableId() string {
+	if x != nil {
+		return x.UpdatedTrackableId
+	}
+	return ""
+}
+
+func (x *CollisionPairInput) GetDeadlineGeneration() []byte {
+	if x != nil {
+		return x.DeadlineGeneration
+	}
+	return nil
+}
+
+func (x *CollisionPairInput) GetDeadlineAtUnixNano() int64 {
+	if x != nil {
+		return x.DeadlineAtUnixNano
+	}
+	return 0
+}
+
+// CollisionPairCheckpoint retains the latest version of each asset and any open contact.
+type CollisionPairCheckpoint struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	Left                      *CollisionSample       `protobuf:"bytes,1,opt,name=left,proto3" json:"left,omitempty"`
+	Right                     *CollisionSample       `protobuf:"bytes,2,opt,name=right,proto3" json:"right,omitempty"`
+	EvaluatedAtUnixNano       int64                  `protobuf:"varint,3,opt,name=evaluated_at_unix_nano,json=evaluatedAtUnixNano,proto3" json:"evaluated_at_unix_nano,omitempty"`
+	StartedAtUnixNano         int64                  `protobuf:"varint,4,opt,name=started_at_unix_nano,json=startedAtUnixNano,proto3" json:"started_at_unix_nano,omitempty"`
+	PhysicalArea              uint32                 `protobuf:"varint,5,opt,name=physical_area,json=physicalArea,proto3" json:"physical_area,omitempty"`
+	ToleranceDeadlineUnixNano int64                  `protobuf:"varint,6,opt,name=tolerance_deadline_unix_nano,json=toleranceDeadlineUnixNano,proto3" json:"tolerance_deadline_unix_nano,omitempty"`
+	OutsideDeadlineUnixNano   int64                  `protobuf:"varint,7,opt,name=outside_deadline_unix_nano,json=outsideDeadlineUnixNano,proto3" json:"outside_deadline_unix_nano,omitempty"`
+	CenterDistanceMeters      float64                `protobuf:"fixed64,8,opt,name=center_distance_meters,json=centerDistanceMeters,proto3" json:"center_distance_meters,omitempty"`
+	LeadingTrackableId        string                 `protobuf:"bytes,9,opt,name=leading_trackable_id,json=leadingTrackableId,proto3" json:"leading_trackable_id,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *CollisionPairCheckpoint) Reset() {
+	*x = CollisionPairCheckpoint{}
+	mi := &file_observation_v1_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollisionPairCheckpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollisionPairCheckpoint) ProtoMessage() {}
+
+func (x *CollisionPairCheckpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollisionPairCheckpoint.ProtoReflect.Descriptor instead.
+func (*CollisionPairCheckpoint) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CollisionPairCheckpoint) GetLeft() *CollisionSample {
+	if x != nil {
+		return x.Left
+	}
+	return nil
+}
+
+func (x *CollisionPairCheckpoint) GetRight() *CollisionSample {
+	if x != nil {
+		return x.Right
+	}
+	return nil
+}
+
+func (x *CollisionPairCheckpoint) GetEvaluatedAtUnixNano() int64 {
+	if x != nil {
+		return x.EvaluatedAtUnixNano
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetStartedAtUnixNano() int64 {
+	if x != nil {
+		return x.StartedAtUnixNano
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetPhysicalArea() uint32 {
+	if x != nil {
+		return x.PhysicalArea
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetToleranceDeadlineUnixNano() int64 {
+	if x != nil {
+		return x.ToleranceDeadlineUnixNano
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetOutsideDeadlineUnixNano() int64 {
+	if x != nil {
+		return x.OutsideDeadlineUnixNano
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetCenterDistanceMeters() float64 {
+	if x != nil {
+		return x.CenterDistanceMeters
+	}
+	return 0
+}
+
+func (x *CollisionPairCheckpoint) GetLeadingTrackableId() string {
+	if x != nil {
+		return x.LeadingTrackableId
+	}
+	return ""
+}
+
+// CollisionTransition contains an OMLOX collision event and its input versions.
+type CollisionTransition struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion      uint32                 `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	EventId            []byte                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	CauseId            []byte                 `protobuf:"bytes,3,opt,name=cause_id,json=causeId,proto3" json:"cause_id,omitempty"`
+	Left               *CollisionSample       `protobuf:"bytes,4,opt,name=left,proto3" json:"left,omitempty"`
+	Right              *CollisionSample       `protobuf:"bytes,5,opt,name=right,proto3" json:"right,omitempty"`
+	OccurredAtUnixNano int64                  `protobuf:"varint,6,opt,name=occurred_at_unix_nano,json=occurredAtUnixNano,proto3" json:"occurred_at_unix_nano,omitempty"`
+	CollisionEventJson []byte                 `protobuf:"bytes,7,opt,name=collision_event_json,json=collisionEventJson,proto3" json:"collision_event_json,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *CollisionTransition) Reset() {
+	*x = CollisionTransition{}
+	mi := &file_observation_v1_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollisionTransition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollisionTransition) ProtoMessage() {}
+
+func (x *CollisionTransition) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollisionTransition.ProtoReflect.Descriptor instead.
+func (*CollisionTransition) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *CollisionTransition) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *CollisionTransition) GetEventId() []byte {
+	if x != nil {
+		return x.EventId
+	}
+	return nil
+}
+
+func (x *CollisionTransition) GetCauseId() []byte {
+	if x != nil {
+		return x.CauseId
+	}
+	return nil
+}
+
+func (x *CollisionTransition) GetLeft() *CollisionSample {
+	if x != nil {
+		return x.Left
+	}
+	return nil
+}
+
+func (x *CollisionTransition) GetRight() *CollisionSample {
+	if x != nil {
+		return x.Right
+	}
+	return nil
+}
+
+func (x *CollisionTransition) GetOccurredAtUnixNano() int64 {
+	if x != nil {
+		return x.OccurredAtUnixNano
+	}
+	return 0
+}
+
+func (x *CollisionTransition) GetCollisionEventJson() []byte {
+	if x != nil {
+		return x.CollisionEventJson
+	}
+	return nil
+}
+
+// CollisionPairFrontier binds pair checkpoints to the input and transition topics.
+type CollisionPairFrontier struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	InputTopicId      []byte                 `protobuf:"bytes,1,opt,name=input_topic_id,json=inputTopicId,proto3" json:"input_topic_id,omitempty"`
+	NextOffset        int64                  `protobuf:"varint,2,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
+	TransitionTopicId []byte                 `protobuf:"bytes,3,opt,name=transition_topic_id,json=transitionTopicId,proto3" json:"transition_topic_id,omitempty"`
+	TopologyVersion   uint32                 `protobuf:"varint,4,opt,name=topology_version,json=topologyVersion,proto3" json:"topology_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *CollisionPairFrontier) Reset() {
+	*x = CollisionPairFrontier{}
+	mi := &file_observation_v1_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CollisionPairFrontier) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CollisionPairFrontier) ProtoMessage() {}
+
+func (x *CollisionPairFrontier) ProtoReflect() protoreflect.Message {
+	mi := &file_observation_v1_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CollisionPairFrontier.ProtoReflect.Descriptor instead.
+func (*CollisionPairFrontier) Descriptor() ([]byte, []int) {
+	return file_observation_v1_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CollisionPairFrontier) GetInputTopicId() []byte {
+	if x != nil {
+		return x.InputTopicId
+	}
+	return nil
+}
+
+func (x *CollisionPairFrontier) GetNextOffset() int64 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
+}
+
+func (x *CollisionPairFrontier) GetTransitionTopicId() []byte {
+	if x != nil {
+		return x.TransitionTopicId
+	}
+	return nil
+}
+
+func (x *CollisionPairFrontier) GetTopologyVersion() uint32 {
+	if x != nil {
+		return x.TopologyVersion
+	}
+	return 0
+}
+
 // CollisionCellFrontier binds cell checkpoints to a fixed topic topology.
 type CollisionCellFrontier struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -1776,7 +2079,7 @@ type CollisionCellFrontier struct {
 
 func (x *CollisionCellFrontier) Reset() {
 	*x = CollisionCellFrontier{}
-	mi := &file_observation_v1_proto_msgTypes[15]
+	mi := &file_observation_v1_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1788,7 +2091,7 @@ func (x *CollisionCellFrontier) String() string {
 func (*CollisionCellFrontier) ProtoMessage() {}
 
 func (x *CollisionCellFrontier) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[15]
+	mi := &file_observation_v1_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1801,7 +2104,7 @@ func (x *CollisionCellFrontier) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollisionCellFrontier.ProtoReflect.Descriptor instead.
 func (*CollisionCellFrontier) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{15}
+	return file_observation_v1_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CollisionCellFrontier) GetInputTopicId() []byte {
@@ -1854,7 +2157,7 @@ type ConfigurationRevision struct {
 
 func (x *ConfigurationRevision) Reset() {
 	*x = ConfigurationRevision{}
-	mi := &file_observation_v1_proto_msgTypes[16]
+	mi := &file_observation_v1_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1866,7 +2169,7 @@ func (x *ConfigurationRevision) String() string {
 func (*ConfigurationRevision) ProtoMessage() {}
 
 func (x *ConfigurationRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[16]
+	mi := &file_observation_v1_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1879,7 +2182,7 @@ func (x *ConfigurationRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevision.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevision) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{16}
+	return file_observation_v1_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ConfigurationRevision) GetSchemaVersion() uint32 {
@@ -1934,7 +2237,7 @@ type ConfigurationRevisionPart struct {
 
 func (x *ConfigurationRevisionPart) Reset() {
 	*x = ConfigurationRevisionPart{}
-	mi := &file_observation_v1_proto_msgTypes[17]
+	mi := &file_observation_v1_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +2249,7 @@ func (x *ConfigurationRevisionPart) String() string {
 func (*ConfigurationRevisionPart) ProtoMessage() {}
 
 func (x *ConfigurationRevisionPart) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[17]
+	mi := &file_observation_v1_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1959,7 +2262,7 @@ func (x *ConfigurationRevisionPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevisionPart.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevisionPart) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{17}
+	return file_observation_v1_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ConfigurationRevisionPart) GetSchemaVersion() uint32 {
@@ -2024,7 +2327,7 @@ type EstimateCheckpoint_Axis struct {
 
 func (x *EstimateCheckpoint_Axis) Reset() {
 	*x = EstimateCheckpoint_Axis{}
-	mi := &file_observation_v1_proto_msgTypes[18]
+	mi := &file_observation_v1_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2036,7 +2339,7 @@ func (x *EstimateCheckpoint_Axis) String() string {
 func (*EstimateCheckpoint_Axis) ProtoMessage() {}
 
 func (x *EstimateCheckpoint_Axis) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[18]
+	mi := &file_observation_v1_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2097,7 +2400,7 @@ type FenceRoutingCheckpoint_Interest struct {
 
 func (x *FenceRoutingCheckpoint_Interest) Reset() {
 	*x = FenceRoutingCheckpoint_Interest{}
-	mi := &file_observation_v1_proto_msgTypes[19]
+	mi := &file_observation_v1_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2109,7 +2412,7 @@ func (x *FenceRoutingCheckpoint_Interest) String() string {
 func (*FenceRoutingCheckpoint_Interest) ProtoMessage() {}
 
 func (x *FenceRoutingCheckpoint_Interest) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[19]
+	mi := &file_observation_v1_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2151,7 +2454,7 @@ type ConfigurationRevision_Change struct {
 
 func (x *ConfigurationRevision_Change) Reset() {
 	*x = ConfigurationRevision_Change{}
-	mi := &file_observation_v1_proto_msgTypes[20]
+	mi := &file_observation_v1_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2163,7 +2466,7 @@ func (x *ConfigurationRevision_Change) String() string {
 func (*ConfigurationRevision_Change) ProtoMessage() {}
 
 func (x *ConfigurationRevision_Change) ProtoReflect() protoreflect.Message {
-	mi := &file_observation_v1_proto_msgTypes[20]
+	mi := &file_observation_v1_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2176,7 +2479,7 @@ func (x *ConfigurationRevision_Change) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationRevision_Change.ProtoReflect.Descriptor instead.
 func (*ConfigurationRevision_Change) Descriptor() ([]byte, []int) {
-	return file_observation_v1_proto_rawDescGZIP(), []int{16, 0}
+	return file_observation_v1_proto_rawDescGZIP(), []int{19, 0}
 }
 
 func (x *ConfigurationRevision_Change) GetResourceKind() string {
@@ -2358,7 +2661,7 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x01z\x18\x03 \x01(\x11R\x01z\"\x8d\x01\n" +
 	"\x1aCollisionRoutingCheckpoint\x123\n" +
 	"\x16processed_at_unix_nano\x18\x01 \x01(\x03R\x13processedAtUnixNano\x12:\n" +
-	"\x05cells\x18\x02 \x03(\v2$.locationhub.stream.v1.CollisionCellR\x05cells\"\x94\x05\n" +
+	"\x05cells\x18\x02 \x03(\v2$.locationhub.stream.v1.CollisionCellR\x05cells\"\xb9\x05\n" +
 	"\x0fCollisionSample\x12\x1f\n" +
 	"\vestimate_id\x18\x01 \x01(\fR\n" +
 	"estimateId\x12\"\n" +
@@ -2377,7 +2680,8 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x15exit_tolerance_meters\x18\f \x01(\x01R\x13exitToleranceMeters\x126\n" +
 	"\x17tolerance_timeout_nanos\x18\r \x01(\x03R\x15toleranceTimeoutNanos\x12(\n" +
 	"\x10exit_delay_nanos\x18\x0e \x01(\x03R\x0eexitDelayNanos\x12\x1a\n" +
-	"\beligible\x18\x0f \x01(\bR\beligibleB\x13\n" +
+	"\beligible\x18\x0f \x01(\bR\beligible\x12#\n" +
+	"\rgeometry_json\x18\x10 \x01(\fR\fgeometryJsonB\x13\n" +
 	"\x11_extrusion_meters\"\xa2\x03\n" +
 	"\x12CollisionCellInput\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12)\n" +
@@ -2390,7 +2694,7 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rACTION_UPSERT\x10\x01\x12\x13\n" +
 	"\x0fACTION_WITHDRAW\x10\x02\x12\x11\n" +
-	"\rACTION_EXPIRE\x10\x03\"\xe3\x02\n" +
+	"\rACTION_EXPIRE\x10\x03\"\xf9\x03\n" +
 	"\x12CollisionPairInput\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12)\n" +
 	"\x10topology_version\x18\x02 \x01(\rR\x0ftopologyVersion\x12\x19\n" +
@@ -2398,7 +2702,35 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\x15trigger_cell_input_id\x18\x04 \x01(\fR\x12triggerCellInputId\x12:\n" +
 	"\x04left\x18\x05 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x04left\x12<\n" +
 	"\x05right\x18\x06 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x05right\x123\n" +
-	"\x16evaluated_at_unix_nano\x18\a \x01(\x03R\x13evaluatedAtUnixNano\"\xd6\x01\n" +
+	"\x16evaluated_at_unix_nano\x18\a \x01(\x03R\x13evaluatedAtUnixNano\x120\n" +
+	"\x14updated_trackable_id\x18\b \x01(\tR\x12updatedTrackableId\x12/\n" +
+	"\x13deadline_generation\x18\t \x01(\fR\x12deadlineGeneration\x121\n" +
+	"\x15deadline_at_unix_nano\x18\n" +
+	" \x01(\x03R\x12deadlineAtUnixNano\"\x84\x04\n" +
+	"\x17CollisionPairCheckpoint\x12:\n" +
+	"\x04left\x18\x01 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x04left\x12<\n" +
+	"\x05right\x18\x02 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x05right\x123\n" +
+	"\x16evaluated_at_unix_nano\x18\x03 \x01(\x03R\x13evaluatedAtUnixNano\x12/\n" +
+	"\x14started_at_unix_nano\x18\x04 \x01(\x03R\x11startedAtUnixNano\x12#\n" +
+	"\rphysical_area\x18\x05 \x01(\rR\fphysicalArea\x12?\n" +
+	"\x1ctolerance_deadline_unix_nano\x18\x06 \x01(\x03R\x19toleranceDeadlineUnixNano\x12;\n" +
+	"\x1aoutside_deadline_unix_nano\x18\a \x01(\x03R\x17outsideDeadlineUnixNano\x124\n" +
+	"\x16center_distance_meters\x18\b \x01(\x01R\x14centerDistanceMeters\x120\n" +
+	"\x14leading_trackable_id\x18\t \x01(\tR\x12leadingTrackableId\"\xd1\x02\n" +
+	"\x13CollisionTransition\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12\x19\n" +
+	"\bcause_id\x18\x03 \x01(\fR\acauseId\x12:\n" +
+	"\x04left\x18\x04 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x04left\x12<\n" +
+	"\x05right\x18\x05 \x01(\v2&.locationhub.stream.v1.CollisionSampleR\x05right\x121\n" +
+	"\x15occurred_at_unix_nano\x18\x06 \x01(\x03R\x12occurredAtUnixNano\x120\n" +
+	"\x14collision_event_json\x18\a \x01(\fR\x12collisionEventJson\"\xb9\x01\n" +
+	"\x15CollisionPairFrontier\x12$\n" +
+	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
+	"\vnext_offset\x18\x02 \x01(\x03R\n" +
+	"nextOffset\x12.\n" +
+	"\x13transition_topic_id\x18\x03 \x01(\fR\x11transitionTopicId\x12)\n" +
+	"\x10topology_version\x18\x04 \x01(\rR\x0ftopologyVersion\"\xd6\x01\n" +
 	"\x15CollisionCellFrontier\x12$\n" +
 	"\x0einput_topic_id\x18\x01 \x01(\fR\finputTopicId\x12\x1f\n" +
 	"\vnext_offset\x18\x02 \x01(\x03R\n" +
@@ -2441,7 +2773,7 @@ func file_observation_v1_proto_rawDescGZIP() []byte {
 }
 
 var file_observation_v1_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_observation_v1_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_observation_v1_proto_goTypes = []any{
 	(Observation_Kind)(0),                   // 0: locationhub.stream.v1.Observation.Kind
 	(FenceEvaluation_Action)(0),             // 1: locationhub.stream.v1.FenceEvaluation.Action
@@ -2462,21 +2794,24 @@ var file_observation_v1_proto_goTypes = []any{
 	(*CollisionSample)(nil),                 // 16: locationhub.stream.v1.CollisionSample
 	(*CollisionCellInput)(nil),              // 17: locationhub.stream.v1.CollisionCellInput
 	(*CollisionPairInput)(nil),              // 18: locationhub.stream.v1.CollisionPairInput
-	(*CollisionCellFrontier)(nil),           // 19: locationhub.stream.v1.CollisionCellFrontier
-	(*ConfigurationRevision)(nil),           // 20: locationhub.stream.v1.ConfigurationRevision
-	(*ConfigurationRevisionPart)(nil),       // 21: locationhub.stream.v1.ConfigurationRevisionPart
-	(*EstimateCheckpoint_Axis)(nil),         // 22: locationhub.stream.v1.EstimateCheckpoint.Axis
-	(*FenceRoutingCheckpoint_Interest)(nil), // 23: locationhub.stream.v1.FenceRoutingCheckpoint.Interest
-	(*ConfigurationRevision_Change)(nil),    // 24: locationhub.stream.v1.ConfigurationRevision.Change
+	(*CollisionPairCheckpoint)(nil),         // 19: locationhub.stream.v1.CollisionPairCheckpoint
+	(*CollisionTransition)(nil),             // 20: locationhub.stream.v1.CollisionTransition
+	(*CollisionPairFrontier)(nil),           // 21: locationhub.stream.v1.CollisionPairFrontier
+	(*CollisionCellFrontier)(nil),           // 22: locationhub.stream.v1.CollisionCellFrontier
+	(*ConfigurationRevision)(nil),           // 23: locationhub.stream.v1.ConfigurationRevision
+	(*ConfigurationRevisionPart)(nil),       // 24: locationhub.stream.v1.ConfigurationRevisionPart
+	(*EstimateCheckpoint_Axis)(nil),         // 25: locationhub.stream.v1.EstimateCheckpoint.Axis
+	(*FenceRoutingCheckpoint_Interest)(nil), // 26: locationhub.stream.v1.FenceRoutingCheckpoint.Interest
+	(*ConfigurationRevision_Change)(nil),    // 27: locationhub.stream.v1.ConfigurationRevision.Change
 }
 var file_observation_v1_proto_depIdxs = []int32{
 	0,  // 0: locationhub.stream.v1.Observation.kind:type_name -> locationhub.stream.v1.Observation.Kind
 	4,  // 1: locationhub.stream.v1.AssetInput.observation:type_name -> locationhub.stream.v1.Observation
-	22, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
+	25, // 2: locationhub.stream.v1.EstimateCheckpoint.axes:type_name -> locationhub.stream.v1.EstimateCheckpoint.Axis
 	5,  // 3: locationhub.stream.v1.EstimateCheckpoint.candidates:type_name -> locationhub.stream.v1.AssetInput
 	9,  // 4: locationhub.stream.v1.EstimateCheckpoint.fence_routing:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint
 	15, // 5: locationhub.stream.v1.EstimateCheckpoint.collision_routing:type_name -> locationhub.stream.v1.CollisionRoutingCheckpoint
-	23, // 6: locationhub.stream.v1.FenceRoutingCheckpoint.interests:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint.Interest
+	26, // 6: locationhub.stream.v1.FenceRoutingCheckpoint.interests:type_name -> locationhub.stream.v1.FenceRoutingCheckpoint.Interest
 	1,  // 7: locationhub.stream.v1.FenceEvaluation.action:type_name -> locationhub.stream.v1.FenceEvaluation.Action
 	10, // 8: locationhub.stream.v1.FenceMembershipCheckpoint.observation:type_name -> locationhub.stream.v1.FenceEvaluation
 	2,  // 9: locationhub.stream.v1.FenceTransition.kind:type_name -> locationhub.stream.v1.FenceTransition.Kind
@@ -2487,12 +2822,16 @@ var file_observation_v1_proto_depIdxs = []int32{
 	3,  // 14: locationhub.stream.v1.CollisionCellInput.action:type_name -> locationhub.stream.v1.CollisionCellInput.Action
 	16, // 15: locationhub.stream.v1.CollisionPairInput.left:type_name -> locationhub.stream.v1.CollisionSample
 	16, // 16: locationhub.stream.v1.CollisionPairInput.right:type_name -> locationhub.stream.v1.CollisionSample
-	24, // 17: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
-	18, // [18:18] is the sub-list for method output_type
-	18, // [18:18] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	16, // 17: locationhub.stream.v1.CollisionPairCheckpoint.left:type_name -> locationhub.stream.v1.CollisionSample
+	16, // 18: locationhub.stream.v1.CollisionPairCheckpoint.right:type_name -> locationhub.stream.v1.CollisionSample
+	16, // 19: locationhub.stream.v1.CollisionTransition.left:type_name -> locationhub.stream.v1.CollisionSample
+	16, // 20: locationhub.stream.v1.CollisionTransition.right:type_name -> locationhub.stream.v1.CollisionSample
+	27, // 21: locationhub.stream.v1.ConfigurationRevision.changes:type_name -> locationhub.stream.v1.ConfigurationRevision.Change
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_observation_v1_proto_init() }
@@ -2504,14 +2843,14 @@ func file_observation_v1_proto_init() {
 	file_observation_v1_proto_msgTypes[2].OneofWrappers = []any{}
 	file_observation_v1_proto_msgTypes[6].OneofWrappers = []any{}
 	file_observation_v1_proto_msgTypes[12].OneofWrappers = []any{}
-	file_observation_v1_proto_msgTypes[19].OneofWrappers = []any{}
+	file_observation_v1_proto_msgTypes[22].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_observation_v1_proto_rawDesc), len(file_observation_v1_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   21,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

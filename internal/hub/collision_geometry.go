@@ -7,6 +7,48 @@ import (
 	"github.com/formation-res/open-location-hub/internal/httpapi/gen"
 )
 
+// CollisionContact contains the physical relationship of two poses.
+type CollisionContact struct {
+	Inside     bool
+	Area       *gen.CollisionEvent_CollisionArea
+	Distance   float64
+	compatible bool
+	gap        float64
+}
+
+// CollisionContactForPair compares the two poses before applying exit tolerance.
+func CollisionContactForPair(left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) (CollisionContact, error) {
+	lp, err := point2D(left.Location.Position)
+	if err != nil {
+		return CollisionContact{}, err
+	}
+	rp, err := point2D(right.Location.Position)
+	if err != nil {
+		return CollisionContact{}, err
+	}
+	inside, area, distance := motionsCollide(left, lt, right, rt, lp, rp, 0)
+	result := CollisionContact{Distance: distance, compatible: collisionFramesMatch(left.Location, right.Location)}
+	if result.compatible {
+		result.Inside, result.Area = inside, area
+		if !inside {
+			result.gap = math.Hypot(math.Max(0, distance-trackableRadius(lt)-trackableRadius(rt)),
+				locationHeightGap(left.Location, lt.Extrusion, right.Location, rt.Extrusion))
+		}
+	}
+	return result, nil
+}
+
+// ExitArea classifies the pose relative to the exit tolerance.
+func (c CollisionContact) ExitArea(tolerance float64) FenceArea {
+	if c.Inside {
+		return FenceInside
+	}
+	if c.compatible && c.gap <= tolerance {
+		return FenceTolerance
+	}
+	return FenceOutside
+}
+
 // circularIntersection approximates the actual lens shared by the two circular
 // extents, rather than returning the midpoint for every overlapping pair. Exact
 // tangent contacts and zero-radius objects are represented as a point.

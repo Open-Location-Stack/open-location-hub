@@ -50,6 +50,9 @@ services:
       COLLISION_PAIR_TOPIC: "${KAFKA_COLLISION_PAIR_TOPIC:-location-hub.collision-pairs.v1}"
       COLLISION_PAIR_RETENTION_MS: "${KAFKA_COLLISION_PAIR_RETENTION_MS:-${KAFKA_LOG_RETENTION_MS:-21600000}}"
       COLLISION_CELL_STATE_TOPIC: "${KAFKA_COLLISION_CELL_STATE_TOPIC:-location-hub.collision-cell-state.v1}"
+      COLLISION_TRANSITION_TOPIC: "${KAFKA_COLLISION_TRANSITION_TOPIC:-location-hub.collision-transitions.v1}"
+      COLLISION_TRANSITION_RETENTION_MS: "${KAFKA_COLLISION_TRANSITION_RETENTION_MS:-${KAFKA_LOG_RETENTION_MS:-21600000}}"
+      COLLISION_PAIR_STATE_TOPIC: "${KAFKA_COLLISION_PAIR_STATE_TOPIC:-location-hub.collision-pair-state.v1}"
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -77,7 +80,7 @@ services:
           set -- "$$@" "$$FENCE_INPUT_TOPIC" "$$FENCE_TRANSITION_TOPIC" "$$FENCE_STATE_TOPIC"
         fi
         if test -n "$$COLLISION_CELL_TOPIC"; then
-          set -- "$$@" "$$COLLISION_CELL_TOPIC" "$$COLLISION_PAIR_TOPIC" "$$COLLISION_CELL_STATE_TOPIC"
+          set -- "$$@" "$$COLLISION_CELL_TOPIC" "$$COLLISION_PAIR_TOPIC" "$$COLLISION_CELL_STATE_TOPIC" "$$COLLISION_TRANSITION_TOPIC" "$$COLLISION_PAIR_STATE_TOPIC"
         fi
         for topic in "$$@"; do
           test -n "$$topic"
@@ -98,7 +101,9 @@ services:
         if test -n "$$COLLISION_CELL_TOPIC"; then
           create_topic "$$COLLISION_CELL_TOPIC" "$$COLLISION_CELL_RETENTION_MS"
           create_topic "$$COLLISION_PAIR_TOPIC" "$$COLLISION_PAIR_RETENTION_MS"
+          create_topic "$$COLLISION_TRANSITION_TOPIC" "$$COLLISION_TRANSITION_RETENTION_MS"
           create_checkpoint "$$COLLISION_CELL_STATE_TOPIC"
+          create_checkpoint "$$COLLISION_PAIR_STATE_TOPIC"
         fi
         create_checkpoint "$$ESTIMATOR_STATE_TOPIC"
 
@@ -117,6 +122,8 @@ services:
       KAFKA_COLLISION_CELL_TOPIC: "${KAFKA_COLLISION_CELL_TOPIC:-}"
       KAFKA_COLLISION_PAIR_TOPIC: "${KAFKA_COLLISION_PAIR_TOPIC:-location-hub.collision-pairs.v1}"
       KAFKA_COLLISION_CELL_STATE_TOPIC: "${KAFKA_COLLISION_CELL_STATE_TOPIC:-location-hub.collision-cell-state.v1}"
+      KAFKA_COLLISION_TRANSITION_TOPIC: "${KAFKA_COLLISION_TRANSITION_TOPIC:-location-hub.collision-transitions.v1}"
+      KAFKA_COLLISION_PAIR_STATE_TOPIC: "${KAFKA_COLLISION_PAIR_STATE_TOPIC:-location-hub.collision-pair-state.v1}"
       HUB_CONFIG_HISTORY: "${HUB_CONFIG_HISTORY:-6h}"
       HUB_CONFIG_READ_URL: "${HUB_CONFIG_READ_URL:-}"
       HUB_CONFIG_MAX_STALE: "${HUB_CONFIG_MAX_STALE:-30s}"

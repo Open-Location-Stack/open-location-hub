@@ -116,6 +116,13 @@ func (r collisionRouter) route(ctx context.Context, estimate *streampb.MotionEst
 	if world {
 		sample.EcefMeters = position[:]
 	}
+	if sample.Eligible && policy.Radius == 0 && trackable.Geometry != nil {
+		var err error
+		sample.GeometryJson, err = json.Marshal(trackable.Geometry)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("encode collision asset geometry: %w", err)
+		}
+	}
 	current := make(map[collisionCell]struct{}, len(cells))
 	records := make([]*kgo.Record, 0, len(cells)+len(prior.GetCells()))
 	for _, cell := range cells {

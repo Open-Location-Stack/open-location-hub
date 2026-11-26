@@ -202,6 +202,27 @@ publish up to 256 candidate peers. When a limit is exceeded, Perses shows
 The Worker performance dashboard separates routing, cell evaluations and
 committed pair candidates. The compatibility path still owns public events.
 
+### Collision pair worker
+
+Run `open-location-hub collision-pair-worker` or
+`just compose-shadow-collision-pairs` to evaluate shadow contacts and timers.
+The worker reads `KAFKA_COLLISION_PAIR_TOPIC` and writes
+`KAFKA_COLLISION_TRANSITION_TOPIC` (default `location-hub.collision-transitions.v1`).
+Active contacts and recent pair versions use
+`KAFKA_COLLISION_PAIR_STATE_TOPIC` (default `location-hub.collision-pair-state.v1`).
+All three topics require equal, fixed partition counts. Use
+`message.timestamp.type=LogAppendTime` for the input and
+`cleanup.policy=compact` for the checkpoint topic. The consumer group is the
+checkpoint topic followed by `.pairs`. Set a unique
+`KAFKA_COLLISION_PAIR_INSTANCE` if replicas share a hostname.
+
+Grant the pair worker Read, Write, Describe and DescribeConfigs on the pair
+input and state topics, Write and Describe on transitions, and access to the
+group and its transaction IDs. Idempotent writes support deadline hints.
+`KAFKA_COLLISION_TRANSITION_RETENTION_MS` overrides the shared six-hour
+transition retention in Compose. Perses shows pair observation and timer
+service times and committed operation counts under `collision_pair`.
+
 ### Configuration relay
 
 Apply the database migrations and start the Hub once to initialize its persisted
