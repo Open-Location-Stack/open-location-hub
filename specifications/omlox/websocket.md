@@ -48,7 +48,7 @@ Conditionally used fields:
 ### Wrapper fields
 
 - `event`: string
-  Allowed values: `message`, `subscribe`, `subscribed`, `unsubscribe`, `unsubscribed`, `error`
+  Allowed values: `message`, `subscribe`, `subscribed`, `unsubscribe`, `unsubscribed`, `error`, `accepted`
 - `topic`: string
   Interpreted according to the topic name
 - `subscription_id`: integer
@@ -59,6 +59,14 @@ Conditionally used fields:
   Flat key/value object for topic-specific subscription parameters and authorization data
 
 ## Event types
+
+### `accepted`
+
+On the Kafka runtime, include a nonempty string `request_id` in publication
+`params` to request a durable acknowledgement. The Hub returns an
+`accepted` wrapper for the same topic with that `request_id` after Kafka
+confirms the batch transaction. Error `10006` means durable acceptance
+is unconfirmed. Retry with the same publication payload.
 
 ### `message`
 

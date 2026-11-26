@@ -19,6 +19,7 @@ import (
 	"github.com/formation-res/open-location-hub/internal/httpapi/handlers"
 	"github.com/formation-res/open-location-hub/internal/hub"
 	"github.com/formation-res/open-location-hub/internal/hubmeta"
+	"github.com/formation-res/open-location-hub/internal/ingest"
 	"github.com/formation-res/open-location-hub/internal/mqtt"
 	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/formation-res/open-location-hub/internal/rpc"
@@ -188,18 +189,24 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 	defer cleanupLogger()
 
-	var mirrorObservation func(context.Context, stream.Observation)
+	var appendObservations func(context.Context, []ingest.Observation) error
+	var delivery *stream.Delivery
 	if cfg.KafkaShadow.Enabled() {
-		mirror, err := stream.OpenShadow(ctx, cfg.KafkaShadow, hubMeta.HubID)
+		writer, err := stream.OpenIngress(ctx, cfg.KafkaShadow, hubMeta.HubID)
 		if err != nil {
-			return fmt.Errorf("initialize Kafka shadow producer: %w", err)
+			return fmt.Errorf("initialize Kafka ingress: %w", err)
 		}
-		defer func() {
-			if err := mirror.Close(); err != nil {
-				logger.Warn("Kafka shadow drain failed", zap.Error(err))
-			}
-		}()
-		mirrorObservation = mirror.Mirror
+		defer writer.Close()
+		appendObservations = writer.Append
+		delivery, err = stream.OpenDelivery(ctx, cfg.KafkaShadow, hubMeta.HubID, stream.DeliveryTopics{
+			Estimates: workerEnv("KAFKA_ESTIMATE_TOPIC", "location-hub.motion-estimates.v1"),
+			Fences:    os.Getenv("KAFKA_GATEWAY_FENCE_TOPIC"), Collisions: os.Getenv("KAFKA_GATEWAY_COLLISION_TOPIC"),
+			StateTTL: max(cfg.StateLocationTTL, cfg.StateProximityTTL),
+		})
+		if err != nil {
+			return fmt.Errorf("initialize Kafka delivery: %w", err)
+		}
+		defer delivery.Close()
 	}
 
 	mqttCtx, mqttSpan := telemetry.StartSpan(ctx, "runtime.mqtt.init")
@@ -235,7 +242,7 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	eventBus := rt.newEventBus()
 	service, err := rt.newService(logger, queries, eventBus, hub.Config{
 		HubID:                                 hubMeta.HubID,
-		ObservationMirror:                     mirrorObservation,
+		AppendObservations:                    appendObservations,
 		LocationTTL:                           cfg.StateLocationTTL,
 		ProximityTTL:                          cfg.StateProximityTTL,
 		DedupTTL:                              cfg.StateDedupTTL,
@@ -378,13 +385,17 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		cfg.WebSocketPingInterval,
 		cfg.WebSocketOutboundBuffer,
 		cfg.EventBusSubscriberBuffer,
-		cfg.CollisionsEnabled,
+		(delivery == nil && cfg.CollisionsEnabled) || os.Getenv("KAFKA_GATEWAY_COLLISION_TOPIC") != "",
 	)
 	r.Get("/v2/ws/socket", wsHub.Handle)
 
 	srv := rt.newHTTPServer(cfg.HTTPListenAddr, r)
 
 	serverErrCh := make(chan error, 1)
+	deliveryErrCh := make(chan error, 1)
+	if delivery != nil {
+		go func() { deliveryErrCh <- delivery.Run(ctx, service) }()
+	}
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
@@ -394,9 +405,11 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 		}
 	}()
 
+	var deliveryErr error
 	select {
 	case err := <-serverErrCh:
 		return fmt.Errorf("http server failed: %w", err)
+	case deliveryErr = <-deliveryErrCh:
 	case <-ctx.Done():
 		logger.Info("shutdown requested", observability.Error(ctx.Err()))
 	}
@@ -405,6 +418,9 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown failed: %w", err)
+	}
+	if deliveryErr != nil {
+		return fmt.Errorf("stream delivery stopped: %w", deliveryErr)
 	}
 	<-serverDone
 

@@ -146,6 +146,14 @@ spec:
               value: {{ $root.Values.auth.rolesClaim | quote }}
             - name: AUTH_PERMISSIONS_FILE
               value: /etc/location-hub/auth/permissions.yaml
+            {{- if gt (int $root.Values.kafka.fenceReplicas) 0 }}
+            - name: KAFKA_GATEWAY_FENCE_TOPIC
+              value: {{ $root.Values.kafka.topics.fenceTransitions | quote }}
+            {{- end }}
+            {{- if gt (int $root.Values.kafka.collisionPairReplicas) 0 }}
+            - name: KAFKA_GATEWAY_COLLISION_TOPIC
+              value: {{ $root.Values.kafka.topics.collisionTransitions | quote }}
+            {{- end }}
             {{- if has $root.Values.auth.mode (list "static" "hybrid") }}
             - name: AUTH_STATIC_PUBLIC_KEYS
               value: {{ $root.Values.auth.staticPublicKeys | quote }}

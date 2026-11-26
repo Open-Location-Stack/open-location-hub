@@ -7,7 +7,7 @@
   "spec": {
     "display": {
       "name": "Pipeline overview",
-      "description": "Compare accepted observations, shadow Kafka appends, stage throughput and queue delays."
+      "description": "Compare accepted observations, Kafka commits, stage throughput and queue delays."
     },
     "duration": "30m",
     "refreshInterval": "15s",
@@ -116,8 +116,8 @@
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Shadow Kafka appends/s",
-            "description": "Broker-acknowledged shadow observations. Acceptance still belongs to the compatibility path."
+            "name": "Committed Kafka observations/s",
+            "description": "Observations committed before the Hub acknowledges acceptance."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -139,7 +139,7 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "sum by (operation) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"shadow_ingress\",outcome=\"committed\"}[2m]))",
+                    "query": "sum by (operation) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"kafka_ingress\",outcome=\"committed\"}[2m]))",
                     "minStep": "15s"
                   }
                 }
@@ -152,8 +152,8 @@
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Shadow append count",
-            "description": "Broker acknowledgements during the selected interval. Use committed records for exact reconciliation."
+            "name": "Committed Kafka observations",
+            "description": "Committed observation count over the selected interval. Use committed records for exact reconciliation."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -175,7 +175,7 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "sum by (operation) (increase(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"shadow_ingress\",outcome=\"committed\"}[$__range]))",
+                    "query": "sum by (operation) (increase(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"kafka_ingress\",outcome=\"committed\"}[$__range]))",
                     "minStep": "15s"
                   }
                 }
@@ -287,8 +287,8 @@
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Source timestamp to emitted event",
-            "description": "This age includes source and replay timestamp behavior."
+            "name": "Event latency by scope",
+            "description": "Compare broker append to gateway processing and source timestamp age where available."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -312,7 +312,7 @@
                   "spec": {
                     "query": "histogram_quantile(0.5, sum by (le, event_kind, scope) (rate(hub_processing_end_to_end_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
                     "minStep": "15s",
-                    "seriesNameFormat": "{{event_kind}} \u00b7 {{scope}} p50"
+                    "seriesNameFormat": "{{event_kind}} · {{scope}} p50"
                   }
                 }
               }
@@ -325,7 +325,7 @@
                   "spec": {
                     "query": "histogram_quantile(0.95, sum by (le, event_kind, scope) (rate(hub_processing_end_to_end_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
                     "minStep": "15s",
-                    "seriesNameFormat": "{{event_kind}} \u00b7 {{scope}} p95"
+                    "seriesNameFormat": "{{event_kind}} · {{scope}} p95"
                   }
                 }
               }
@@ -338,7 +338,7 @@
                   "spec": {
                     "query": "histogram_quantile(0.99, sum by (le, event_kind, scope) (rate(hub_processing_end_to_end_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
                     "minStep": "15s",
-                    "seriesNameFormat": "{{event_kind}} \u00b7 {{scope}} p99"
+                    "seriesNameFormat": "{{event_kind}} · {{scope}} p99"
                   }
                 }
               }
@@ -386,15 +386,15 @@
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Compatibility queue depth",
-            "description": "Buffered native publication and decision work across replicas."
+            "name": "Kafka commit p99",
+            "description": "Compare the commit time of durable ingress and each Kafka worker."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
             "spec": {
               "yAxis": {
                 "format": {
-                  "unit": "decimal"
+                  "unit": "seconds"
                 }
               },
               "legend": {
@@ -409,22 +409,9 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "sum(hub_runtime_native_queue_depth{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"})",
+                    "query": "histogram_quantile(0.99, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=~\".*_commit\"}[2m])))",
                     "minStep": "15s",
-                    "seriesNameFormat": "Native publication"
-                  }
-                }
-              }
-            },
-            {
-              "kind": "TimeSeriesQuery",
-              "spec": {
-                "plugin": {
-                  "kind": "PrometheusTimeSeriesQuery",
-                  "spec": {
-                    "query": "sum(hub_runtime_decision_queue_depth{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"})",
-                    "minStep": "15s",
-                    "seriesNameFormat": "Decision queue"
+                    "seriesNameFormat": "{{stage}} p99"
                   }
                 }
               }

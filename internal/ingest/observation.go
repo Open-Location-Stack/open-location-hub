@@ -2,8 +2,9 @@
 package ingest
 
 import (
-	streampb "github.com/formation-res/open-location-hub/internal/stream/pb"
 	"time"
+
+	streampb "github.com/formation-res/open-location-hub/internal/stream/pb"
 )
 
 // Observation is a validated location or proximity received by the Hub.
@@ -15,6 +16,7 @@ type Observation struct {
 	Payload                   any
 	ResolvedTrackableIDs      []string
 	ResolvedProximityLocation any
+	NormalizedLocation        any
 }
 
 const (

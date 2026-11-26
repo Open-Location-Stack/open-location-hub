@@ -1,7 +1,7 @@
 # Open Location Hub monitoring
 
 Start the [local demo](../../local-hub/README.md) with `just local-hub-up`.
-To add the same monitoring services to the Kafka shadow stack, use
+To add the same monitoring services to the Kafka stack, use
 `just compose-shadow-monitoring-up` after applying the database migrations.
 Start the router, estimator and outbox relay through the monitoring-enabled
 stack to collect their metrics as well.

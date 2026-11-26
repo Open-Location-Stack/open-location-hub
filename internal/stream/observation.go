@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/formation-res/open-location-hub/internal/ingest"
 	"time"
 
+	"github.com/formation-res/open-location-hub/internal/ingest"
 	streampb "github.com/formation-res/open-location-hub/internal/stream/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -59,6 +59,13 @@ func encodeObservation(o Observation, hubID, transport string, receivedAt time.T
 			return nil, nil, fmt.Errorf("encode resolved proximity location: %w", err)
 		}
 		record.ResolvedProximityLocationJson = resolved
+	}
+	if o.NormalizedLocation != nil {
+		normalized, err := json.Marshal(o.NormalizedLocation)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode normalized location: %w", err)
+		}
+		record.NormalizedLocationJson = normalized
 	}
 	if o.ObservedAt != nil {
 		record.ObservedAtUnixNano = proto.Int64(o.ObservedAt.UnixNano())

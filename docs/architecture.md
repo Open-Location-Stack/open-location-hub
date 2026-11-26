@@ -35,16 +35,22 @@
 
 ## Event Fan-Out
 
-An optional Kafka shadow producer copies validated REST, MQTT and WebSocket
-observations to a topic keyed by origin hub, provider and source. The
+The Kafka runtime accepts validated REST, MQTT and WebSocket observations into
+a topic keyed by origin hub, provider and source. Each request is committed as
+one transaction before the API confirms acceptance. The
 [Protobuf envelope](../specifications/events/observation.v1.proto) carries the
-source timestamp when supplied, receive time, transport and OMLOX JSON payload.
+source timestamp when supplied, receive time, transport, original payload and
+resolved location.
 Its content-derived ID groups exact retry payloads and has the same value for
-indistinguishable repeated samples. Compare Kafka appends with the existing
-processing path using the shadow outcome metrics. Kafka is currently a shadow
-sink. The path below still owns state, decisions and acknowledgements.
+indistinguishable repeated samples. The estimator and rule workers own the
+decisions. The gateway projects committed observations and estimates for
+current location reads and consumes fence and collision outputs for public
+delivery. Recent location projections warm from Kafka on restart. The
+gateway starts discrete delivery at the committed tail. MQTT broker PUBACK
+confirms receipt by the broker, with a separate Hub acknowledgement still
+pending for MQTT intake.
 
-The optional `asset-router` process consumes the mirrored log and writes one
+The `asset-router` process consumes the observation log and writes one
 input per associated trackable to a second Kafka topic. Each asset has a stable
 partition key derived from origin hub and trackable ID. This co-locates inputs
 from multiple providers. The Kafka transaction commits the consumed offsets and

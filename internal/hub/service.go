@@ -36,7 +36,7 @@ import (
 // behavior.
 type Config struct {
 	HubID                                 string
-	ObservationMirror                     func(context.Context, ingest.Observation)
+	AppendObservations                    func(context.Context, []ingest.Observation) error
 	LocationTTL                           time.Duration
 	ProximityTTL                          time.Duration
 	DedupTTL                              time.Duration
@@ -106,15 +106,17 @@ func (s *Service) Start(ctx context.Context) {
 	}
 	_ = s.telemetry().RegisterRuntimeMetricsSource(s.stats)
 	s.processingState().StartSweeper(ctx, time.Second)
-	go s.eventScheduler().run(ctx)
-	if s.nativeQueue == nil {
-		s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
-	}
-	if s.derivedQueue == nil {
-		s.derivedQueue = startShardedDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, decisionWorkerCount(), "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
-	}
-	if s.cfg.CollisionsEnabled && s.collisionQueue == nil {
-		s.collisionQueue = startCollisionMotionProcessor(ctx, s, s.cfg.DerivedLocationBuffer)
+	if s.cfg.AppendObservations == nil {
+		go s.eventScheduler().run(ctx)
+		if s.nativeQueue == nil {
+			s.nativeQueue = startDerivedLocationProcessor(ctx, s, s.cfg.NativeLocationBuffer, "native location queue", s.stats.IncNativeQueueDrops, s.processNativeLocation)
+		}
+		if s.derivedQueue == nil {
+			s.derivedQueue = startShardedDerivedLocationProcessor(ctx, s, s.cfg.DerivedLocationBuffer, decisionWorkerCount(), "decision location queue", s.stats.IncDecisionQueueDrops, s.processDecisionLocation)
+		}
+		if s.cfg.CollisionsEnabled && s.collisionQueue == nil {
+			s.collisionQueue = startCollisionMotionProcessor(ctx, s, s.cfg.DerivedLocationBuffer)
+		}
 	}
 	if s.metadata == nil || s.queries == nil {
 		return
@@ -1062,6 +1064,9 @@ func (s *Service) ListFenceProviders(ctx context.Context, id openapi_types.UUID)
 // ProcessLocations validates, stores, and republishes provider location
 // updates.
 func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location) error {
+	if s.cfg.AppendObservations != nil {
+		return s.appendLocations(ctx, locations)
+	}
 	for _, input := range locations {
 		location := s.applyLocationDefaults(ctx, input)
 		if locationCRS(location) == "local" {
@@ -1092,11 +1097,6 @@ func (s *Service) ProcessLocations(ctx context.Context, locations []gen.Location
 			s.telemetry().RecordIngestRecord(itemCtx, "location", "failed")
 			span.End()
 			return err
-		}
-		if mirror := s.cfg.ObservationMirror; mirror != nil {
-			mirror(itemCtx, ingest.Observation{Kind: ingest.Location, ProviderID: input.ProviderId,
-				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
-				ResolvedTrackableIDs: stringSliceValue(resolvedLocation.Trackables)})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "location_ingest", "location", time.Since(start))
 		span.End()
@@ -1157,6 +1157,9 @@ func trackablesForProvider(trackables []gen.Trackable, providerID string) []gen.
 // ProcessProximities validates, resolves, and republishes provider proximity
 // updates.
 func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Proximity) error {
+	if s.cfg.AppendObservations != nil {
+		return s.appendProximities(ctx, proximities)
+	}
 	for _, input := range proximities {
 		proximity := input
 		if proximity.TimestampGenerated == nil {
@@ -1200,11 +1203,6 @@ func (s *Service) ProcessProximities(ctx context.Context, proximities []gen.Prox
 			s.telemetry().RecordIngestRecord(itemCtx, "proximity", "failed")
 			span.End()
 			return err
-		}
-		if mirror := s.cfg.ObservationMirror; mirror != nil {
-			mirror(itemCtx, ingest.Observation{Kind: ingest.Proximity, ProviderID: input.ProviderId,
-				Source: input.Source, ObservedAt: input.TimestampGenerated, Payload: input,
-				ResolvedTrackableIDs: stringSliceValue(location.Trackables), ResolvedProximityLocation: location})
 		}
 		s.telemetry().RecordProcessingDuration(itemCtx, "proximity_ingest", "proximity", time.Since(start))
 		span.End()

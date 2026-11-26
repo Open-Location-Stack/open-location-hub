@@ -9,39 +9,11 @@ import (
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/config"
-	"github.com/formation-res/open-location-hub/internal/observability"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
-
-// ShadowWriter mirrors ingest into Kafka while the existing Hub owns decisions.
-type ShadowWriter struct {
-	client *kgo.Client
-	hubID  string
-	topic  string
-}
-
-// OpenShadow verifies that the configured Kafka topic already exists and opens the mirror.
-func OpenShadow(ctx context.Context, cfg config.KafkaShadowConfig, hubID string) (*ShadowWriter, error) {
-	opts, err := kafkaClientOptions(cfg)
-	if err != nil {
-		return nil, err
-	}
-	client, err := kgo.NewClient(opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := requireTopic(ctx, client, cfg.Topic); err != nil {
-		client.Close()
-		return nil, err
-	}
-	return &ShadowWriter{client: client, hubID: hubID, topic: cfg.Topic}, nil
-}
 
 func kafkaClientOptions(cfg config.KafkaShadowConfig) ([]kgo.Opt, error) {
 	opts := []kgo.Opt{
@@ -68,42 +40,6 @@ func kafkaClientOptions(cfg config.KafkaShadowConfig) ([]kgo.Opt, error) {
 		opts = append(opts, kgo.SASL(mechanism))
 	}
 	return opts, nil
-}
-
-// Mirror serializes a validated input and queues a bounded, asynchronous shadow
-// write. Its outcome is recorded separately from the transport acknowledgement.
-func (w *ShadowWriter) Mirror(ctx context.Context, observation Observation) {
-	receivedAt := time.Now()
-	transport := observability.IngestTransportFromContext(ctx)
-	operation := "location"
-	if observation.Kind == Proximity {
-		operation = "proximity"
-	}
-	metricCtx := context.WithoutCancel(ctx)
-	telemetry := observability.Global()
-	key, value, err := encodeObservation(observation, w.hubID, transport, receivedAt)
-	telemetry.RecordStreamServiceTime(metricCtx, "shadow_ingress", operation, "none", "shadow", time.Since(receivedAt))
-	if err != nil {
-		telemetry.RecordStreamHandled(metricCtx, "shadow_ingress", operation, "none", "shadow", "encode_failed")
-		return
-	}
-
-	w.client.TryProduce(metricCtx, &kgo.Record{Topic: w.topic, Key: key, Value: value}, func(_ *kgo.Record, err error) {
-		outcome := "committed"
-		if err != nil {
-			outcome = "append_failed"
-		}
-		telemetry.RecordStreamHandled(metricCtx, "shadow_ingress", operation, "none", "shadow", outcome)
-		telemetry.RecordProcessingDuration(metricCtx, "kafka_shadow_append", operation, time.Since(receivedAt))
-	})
-}
-
-// Close waits briefly for buffered shadow records before releasing the producer.
-func (w *ShadowWriter) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	defer w.client.Close()
-	return w.client.Flush(ctx)
 }
 
 func requireTopic(ctx context.Context, client *kgo.Client, topic string) error {

@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ const (
 	errUnsubscribeFailed   = 10003
 	errUnauthorized        = 10004
 	errInvalidPayload      = 10005
+	errIngestUnavailable   = 10006
 	topicLocationUpdates   = "location_updates"
 	topicLocationGeoJSON   = "location_updates:geojson"
 	topicCollisionEvents   = "collision_events"
@@ -425,7 +427,8 @@ func (c *connection) handleMessage(msg wrapper) {
 			return
 		}
 		if err := c.hub.service.ProcessLocations(ctx, body); err != nil {
-			c.sendError(errInvalidPayload, err.Error())
+			c.sendPublicationError(err)
+			return
 		}
 	case topicProximityUpdates:
 		var body []gen.Proximity
@@ -434,11 +437,25 @@ func (c *connection) handleMessage(msg wrapper) {
 			return
 		}
 		if err := c.hub.service.ProcessProximities(ctx, body); err != nil {
-			c.sendError(errInvalidPayload, err.Error())
+			c.sendPublicationError(err)
+			return
 		}
 	default:
 		c.sendError(errInvalidPayload, "topic does not accept client publication")
+		return
 	}
+	if requestID, ok := msg.Params["request_id"].(string); ok && requestID != "" && c.hub.service.UsesDurableIngress() {
+		c.sendWrapper(wrapper{Event: "accepted", Topic: msg.Topic, Params: map[string]any{"request_id": requestID}})
+	}
+}
+
+func (c *connection) sendPublicationError(err error) {
+	var failure *hub.HTTPError
+	if errors.As(err, &failure) && failure.Status == http.StatusServiceUnavailable {
+		c.sendError(errIngestUnavailable, err.Error())
+		return
+	}
+	c.sendError(errInvalidPayload, err.Error())
 }
 
 func (c *connection) authenticate(params map[string]any, subscribe bool, topic string) (*auth.Principal, error) {

@@ -238,6 +238,7 @@ type Observation struct {
 	PayloadJson                   []byte                 `protobuf:"bytes,10,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
 	ResolvedTrackableIds          []string               `protobuf:"bytes,11,rep,name=resolved_trackable_ids,json=resolvedTrackableIds,proto3" json:"resolved_trackable_ids,omitempty"`
 	ResolvedProximityLocationJson []byte                 `protobuf:"bytes,12,opt,name=resolved_proximity_location_json,json=resolvedProximityLocationJson,proto3" json:"resolved_proximity_location_json,omitempty"`
+	NormalizedLocationJson        []byte                 `protobuf:"bytes,13,opt,name=normalized_location_json,json=normalizedLocationJson,proto3" json:"normalized_location_json,omitempty"`
 	unknownFields                 protoimpl.UnknownFields
 	sizeCache                     protoimpl.SizeCache
 }
@@ -352,6 +353,13 @@ func (x *Observation) GetResolvedTrackableIds() []string {
 func (x *Observation) GetResolvedProximityLocationJson() []byte {
 	if x != nil {
 		return x.ResolvedProximityLocationJson
+	}
+	return nil
+}
+
+func (x *Observation) GetNormalizedLocationJson() []byte {
+	if x != nil {
+		return x.NormalizedLocationJson
 	}
 	return nil
 }
@@ -2514,7 +2522,7 @@ var File_observation_v1_proto protoreflect.FileDescriptor
 
 const file_observation_v1_proto_rawDesc = "" +
 	"\n" +
-	"\x14observation.v1.proto\x12\x15locationhub.stream.v1\"\xf3\x04\n" +
+	"\x14observation.v1.proto\x12\x15locationhub.stream.v1\"\xad\x05\n" +
 	"\vObservation\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x19\n" +
 	"\bevent_id\x18\x02 \x01(\fR\aeventId\x12\"\n" +
@@ -2529,7 +2537,8 @@ const file_observation_v1_proto_rawDesc = "" +
 	"\fpayload_json\x18\n" +
 	" \x01(\fR\vpayloadJson\x124\n" +
 	"\x16resolved_trackable_ids\x18\v \x03(\tR\x14resolvedTrackableIds\x12G\n" +
-	" resolved_proximity_location_json\x18\f \x01(\fR\x1dresolvedProximityLocationJson\"C\n" +
+	" resolved_proximity_location_json\x18\f \x01(\fR\x1dresolvedProximityLocationJson\x128\n" +
+	"\x18normalized_location_json\x18\r \x01(\fR\x16normalizedLocationJson\"C\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rKIND_LOCATION\x10\x01\x12\x12\n" +

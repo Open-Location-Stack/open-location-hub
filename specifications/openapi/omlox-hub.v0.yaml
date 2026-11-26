@@ -727,8 +727,10 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/IngestUnavailable'
         '204':
-          description: Updated successfully; no response body.
+          description: Accepted. The streaming runtime confirms the Kafka commit before responding.
     delete:
       tags: [providers]
       operationId: deleteProviderLocation
@@ -834,8 +836,10 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/IngestUnavailable'
         '204':
-          description: Updated successfully; no response body.
+          description: Accepted. The streaming runtime confirms the Kafka commit before responding.
   /v2/providers/locations:
     get:
       tags: [providers]
@@ -881,8 +885,10 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/IngestUnavailable'
         '204':
-          description: Updated successfully; no response body.
+          description: Accepted. The streaming runtime confirms the Kafka commit before responding.
     delete:
       tags: [providers]
       operationId: deleteProviderLocations
@@ -916,8 +922,10 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/IngestUnavailable'
         '204':
-          description: Updated successfully; no response body.
+          description: Accepted. The streaming runtime confirms the Kafka commit before responding.
   /v2/fences:
     get:
       tags: [fences]
@@ -1336,6 +1344,12 @@ components:
       schema:
         type: boolean
   responses:
+    IngestUnavailable:
+      description: The Hub could not confirm durable acceptance. Retry using the same observation payload.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     BadRequest:
       description: The request body or path parameters were invalid for the targeted operation.
       content:

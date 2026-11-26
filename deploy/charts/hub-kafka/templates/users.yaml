@@ -21,7 +21,11 @@
 {{- $txnWrite := list "Write" "Describe" -}}
 {{- $users := dict
   "api" (list
-    (dict "type" "topic" "name" $t.observations "ops" $topicWrite)
+    (dict "type" "topic" "name" $t.observations "ops" (list "Read" "Write" "Describe"))
+    (dict "type" "topic" "name" $t.estimates "ops" $topicRead)
+    (dict "type" "topic" "name" $t.fenceTransitions "ops" $topicRead)
+    (dict "type" "topic" "name" $t.collisionTransitions "ops" $topicRead)
+    (dict "type" "transactionalId" "name" "location-hub.ingress." "pattern" "prefix" "ops" $txnWrite)
     (dict "type" "cluster" "ops" (list "IdempotentWrite")))
   "asset-router" (list
     (dict "type" "topic" "name" $t.observations "ops" $topicRead)

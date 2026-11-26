@@ -156,6 +156,13 @@ the pair-worker credentials. For an external broker, supply the Secret as
 append timestamps. Set `kafka.topicRetentionMs.collisionTransitions` to
 override the default six-hour transition retention.
 
+With Kafka enabled, the API uses transactional ingress and reads committed
+observations and estimates for its gateway. The application chart adds the
+fence and collision transition subscriptions when the corresponding workers
+are enabled. For externally provisioned Kafka, grant the API principal the
+topic and transaction permissions listed in the
+[configuration guide](../../docs/configuration.md#kafka-ingest-and-gateway).
+
 ## Disposable clusters
 
 `HUB_DISPOSABLE_STACK=true` allows initial testing with a release candidate,

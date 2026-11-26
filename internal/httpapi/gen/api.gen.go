@@ -1090,6 +1090,9 @@ type BadRequest = ErrorResponse
 // Forbidden Standard error envelope returned by the REST API.
 type Forbidden = ErrorResponse
 
+// IngestUnavailable Standard error envelope returned by the REST API.
+type IngestUnavailable = ErrorResponse
+
 // NotFound Standard error envelope returned by the REST API.
 type NotFound = ErrorResponse
 
@@ -5545,6 +5548,8 @@ type BadRequestJSONResponse ErrorResponse
 
 type ForbiddenJSONResponse ErrorResponse
 
+type IngestUnavailableJSONResponse ErrorResponse
+
 type NotFoundJSONResponse ErrorResponse
 
 type UnauthorizedJSONResponse ErrorResponse
@@ -6464,6 +6469,20 @@ func (response PutProviderLocations403JSONResponse) VisitPutProviderLocationsRes
 	return err
 }
 
+type PutProviderLocations503JSONResponse struct{ IngestUnavailableJSONResponse }
+
+func (response PutProviderLocations503JSONResponse) VisitPutProviderLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutProviderProximitiesRequestObject struct {
 	Body *PutProviderProximitiesJSONRequestBody
 }
@@ -6518,6 +6537,20 @@ func (response PutProviderProximities403JSONResponse) VisitPutProviderProximitie
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximities503JSONResponse struct{ IngestUnavailableJSONResponse }
+
+func (response PutProviderProximities503JSONResponse) VisitPutProviderProximitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7027,6 +7060,20 @@ func (response PutProviderLocation404JSONResponse) VisitPutProviderLocationRespo
 	return err
 }
 
+type PutProviderLocation503JSONResponse struct{ IngestUnavailableJSONResponse }
+
+func (response PutProviderLocation503JSONResponse) VisitPutProviderLocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutProviderProximityRequestObject struct {
 	ProviderId ProviderId `json:"providerId"`
 	Body       *PutProviderProximityJSONRequestBody
@@ -7096,6 +7143,20 @@ func (response PutProviderProximity404JSONResponse) VisitPutProviderProximityRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProviderProximity503JSONResponse struct{ IngestUnavailableJSONResponse }
+
+func (response PutProviderProximity503JSONResponse) VisitPutProviderProximityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }

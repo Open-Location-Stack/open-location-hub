@@ -115,6 +115,10 @@ func OpenConfigurationWatch(ctx context.Context, cfg config.KafkaShadowConfig, d
 }
 
 func configurationOffsets(ctx context.Context, options []kgo.Opt, topic string) (map[int32]kgo.Offset, error) {
+	return committedOffsets(ctx, options, topic, -1)
+}
+
+func committedOffsets(ctx context.Context, options []kgo.Opt, topic string, timestamp int64) (map[int32]kgo.Offset, error) {
 	client, err := kgo.NewClient(options...)
 	if err != nil {
 		return nil, err
@@ -127,7 +131,7 @@ func configurationOffsets(ctx context.Context, options []kgo.Opt, topic string) 
 	partitions := make([]kmsg.ListOffsetsRequestTopicPartition, 0, len(metadata.Partitions))
 	for _, partition := range metadata.Partitions {
 		partitions = append(partitions, kmsg.ListOffsetsRequestTopicPartition{
-			Partition: partition.Partition, Timestamp: -1, CurrentLeaderEpoch: -1,
+			Partition: partition.Partition, Timestamp: timestamp, CurrentLeaderEpoch: -1,
 		})
 	}
 	request := kmsg.NewPtrListOffsetsRequest()
@@ -136,22 +140,22 @@ func configurationOffsets(ctx context.Context, options []kgo.Opt, topic string) 
 	offsets := make(map[int32]kgo.Offset, len(partitions))
 	for _, shard := range client.RequestSharded(ctx, request) {
 		if shard.Err != nil {
-			return nil, fmt.Errorf("list configuration offsets: %w", shard.Err)
+			return nil, fmt.Errorf("list offsets for %q: %w", topic, shard.Err)
 		}
 		for _, result := range shard.Resp.(*kmsg.ListOffsetsResponse).Topics {
 			for _, partition := range result.Partitions {
 				if err := kerr.ErrorForCode(partition.ErrorCode); err != nil {
-					return nil, fmt.Errorf("list configuration offset for partition %d: %w", partition.Partition, err)
+					return nil, fmt.Errorf("list offset for %q partition %d: %w", topic, partition.Partition, err)
 				}
-				if partition.Offset < 0 {
-					return nil, fmt.Errorf("missing configuration offset for partition %d", partition.Partition)
+				if partition.Offset < 0 && timestamp < 0 {
+					return nil, fmt.Errorf("missing committed offset for %q partition %d", topic, partition.Partition)
 				}
 				offsets[partition.Partition] = kgo.NewOffset().At(partition.Offset)
 			}
 		}
 	}
 	if len(offsets) == 0 || len(offsets) != len(partitions) {
-		return nil, fmt.Errorf("incomplete configuration offset frontier")
+		return nil, fmt.Errorf("incomplete offset frontier for %q", topic)
 	}
 	return offsets, nil
 }

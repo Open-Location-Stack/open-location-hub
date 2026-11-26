@@ -25,6 +25,7 @@ message Observation {
   bytes payload_json = 10;
   repeated string resolved_trackable_ids = 11;
   bytes resolved_proximity_location_json = 12;
+  bytes normalized_location_json = 13;
 }
 
 // AssetInput is an observation addressed to exactly one trackable. Kafka keys

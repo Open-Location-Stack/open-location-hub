@@ -456,6 +456,36 @@ at the saved deadline, with no new input from either asset. Complete
 parity still depends on how active pairs follow assets after stale cells
 are evicted, and how projection and public delivery handle upstream delay.
 
+### Kafka-authoritative runtime
+
+With brokers configured, the gateway validates and commits each input
+batch before acknowledging it. The dedicated workers produce estimates,
+fence transitions and collision transitions. The gateway consumes those
+committed records for public delivery and restores recent location views
+from the log when it restarts.
+
+A local fixture verified REST rejection of an invalid batch, HTTP and
+WebSocket acceptance of valid batches, location and motion delivery, fence
+entry and exit, and collision start and end. An interrupted broker request
+returned HTTP 503. The fixture's provider and trackable reads recovered
+after restarting only the gateway.
+
+Two bounded WebSocket runs used 16 assets with nearby pairs and sent 800 and
+1,200 observations at 250/s and 639/s. The subscriber received every provider
+update and motion estimate. Acknowledgement p99 was 67 ms and 46 ms, and
+source-to-motion p99 was 129 ms and 80 ms. Across the runs, Kafka cell commit
+p99 was about 60 ms, and cell and pair queue-wait p99 were 59 ms and 62 ms.
+The measured per-item service p99 for the data workers stayed below 1 ms.
+Estimator and collision-pair replicas split the work roughly 3:1 on this
+16-asset workload. These results point to transaction batching and
+partition balance as the first areas to profile under longer and denser
+loads. The full airport replay is pending.
+
+Discrete gateway delivery starts at the committed tail. Subscriber
+cursors, durable fence membership projections and a Hub-level MQTT intake
+acknowledgement are open. Proximity ingress currently maps directly to the
+configured source zone. Partitioned proximity hysteresis is open.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

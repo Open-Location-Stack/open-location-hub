@@ -42,16 +42,28 @@ HTTP request decoding behavior:
 - the REST/RPC handler layer accepts exactly one JSON document per request body and rejects trailing JSON tokens
 - unknown JSON object fields remain allowed so forwards-compatible clients are not rejected solely for extension data
 
-### Kafka shadow ingest
+### Kafka ingest and gateway
 
 Set `KAFKA_SHADOW_BROKERS` to a comma-separated list of Kafka `host:port`
-addresses to mirror validated location and proximity observations. Provision
-`KAFKA_SHADOW_TOPIC` before starting the Hub. Its default is
-`location-hub.observations.v1`. The Hub verifies the topic at startup and the
-producer waits for all in-sync replicas to acknowledge each mirrored record.
-The mirror is asynchronous, with 16,384 buffered records, a 32 MiB buffer and
-a 15-second delivery timeout. A full buffer or failed append increments the
-shadow failure metrics. The existing ingest and decision path remains active.
+addresses to use the streaming runtime. Provision `KAFKA_SHADOW_TOPIC`
+(default `location-hub.observations.v1`) and `KAFKA_ESTIMATE_TOPIC` before
+starting the API. The Hub validates the entire request and accepts up to
+1,024 observations per batch. Four bounded producers commit batches with
+all in-sync replicas. REST returns 204 after commit. A full queue, failed
+append, or unconfirmed commit returns 503. Keep the original payload on retry.
+
+Run the router and estimator to produce trackable motion. Point
+`KAFKA_GATEWAY_FENCE_TOPIC` and `KAFKA_GATEWAY_COLLISION_TOPIC` at the
+transition streams when those worker stages are deployed. The gateway
+reads committed records and rebuilds recent provider and trackable
+locations after restart within the configured state TTL. Discrete event
+delivery starts at the committed tail. Subscriber replay cursors and
+reconstruction of existing fence memberships remain follow-up work.
+
+Use Perses stages `kafka_ingress`, `kafka_ingress_commit`, and
+`stream_delivery` to compare acceptance rate, commit duration, and gateway
+lag and service time. `stream_projection_restore` separates startup work
+from live delivery.
 
 The broker connection verifies TLS by default. Use `KAFKA_SHADOW_CA_FILE` for a
 private CA. Set `KAFKA_SHADOW_CLIENT_CERT_FILE` and
@@ -65,6 +77,10 @@ milliseconds). Set `KAFKA_LOG_RETENTION_MS` to change the shared default, or
 uses broker append time and expires whole Kafka segments. These settings
 apply at topic creation. Use the broker's provisioning workflow to change
 existing topics.
+
+The API principal needs Write on observations, Read on each subscribed
+topic, and Kafka transaction access under the `location-hub.ingress.`
+prefix. The Helm broker chart grants these permissions.
 
 ### Asset input router
 

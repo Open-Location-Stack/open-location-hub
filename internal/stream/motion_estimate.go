@@ -39,7 +39,10 @@ func decodeObservationLocation(observation *streampb.Observation) (gen.Location,
 	var raw []byte
 	switch observation.GetKind() {
 	case Location:
-		raw = observation.GetPayloadJson()
+		raw = observation.GetNormalizedLocationJson()
+		if len(raw) == 0 {
+			raw = observation.GetPayloadJson()
+		}
 	case Proximity:
 		raw = observation.GetResolvedProximityLocationJson()
 	default:
