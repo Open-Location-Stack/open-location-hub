@@ -1,138 +1,37 @@
-# Local Hub Starter Stack
+# Local Hub starter stack
 
-This directory is the easiest way to get Open Location Hub running on a laptop with
-a practical local observability setup. It is intended as the normal starting
-point for new users who want to bring up the hub locally, inspect telemetry,
-and then try one of the example connectors.
+Run `just local-hub-up` from the repository root. The first run creates
+`local-hub/demo.env` from the example. The stack starts Open Location Hub,
+PostgreSQL, Mosquitto, Dex, the OpenTelemetry Collector, Prometheus,
+Alertmanager and Perses. A migration container prepares PostgreSQL before the
+Hub starts. The stack is for local development, demos and connector replay.
 
-The stack starts:
+- [Hub API](http://localhost:8080)
+- WebSocket at `ws://localhost:8080/v2/ws/socket`
+- [Perses dashboards](http://localhost:8090/projects/location-hub)
+- `just local-hub-token` fetches an administrator token from Dex.
+- `just local-hub-logs` follows the Hub logs.
+- `just local-hub-down` stops the stack and keeps its data.
 
-- the hub
-- Postgres with persistent bind-mounted data
-- Mosquitto for parity with the normal hub runtime
-- Dex for local OIDC tokens
-- SigNoz plus its ClickHouse and collector dependencies for telemetry inspection
-- a migration container that applies the repository migrations before the hub starts
+Dex includes `admin@example.com`, `reader@example.com` and `owner@example.com`
+with the fixture password `testpass123`.
 
-Useful next stops after the stack is up:
+## Metrics and state
 
-- [`docs/getting-started.md`](docs/getting-started.md) for the shortest path through local setup
-- [`docs/index.md`](docs/index.md) for the broader software docs
-- [`connectors/gtfs/README.md`](connectors/gtfs/README.md) for a transit-focused connector example
-- [`connectors/opensky/README.md`](connectors/opensky/README.md) for an aircraft-position example
-- [`connectors/replay/README.md`](connectors/replay/README.md) for replaying captured traffic back into the hub
-- [`connectors/uwb_sim/README.md`](connectors/uwb_sim/README.md) for a multi-floor UWB movement simulator with georeferenced floorplan assets
+The [monitoring guide](../deploy/observability/README.md) describes the dashboards
+and the Kafka shadow profile. Perses binds to loopback on `DEMO_PERSES_PORT`.
+Prometheus, Alertmanager and the Collector use private Compose networks.
+PostgreSQL persists under `local-hub/state/postgres` by default. Prometheus
+and Alertmanager use Compose volumes. Perses loads dashboard definitions from
+Git at startup.
 
-## Development Scope
+Existing SigNoz installations can keep their historical metrics. Stop the old
+SigNoz Compose project independently after saving any history you need. If it
+still uses port 8090, set `DEMO_PERSES_PORT` to another free port before starting
+this stack.
 
-- This setup is for local development, demos, and laptop experimentation.
-- Dex provides repeatable local OIDC tokens for that workflow. The included Dex fixture is not a production identity setup.
-- SigNoz is included because it is a modern observability stack that is easy to script and automate on top of ClickHouse, but the hub does not require SigNoz specifically.
-- The hub exports standard OTLP signals and can use other OpenTelemetry-compatible collectors and observability stacks.
+The demo uses the existing PostgreSQL 17 data layout. Upgrading an existing
+data directory to a new major version requires a PostgreSQL migration.
 
-## Files
-
-- `demo-compose.yml`: local stack definition
-- `demo.env.example`: local environment template
-- `start_demo.sh`: starts the stack and creates a local env file on first run
-- `stop_demo.sh`: stops the stack without deleting persistent data
-- `fetch_demo_token.sh`: fetches a Dex access token for manual calls or connectors
-
-## Usage
-
-Start the local stack:
-
-```bash
-just local-hub-up
-```
-
-The first run also clones the pinned SigNoz deploy repository revision declared
-in `demo.env` and starts that stack separately before starting the hub demo
-compose project. After SigNoz starts, the launcher bootstraps the local admin
-account and provisions the default Open Location Hub dashboards.
-
-Stop it:
-
-```bash
-just local-hub-down
-```
-
-Fetch an admin token:
-
-```bash
-just local-hub-token
-```
-
-Tail hub logs:
-
-```bash
-just local-hub-logs
-```
-
-Inspect recent overload-driven drops:
-
-```bash
-TOKEN="$(just -q local-hub-token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
-curl -sS -H "Authorization: Bearer $TOKEN" http://localhost:8080/debug/runtime/drops | jq
-```
-
-The underlying scripts remain available when you want to call them directly:
-
-```bash
-local-hub/start_demo.sh
-local-hub/stop_demo.sh
-local-hub/fetch_demo_token.sh
-```
-
-The first run creates `local-hub/demo.env` from `demo.env.example`.
-
-Default local URLs:
-
-- hub REST: `http://localhost:8080`
-- hub WebSocket: `ws://localhost:8080/v2/ws/socket`
-- SigNoz UI: `http://localhost:8090`
-- OTLP gRPC: `localhost:4317`
-- OTLP HTTP: `localhost:4318`
-
-## Persistent State
-
-Postgres state is stored under:
-
-- `local-hub/state/postgres`
-
-SigNoz deploy checkout defaults to:
-
-- `local-hub/state/signoz`
-
-## Default Dex Users
-
-- `admin@example.com` / `testpass123`
-- `reader@example.com` / `testpass123`
-- `owner@example.com` / `testpass123`
-
-## Dependency upgrades
-
-The stack uses PostgreSQL 17.11, Mosquitto 2.1.2, Dex 2.45.1, and SigNoz
-0.117.1. SigNoz 0.143.0 no longer ships the deployment compose file expected by
-the launcher, so its upgrade requires a deployment-source migration and bootstrap
-validation. Existing `demo.env` files retain their `DEMO_SIGNOZ_REF` override; update
-it deliberately when upgrading an existing telemetry store. Back up persisted
-state before upgrading services. PostgreSQL remains on major 17; changing its
-major version requires a data migration rather than just changing the image tag.
-
-## Default SigNoz UI User
-
-- `admin@local.test` / `SignozAdmin123!`
-
-SigNoz authentication is local to SigNoz and is not connected to Dex. The demo start script bootstraps this fixed admin account through the SigNoz setup API on first run and reuses it on later starts.
-
-## Default SigNoz Dashboards
-
-The launcher creates or updates these dashboards on every start:
-
-- `Open Location Hub Throughput`
-- `Open Location Hub Latency`
-- `Open Location Hub Outcomes`
-
-This makes a fresh stack immediately useful for hub, replay, and OpenSky demo
-traffic without requiring manual dashboard setup in the UI.
+See the [getting started guide](../docs/getting-started.md) for client
+examples and the [connector guide](../docs/connectors.md) for replay sources.

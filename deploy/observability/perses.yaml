@@ -1,0 +1,6 @@
+database:
+  file:
+    folder: /tmp/perses
+provisioning:
+  folders:
+    - /etc/perses/resources

@@ -1,3 +1,6 @@
+include:
+  - ../deploy/observability/compose.yaml
+
 services:
   dex:
     image: ghcr.io/dexidp/dex:v2.45.1
@@ -72,12 +75,9 @@ services:
       KALMAN_EMIT_MAX_FREQUENCY_HZ: "2"
       OTEL_ENABLED: "true"
       OTEL_METRICS_ENABLED: "true"
-      OTEL_TRACES_ENABLED: "true"
-      OTEL_LOGS_ENABLED: "true"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://signoz-otel-collector:4318
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://signoz-otel-collector:4318/v1/traces
-      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://signoz-otel-collector:4318/v1/metrics
-      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://signoz-otel-collector:4318/v1/logs
+      OTEL_TRACES_ENABLED: "false"
+      OTEL_LOGS_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: open-location-hub
       OTEL_DEPLOYMENT_ENVIRONMENT: local-demo
@@ -87,8 +87,10 @@ services:
       - ../config/auth/permissions.yaml:/app/config/auth/permissions.yaml:ro
     networks:
       - default
-      - signoz-net
+      - telemetry
     depends_on:
+      otel-collector:
+        condition: service_started
       dex:
         condition: service_healthy
       postgres:
@@ -97,8 +99,3 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-
-networks:
-  signoz-net:
-    external: true
-    name: signoz-net

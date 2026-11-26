@@ -1,0 +1,6 @@
+kind: Project
+metadata:
+  name: location-hub
+spec:
+  display:
+    name: Open Location Hub

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -35,11 +36,30 @@ func RequestLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
 			next.ServeHTTP(ww, r)
+			duration := time.Since(start)
+			route := "unmatched"
+			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+				route = rc.RoutePattern()
+			}
+			method := r.Method
+			switch method {
+			case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions:
+			default:
+				method = "OTHER"
+			}
+			// WebSocket sessions have their own delivery metrics.
+			if route != "/v2/ws/socket" {
+				status := ww.Status()
+				if status == 0 {
+					status = http.StatusOK
+				}
+				RuntimeFromContext(r.Context()).RecordHTTPRequest(r.Context(), route, method, status, duration)
+			}
 			logger.Info("http request",
 				String("method", r.Method),
 				String("path", r.URL.Path),
 				Int("status", ww.Status()),
-				Duration("duration", time.Since(start)),
+				Duration("duration", duration),
 			)
 		})
 	}

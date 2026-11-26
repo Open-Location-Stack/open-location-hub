@@ -1,0 +1,25 @@
+groups:
+  - name: open-location-hub
+    rules:
+      - record: hub:work_items_handled:rate2m
+        expr: |
+          sum by (hub_id, deployment_environment_name, stage, operation, machine, traffic_mode, outcome) (
+            rate(hub_work_items_handled_total[2m])
+          )
+      - alert: HubWorkDropping
+        expr: |
+          sum by (hub_id, deployment_environment_name, stage, reason) (
+            increase(hub_runtime_drop_events_total[1m])
+          ) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hub stage {{ $labels.stage }} is dropping work"
+      - alert: HubTelemetryMissing
+        expr: absent_over_time(hub_runtime_alive{job="open-location-hub"}[2m])
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No API process telemetry received"

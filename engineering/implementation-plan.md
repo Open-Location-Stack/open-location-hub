@@ -140,7 +140,7 @@ Current observability baseline in this phase:
 - `internal/observability` provides OTLP metrics, traces, and logs with environment-driven configuration and clean shutdown flushing.
 - Transport and service code now emit ingest counters, stage timings, queue telemetry, dependency events, RPC timing, MQTT publication timing, and WebSocket dispatch outcomes.
 - Entity drill-down uses trace and log attributes for `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision identifiers while metric cardinality remains bounded.
-- The reusable local demo stack now starts SigNoz alongside the hub so connector demonstrations can be inspected in a persistent telemetry UI without tearing the collector down between runs.
+- The local demo provisions Perses dashboards and stores metric history in Prometheus so connector runs can be compared across restarts.
 - The integration suite includes an OTLP export test that proves metrics, traces, and logs are emitted end to end.
 
 ### Additional implementation depth

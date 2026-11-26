@@ -150,7 +150,18 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 	configureProfiling(cfg)
 
-	telemetry, err := observability.NewRuntime(ctx, cfg.Telemetry, cfg.HubID)
+	postgresStarted := time.Now()
+	queries, closeQueries, err := rt.openQueries(ctx, cfg.PostgresURL)
+	if err != nil {
+		return fmt.Errorf("postgres init failed: %w", err)
+	}
+	defer func() { _ = closeQueries.Close() }()
+	hubMeta, err := rt.resolveHubMetadata(ctx, queries, cfg)
+	if err != nil {
+		return fmt.Errorf("hub metadata init failed: %w", err)
+	}
+
+	telemetry, err := observability.NewRuntime(ctx, cfg.Telemetry, hubMeta.HubID)
 	if err != nil {
 		return fmt.Errorf("init telemetry: %w", err)
 	}
@@ -158,6 +169,8 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	defer observability.SetGlobal(nil)
 	defer func() { _ = telemetry.Shutdown(context.WithoutCancel(ctx)) }()
 	ctx = observability.WithRuntime(ctx, telemetry)
+	telemetry.RecordDependencyEvent(ctx, "postgres", "init", "success")
+	telemetry.RecordProcessingDuration(ctx, "postgres_init", "postgres", time.Since(postgresStarted))
 
 	logger, cleanupLogger, err := rt.newLogger(cfg.LogLevel)
 	if err != nil {
@@ -165,22 +178,6 @@ func runWithRuntime(ctx context.Context, rt runtimeDeps) error {
 	}
 	defer cleanupLogger()
 
-	postgresCtx, postgresSpan := telemetry.StartSpan(ctx, "runtime.postgres.init")
-	queries, closeQueries, err := rt.openQueries(ctx, cfg.PostgresURL)
-	if err != nil {
-		postgresSpan.RecordError(err)
-		telemetry.RecordDependencyEvent(postgresCtx, "postgres", "init", "failure")
-		postgresSpan.End()
-		return fmt.Errorf("postgres init failed: %w", err)
-	}
-	telemetry.RecordDependencyEvent(postgresCtx, "postgres", "init", "success")
-	postgresSpan.End()
-	defer func() { _ = closeQueries.Close() }()
-
-	hubMeta, err := rt.resolveHubMetadata(ctx, queries, cfg)
-	if err != nil {
-		return fmt.Errorf("hub metadata init failed: %w", err)
-	}
 	var mirrorObservation func(context.Context, stream.Observation)
 	if cfg.KafkaShadow.Enabled() {
 		mirror, err := stream.OpenShadow(ctx, cfg.KafkaShadow, hubMeta.HubID)

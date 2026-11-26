@@ -1,0 +1,5 @@
+route:
+  receiver: local
+  group_by: [alertname, hub_id, deployment_environment_name]
+receivers:
+  - name: local

@@ -1,0 +1,414 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "state-machines",
+    "project": "location-hub"
+  },
+  "spec": {
+    "display": {
+      "name": "Rule state machines",
+      "description": "Inspect individual fence memberships, collision pairs and proximity resolution evaluations."
+    },
+    "duration": "30m",
+    "refreshInterval": "15s",
+    "links": [
+      {
+        "name": "Pipeline overview",
+        "url": "/projects/location-hub/dashboards/pipeline?start=$__from&end=$__to"
+      },
+      {
+        "name": "Worker performance",
+        "url": "/projects/location-hub/dashboards/workers?start=$__from&end=$__to"
+      },
+      {
+        "name": "Configuration and recovery",
+        "url": "/projects/location-hub/dashboards/recovery?start=$__from&end=$__to"
+      },
+      {
+        "name": "Realtime delivery",
+        "url": "/projects/location-hub/dashboards/delivery?start=$__from&end=$__to"
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "hub",
+          "display": {
+            "name": "Hub"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "hub_id",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "environment",
+          "display": {
+            "name": "Deployment"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "deployment_environment_name",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Evaluations/s",
+            "description": "One item per executed evaluation by machine, trigger and outcome."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (machine, operation, outcome) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Evaluations during selected interval",
+            "description": "Totals by machine and trigger, including successful evaluations with no transition."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (machine, operation) (increase(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[$__range]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Transitions/s",
+            "description": "Fence and collision entry/exit plus proximity zone changes."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (machine, operation, outcome) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\",outcome=~\"entry|exit|zone_change\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Evaluation service duration",
+            "description": "Time for one state-machine key to handle its trigger."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, machine, operation) (rate(hub_work_service_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{machine}} \u00b7 {{operation}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, machine, operation) (rate(hub_work_service_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{machine}} \u00b7 {{operation}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, machine, operation) (rate(hub_work_service_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{machine}} \u00b7 {{operation}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Timer lateness",
+            "description": "Deadline-to-execution wait for valid exit timers."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=~\".*_timer\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=~\".*_timer\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=~\".*_timer\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Timed evaluations/s",
+            "description": "Sample rate for the evaluation latency histograms."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (machine, operation) (rate(hub_work_service_duration_seconds_count{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"state_machine\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

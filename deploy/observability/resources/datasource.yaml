@@ -1,0 +1,32 @@
+kind: Datasource
+metadata:
+  name: prometheus
+  project: location-hub
+spec:
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://prometheus:9090
+          allowedEndpoints:
+            - method: GET
+              endpointPattern: /api/v1/series
+            - method: POST
+              endpointPattern: /api/v1/series
+            - method: GET
+              endpointPattern: /api/v1/labels
+            - method: POST
+              endpointPattern: /api/v1/labels
+            - method: GET
+              endpointPattern: /api/v1/label/[^/]+/values
+            - method: POST
+              endpointPattern: /api/v1/query
+            - method: POST
+              endpointPattern: /api/v1/query_range
+            - method: GET
+              endpointPattern: /api/v1/query
+            - method: GET
+              endpointPattern: /api/v1/query_range

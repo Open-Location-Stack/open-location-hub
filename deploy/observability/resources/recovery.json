@@ -1,0 +1,441 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "recovery",
+    "project": "location-hub"
+  },
+  "spec": {
+    "display": {
+      "name": "Configuration and recovery",
+      "description": "Follow configuration publishing and estimator restoration alongside exporter health."
+    },
+    "duration": "30m",
+    "refreshInterval": "15s",
+    "links": [
+      {
+        "name": "Pipeline overview",
+        "url": "/projects/location-hub/dashboards/pipeline?start=$__from&end=$__to"
+      },
+      {
+        "name": "Worker performance",
+        "url": "/projects/location-hub/dashboards/workers?start=$__from&end=$__to"
+      },
+      {
+        "name": "Rule state machines",
+        "url": "/projects/location-hub/dashboards/state-machines?start=$__from&end=$__to"
+      },
+      {
+        "name": "Realtime delivery",
+        "url": "/projects/location-hub/dashboards/delivery?start=$__from&end=$__to"
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "hub",
+          "display": {
+            "name": "Hub"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "hub_id",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "environment",
+          "display": {
+            "name": "Deployment"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "deployment_environment_name",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Configuration revisions/s",
+            "description": "Published revisions and publish failures."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (outcome) (rate(hub_work_items_handled_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Outbox record age at dequeue",
+            "description": "Age from the first changed row until the relay loads its bundle."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, stage) (rate(hub_processing_queue_wait_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Configuration Kafka commit",
+            "description": "Time to publish one configuration revision transaction."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay_commit\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay_commit\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"config_relay_commit\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Estimator checkpoint restore",
+            "description": "Duration of one partition-assignment restore."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"asset_estimator_restore\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"asset_estimator_restore\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, stage) (rate(hub_processing_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\",stage=\"asset_estimator_restore\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{stage}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Processes reporting",
+            "description": "Fresh series indicate running or idle producers. Labels identify process and deployment."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "hub_runtime_alive{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Collector send failures/s",
+            "description": "Collector metrics rejected by a backend."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (exporter) (rate(otelcol_exporter_send_failed_metric_points[2m])) or on(exporter) (0 * sum by (exporter) (rate(otelcol_exporter_sent_metric_points[2m])))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

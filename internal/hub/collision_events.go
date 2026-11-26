@@ -94,7 +94,12 @@ func largestTrackableRadius(trackables []gen.Trackable) float64 {
 	return radius
 }
 
-func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) error {
+func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMotion, lt gen.Trackable, right gen.TrackableMotion, rt gen.Trackable) (err error) {
+	started := time.Now()
+	outcome := "no_change"
+	defer func() {
+		s.telemetry().RecordMachineEvaluation(ctx, "collision_pair", "observation", "live", outcome, time.Since(started), err)
+	}()
 	key := collisionPairKey(left.Id, right.Id)
 	state, active := s.processingState().GetCollisionState(key)
 	lp, err := point2D(left.Location.Position)
@@ -148,6 +153,7 @@ func (s *Service) transitionCollision(ctx context.Context, left gen.TrackableMot
 	kind := gen.Colliding
 	if !active {
 		kind = gen.CollisionStart
+		outcome = "entry"
 	}
 	event := collisionEventForPair(kind, now, state.StartTime, left, lt, right, rt, area, distance, 0)
 	return s.emitCollision(event, left)
@@ -176,11 +182,19 @@ func (s *Service) collisionExitPolicy(ctx context.Context, left gen.TrackableMot
 }
 
 // Caller holds collisionMu, including while emitting the ordered edge.
-func (s *Service) expireCollision(key string, deadline time.Time) error {
+func (s *Service) expireCollision(key string, deadline time.Time) (err error) {
+	ctx := context.Background()
+	started := time.Now()
+	outcome := "no_change"
+	defer func() {
+		s.telemetry().RecordMachineEvaluation(ctx, "collision_pair", "timer", "live", outcome, time.Since(started), err)
+	}()
 	state, ok := s.processingState().GetCollisionState(key)
 	if !ok || !state.timers.deadline().Equal(deadline) {
 		return nil
 	}
+	outcome = "exit"
+	s.telemetry().RecordQueueWait(ctx, "collision_pair_timer", s.processingState().nowUTC().Sub(deadline))
 	s.processingState().DeleteCollisionState(key)
 	s.eventScheduler().schedule(key, time.Time{}, nil)
 	event := collisionEventForPair(gen.CollisionEnd, deadline, state.StartTime, state.leftMotion, state.leftTrackable, state.rightMotion, state.rightTrackable, nil, state.distance, 0)

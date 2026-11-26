@@ -58,7 +58,7 @@ Most custom connectors follow the same shape:
    expected wrapper or topic layout.
 6. Run locally against the shared demo stack.
    Use [`local-hub/README.md`](../local-hub/README.md)
-   for a reproducible local hub, Postgres, Dex, Mosquitto, and optional SigNoz environment.
+   for a reproducible local Hub, PostgreSQL, Dex, Mosquitto and Perses environment.
 
 ## Shared Connector Shape
 

@@ -123,9 +123,10 @@ Implications:
 
 ## Observability Boundaries
 - `internal/observability` owns OpenTelemetry resource setup, OTLP exporters, lifecycle management, and the small internal instrumentation API used by the rest of the runtime.
-- OTLP export is collector-first: metrics, traces, and logs go to an OpenTelemetry collector such as SigNoz rather than to a hub-owned scrape endpoint.
+- The Hub exports OTLP to an OpenTelemetry Collector. In the demo it sends metrics through the Collector to Prometheus. Perses queries Prometheus, and Alertmanager receives alerts evaluated by Prometheus.
 - Transport handlers attach ingest transport context at entry so REST, MQTT, and WebSocket traffic create one shared root ingest span shape before entering `internal/hub`.
 - The hot path records low-cardinality metrics for accepted, deduplicated, rejected, and failed ingest, queue depth and wait time, stage latency, event-bus fan-out, MQTT publish, WebSocket dispatch, RPC execution, and end-to-end processing time.
+- HTTP request timings use route templates. Fence membership, collision pairs and proximity hysteresis each record evaluations by trigger and outcome. Worker metrics separate item handling time, queue wait and Kafka append or commit time. Heartbeats distinguish idle processes from missing telemetry.
 - Child spans isolate proximity resolution, native publication, decision processing, fence evaluation, collision evaluation, metadata reconcile, auth, and runtime dependency work so slow stages can be inspected directly.
 - Asset-, provider-, zone-, and fence-centric identifiers belong on traces and structured logs only. They are intentionally excluded from normal metric labels so dashboards remain queryable under sustained ingest volume.
 - Zap remains the application logging API. When OTLP logs are enabled, the logger tees into the OpenTelemetry bridge so the same structured events still appear locally while also being exported to the collector.

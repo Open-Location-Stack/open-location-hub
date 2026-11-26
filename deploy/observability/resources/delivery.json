@@ -1,0 +1,428 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "delivery",
+    "project": "location-hub"
+  },
+  "spec": {
+    "display": {
+      "name": "Realtime delivery",
+      "description": "Compare send volumes and wait for WebSocket, MQTT and event-bus delivery."
+    },
+    "duration": "30m",
+    "refreshInterval": "15s",
+    "links": [
+      {
+        "name": "Pipeline overview",
+        "url": "/projects/location-hub/dashboards/pipeline?start=$__from&end=$__to"
+      },
+      {
+        "name": "Worker performance",
+        "url": "/projects/location-hub/dashboards/workers?start=$__from&end=$__to"
+      },
+      {
+        "name": "Rule state machines",
+        "url": "/projects/location-hub/dashboards/state-machines?start=$__from&end=$__to"
+      },
+      {
+        "name": "Configuration and recovery",
+        "url": "/projects/location-hub/dashboards/recovery?start=$__from&end=$__to"
+      }
+    ],
+    "variables": [
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "hub",
+          "display": {
+            "name": "Hub"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "hub_id",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "kind": "ListVariable",
+        "spec": {
+          "name": "environment",
+          "display": {
+            "name": "Deployment"
+          },
+          "allowAllValue": true,
+          "allowMultiple": true,
+          "defaultValue": "$__all",
+          "sort": "alphabetical-asc",
+          "plugin": {
+            "kind": "PrometheusLabelValuesVariable",
+            "spec": {
+              "labelName": "deployment_environment_name",
+              "matchers": [
+                "hub_runtime_alive"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "panels": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "WebSocket deliveries/s",
+            "description": "Outbound messages by channel and outcome."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (topic, outcome) (rate(hub_websocket_dispatch_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "MQTT sends/s",
+            "description": "Each MQTT publish duration sample corresponds to one send attempt."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (outcome) (rate(hub_mqtt_publish_duration_seconds_count{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "WebSocket dispatch duration",
+            "description": "Outbound dispatch latency by channel and outcome."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, topic, outcome) (rate(hub_websocket_dispatch_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{topic}} \u00b7 {{outcome}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, topic, outcome) (rate(hub_websocket_dispatch_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{topic}} \u00b7 {{outcome}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, topic, outcome) (rate(hub_websocket_dispatch_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{topic}} \u00b7 {{outcome}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "MQTT publish duration",
+            "description": "Publish duration by outcome."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "seconds"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le, outcome) (rate(hub_mqtt_publish_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{outcome}} p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, outcome) (rate(hub_mqtt_publish_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{outcome}} p95"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, outcome) (rate(hub_mqtt_publish_duration_seconds_bucket{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m])))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "{{outcome}} p99"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Connected WebSocket clients",
+            "description": "Current sockets per Hub."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (hub_id) (hub_runtime_websocket_connections{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"})",
+                    "minStep": "15s"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "panel-6": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Delivery drops/s",
+            "description": "Observable event bus and WebSocket drop counters."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              },
+              "legend": {
+                "position": "bottom"
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (hub_id) (rate(hub_runtime_event_bus_drops_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "Event bus"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (hub_id) (rate(hub_runtime_websocket_outbound_drops_total{hub_id=~\"${hub:regexliteral}\",deployment_environment_name=~\"${environment:regexliteral}\"}[2m]))",
+                    "minStep": "15s",
+                    "seriesNameFormat": "WebSocket outbound"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-1"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-2"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-3"
+              }
+            },
+            {
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-4"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-5"
+              }
+            },
+            {
+              "x": 12,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/panel-6"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

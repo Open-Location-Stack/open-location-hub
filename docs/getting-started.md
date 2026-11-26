@@ -4,7 +4,7 @@ If you want to try Open Location Hub on your laptop, this repository includes tw
 ready-made local runtime paths:
 
 - a basic compose stack from [`docker-compose.yml`](docker-compose.yml) with the hub, Postgres, Mosquitto, and Dex
-- a local demo stack with observability in [`local-hub/`](local-hub) with the hub, Postgres, Mosquitto, Dex, SigNoz, ClickHouse, and the OpenTelemetry collector
+- a local demo stack in [`local-hub/`](../local-hub/README.md) with the Hub, PostgreSQL, Mosquitto, Dex and preconfigured Perses dashboards
 
 Use the basic stack if you want the shortest path to a working hub runtime.
 Use the local demo stack if you also want observability while you
@@ -88,7 +88,7 @@ The CLI covers resource CRUD, ingest helpers, WebSocket streams, and RPC calls.
 - Basic compose stack:
   best when you want the hub plus its core dependencies only
 - Local demo stack with observability:
-  best when you want the hub plus a prewired observability setup for traces, metrics, and logs
+  best when you want the Hub with metrics, alerts and dashboards
 
 The basic stack uses the repository root [`docker-compose.yml`](docker-compose.yml).
 The local demo stack is documented in [`local-hub/README.md`](../local-hub/README.md).
@@ -105,8 +105,7 @@ This starter stack is not positioned as a production deployment recipe.
 
 - the basic compose stack includes the hub, Postgres, Mosquitto, and Dex
 - Dex is included because it is convenient for local OIDC and repeatable demo users, not because it is the recommended production IdP choice.
-- the local demo stack adds SigNoz, ClickHouse, and the OpenTelemetry collector around that core runtime
-- SigNoz is included because it is easy to bootstrap and script for modern local observability workflows, but the hub does not depend on SigNoz specifically.
+- the local demo stack adds the OpenTelemetry Collector, Prometheus, Alertmanager and Perses. Open the [local dashboards](http://localhost:8090/projects/location-hub) after startup.
 - The hub exports standard OTLP signals, so it can use other OpenTelemetry-compatible collectors and observability stacks.
 
 ## Good Next Steps

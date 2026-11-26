@@ -16,7 +16,7 @@ Key capabilities:
 - JWT auth modes: `oidc`, `static`, and `hybrid`
 - RBAC and ownership-aware authorization
 - Dockerized local runtime for Postgres, Mosquitto, Dex, and the hub
-- Local starter stack with optional SigNoz observability
+- Local starter stack with Perses and Prometheus dashboards
 - `just` workflows for bootstrap, code generation, validation, and compose operations
 - Unit tests and Testcontainers-based integration coverage
 - Connector demonstrators under [`connectors/`](connectors)
@@ -35,7 +35,7 @@ This project is an independent implementation. It is not affiliated with or cert
 If you want the easiest way to explore the hub locally, start with
 [docs/getting-started.md](docs/getting-started.md) and
 [local-hub/README.md](local-hub/README.md). That path brings up a local hub,
-Dex, Mosquitto, Postgres, and an optional SigNoz-backed observability stack for
+Dex, Mosquitto, Postgres, and a preconfigured metrics stack for
 laptop development.
 
 ## Build Dependencies
@@ -123,7 +123,7 @@ docker pull tryformation/openlocationhub:latest
 If you want the supporting local services from this repository as well:
 
 - use `just compose-up` for the basic local stack from [`docker-compose.yml`](docker-compose.yml), which brings up the hub, Postgres, Mosquitto, and Dex
-- use `just local-hub-up` for the local demo stack in [`local-hub/README.md`](local-hub/README.md), which adds SigNoz, ClickHouse, and the OpenTelemetry collector around the hub runtime
+- use `just local-hub-up` for the local demo stack in [`local-hub/README.md`](local-hub/README.md), which adds the OpenTelemetry Collector, Prometheus, Alertmanager and Perses
 
 For the full set of environment variables and runtime options, see [`docs/configuration.md`](docs/configuration.md). For local setup walkthroughs, see [`docs/getting-started.md`](docs/getting-started.md) and [`local-hub/README.md`](local-hub/README.md).
 

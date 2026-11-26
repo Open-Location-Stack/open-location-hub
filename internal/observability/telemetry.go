@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/formation-res/open-location-hub/internal/config"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -73,6 +74,7 @@ type Runtime struct {
 }
 
 type telemetryInstruments struct {
+	httpDuration              metric.Float64Histogram
 	ingestRecordsTotal        metric.Int64Counter
 	streamHandledTotal        metric.Int64Counter
 	streamServiceDuration     metric.Float64Histogram
@@ -119,6 +121,10 @@ func NewRuntime(ctx context.Context, cfg config.TelemetryConfig, hubID string) (
 	resAttrs := []attribute.KeyValue{
 		semconv.ServiceNameKey.String(cfg.ServiceName),
 	}
+	baseResource := resource.Default()
+	if _, present := baseResource.Set().Value(semconv.ServiceInstanceIDKey); !present {
+		resAttrs = append(resAttrs, semconv.ServiceInstanceIDKey.String(uuid.NewString()))
+	}
 	if cfg.ServiceVersion != "" {
 		resAttrs = append(resAttrs, semconv.ServiceVersionKey.String(cfg.ServiceVersion))
 	}
@@ -128,7 +134,7 @@ func NewRuntime(ctx context.Context, cfg config.TelemetryConfig, hubID string) (
 	if hubID != "" {
 		resAttrs = append(resAttrs, attribute.String("hub.id", hubID))
 	}
-	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(resAttrs...))
+	res, err := resource.Merge(baseResource, resource.NewSchemaless(resAttrs...))
 	if err != nil {
 		return nil, err
 	}
@@ -296,23 +302,36 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (r *Runtime) initInstruments() {
+	latencyBuckets := []float64{0.000001, 0.00001, 0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
+	waitBuckets := append(append([]float64(nil), latencyBuckets...), 30, 60, 300, 1800, 3600, 21600)
+	durationHistogram := func(name string, buckets []float64) metric.Float64Histogram {
+		histogram, _ := r.meter.Float64Histogram(name, metric.WithUnit("s"),
+			metric.WithExplicitBucketBoundaries(buckets...))
+		return histogram
+	}
+	_, _ = r.meter.Int64ObservableGauge("hub.runtime.alive", metric.WithInt64Callback(
+		func(_ context.Context, observer metric.Int64Observer) error {
+			observer.Observe(1)
+			return nil
+		},
+	))
+	r.instruments.httpDuration = durationHistogram("hub.http.request.duration", latencyBuckets)
 	r.instruments.ingestRecordsTotal, _ = r.meter.Int64Counter("hub.ingest.records_total")
 	r.instruments.streamHandledTotal, _ = r.meter.Int64Counter("hub.work.items.handled")
-	r.instruments.streamServiceDuration, _ = r.meter.Float64Histogram("hub.work.service.duration", metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5))
-	r.instruments.processingDuration, _ = r.meter.Float64Histogram("hub.processing.duration", metric.WithUnit("s"))
+	r.instruments.streamServiceDuration = durationHistogram("hub.work.service.duration", latencyBuckets)
+	r.instruments.processingDuration = durationHistogram("hub.processing.duration", latencyBuckets)
 	r.instruments.processingBatchSize, _ = r.meter.Int64Histogram("hub.processing.batch_size")
-	r.instruments.processingBatchDuration, _ = r.meter.Float64Histogram("hub.processing.batch_duration", metric.WithUnit("s"))
-	r.instruments.queueWaitDuration, _ = r.meter.Float64Histogram("hub.processing.queue_wait_duration", metric.WithUnit("s"))
-	r.instruments.endToEndDuration, _ = r.meter.Float64Histogram("hub.processing.end_to_end_duration", metric.WithUnit("s"))
+	r.instruments.processingBatchDuration = durationHistogram("hub.processing.batch_duration", latencyBuckets)
+	r.instruments.queueWaitDuration = durationHistogram("hub.processing.queue_wait_duration", waitBuckets)
+	r.instruments.endToEndDuration = durationHistogram("hub.processing.end_to_end_duration", waitBuckets)
 	r.instruments.dependencyEventsTotal, _ = r.meter.Int64Counter("hub.runtime.dependency_events_total")
 	r.instruments.runtimeDropEventsTotal, _ = r.meter.Int64Counter("hub.runtime.drop_events_total")
-	r.instruments.mqttPublishDuration, _ = r.meter.Float64Histogram("hub.mqtt.publish_duration", metric.WithUnit("s"))
-	r.instruments.websocketDispatchDuration, _ = r.meter.Float64Histogram("hub.websocket.dispatch_duration", metric.WithUnit("s"))
+	r.instruments.mqttPublishDuration = durationHistogram("hub.mqtt.publish_duration", latencyBuckets)
+	r.instruments.websocketDispatchDuration = durationHistogram("hub.websocket.dispatch_duration", latencyBuckets)
 	r.instruments.websocketDispatchTotal, _ = r.meter.Int64Counter("hub.websocket.dispatch_total")
-	r.instruments.rpcDuration, _ = r.meter.Float64Histogram("hub.rpc.duration", metric.WithUnit("s"))
+	r.instruments.rpcDuration = durationHistogram("hub.rpc.duration", latencyBuckets)
 	r.instruments.rpcTotal, _ = r.meter.Int64Counter("hub.rpc.requests_total")
-	r.instruments.eventBusEmitDuration, _ = r.meter.Float64Histogram("hub.event_bus.emit_duration", metric.WithUnit("s"))
+	r.instruments.eventBusEmitDuration = durationHistogram("hub.event_bus.emit_duration", latencyBuckets)
 	r.instruments.eventBusDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.event_bus_drops_total")
 	r.instruments.nativeQueueDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.native_queue_drops_total")
 	r.instruments.decisionQueueDrops, _ = r.meter.Int64ObservableCounter("hub.runtime.decision_queue_drops_total")
@@ -483,6 +502,18 @@ func (r *Runtime) RecordIngestRecord(ctx context.Context, signal, outcome string
 		))
 }
 
+// RecordHTTPRequest records one completed HTTP request by route template.
+func (r *Runtime) RecordHTTPRequest(ctx context.Context, route, method string, status int, duration time.Duration) {
+	if !r.metricsReady() {
+		return
+	}
+	r.instruments.httpDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("route", route),
+		attribute.String("method", method),
+		attribute.Int("status", status),
+	))
+}
+
 // RecordStreamHandled counts one completed stream work item by bounded operation and outcome.
 func (r *Runtime) RecordStreamHandled(ctx context.Context, stage, operation, machine, mode, outcome string) {
 	if !r.metricsReady() {
@@ -503,6 +534,15 @@ func (r *Runtime) RecordStreamServiceTime(ctx context.Context, stage, operation,
 		attribute.String("stage", stage), attribute.String("operation", operation),
 		attribute.String("machine", machine), attribute.String("traffic_mode", mode),
 	))
+}
+
+// RecordMachineEvaluation records an evaluation of a single state-machine key.
+func (r *Runtime) RecordMachineEvaluation(ctx context.Context, machine, trigger, mode, outcome string, duration time.Duration, err error) {
+	if err != nil {
+		outcome = "failed"
+	}
+	r.RecordStreamHandled(ctx, "state_machine", trigger, machine, mode, outcome)
+	r.RecordStreamServiceTime(ctx, "state_machine", trigger, machine, mode, duration)
 }
 
 // RecordProcessingDuration records a stage duration in seconds.
@@ -533,7 +573,7 @@ func (r *Runtime) RecordQueueWait(ctx context.Context, stage string, duration ti
 	if !r.metricsReady() {
 		return
 	}
-	r.instruments.queueWaitDuration.Record(ctx, duration.Seconds(),
+	r.instruments.queueWaitDuration.Record(ctx, max(0, duration).Seconds(),
 		metric.WithAttributes(attribute.String("stage", stage)))
 }
 

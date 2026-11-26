@@ -1223,8 +1223,12 @@ func (s *Service) publishProximity(proximity gen.Proximity) error {
 	return nil
 }
 
-func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proximity) (gen.Location, error) {
+func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proximity) (_ gen.Location, err error) {
 	start := time.Now()
+	outcome := "no_change"
+	defer func() {
+		s.telemetry().RecordMachineEvaluation(ctx, "proximity_hysteresis", "observation", "live", outcome, time.Since(start), err)
+	}()
 	zones, err := s.ListZones(ctx)
 	if err != nil {
 		return gen.Location{}, err
@@ -1246,9 +1250,14 @@ func (s *Service) locationFromProximity(ctx context.Context, proximity gen.Proxi
 		return gen.Location{}, err
 	}
 	if clearState {
+		if state.ResolvedZoneID != "" {
+			outcome = "exit"
+		}
 		s.processingState().DeleteProximityState(stateKey)
 	} else if err := s.storeProximityState(ctx, stateKey, resolution.State, resolution.Policy.StaleStateTTL); err != nil {
 		return gen.Location{}, err
+	} else if state.ResolvedZoneID != resolution.State.ResolvedZoneID {
+		outcome = "zone_change"
 	}
 	s.telemetry().RecordProcessingDuration(ctx, "proximity_resolution", "proximity", time.Since(start))
 	return deriveLocationFromProximity(proximity, resolution.Zone, resolution.Sticky), nil

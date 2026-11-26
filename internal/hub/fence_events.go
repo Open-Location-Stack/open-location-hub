@@ -140,7 +140,12 @@ func (s *Service) publishFenceObservation(ctx context.Context, location gen.Loca
 
 // Caller holds the member/fence stripe through state transition and publication,
 // keeping entry, cancellation, and timer expiry ordered for that membership.
-func (s *Service) transitionFenceMembership(ctx context.Context, member string, fence gen.Fence, location gen.Location, area exitArea, policy fenceExitPolicy) error {
+func (s *Service) transitionFenceMembership(ctx context.Context, member string, fence gen.Fence, location gen.Location, area exitArea, policy fenceExitPolicy) (err error) {
+	started := time.Now()
+	outcome := "no_change"
+	defer func() {
+		s.telemetry().RecordMachineEvaluation(ctx, "fence_membership", "observation", "live", outcome, time.Since(started), err)
+	}()
 	state := s.processingState()
 	now := state.nowUTC()
 	id := fence.Id.String()
@@ -161,6 +166,7 @@ func (s *Service) transitionFenceMembership(ctx context.Context, member string, 
 	membership.location = location
 	state.putFenceMembership(member, id, membership)
 	if !inside {
+		outcome = "entry"
 		if err := s.emitMembershipEvent(ctx, member, membership, gen.RegionEntry, now); err != nil {
 			return err
 		}
@@ -179,11 +185,18 @@ func (s *Service) transitionFenceMembership(ctx context.Context, member string, 
 	})
 	return nil
 }
-func (s *Service) expireFenceMembership(ctx context.Context, member, id string, deadline time.Time) error {
+func (s *Service) expireFenceMembership(ctx context.Context, member, id string, deadline time.Time) (err error) {
+	started := time.Now()
+	outcome := "no_change"
+	defer func() {
+		s.telemetry().RecordMachineEvaluation(ctx, "fence_membership", "timer", "live", outcome, time.Since(started), err)
+	}()
 	membership, ok := s.processingState().FenceMembershipState(member, id)
 	if !ok || !membership.timers.deadline().Equal(deadline) {
 		return nil
 	}
+	outcome = "exit"
+	s.telemetry().RecordQueueWait(ctx, "fence_membership_timer", s.processingState().nowUTC().Sub(deadline))
 	s.processingState().ClearInsideFence(member, id)
 	s.eventScheduler().schedule(fenceTimerKey(member, id), time.Time{}, nil)
 	return s.emitMembershipEvent(ctx, member, membership, gen.RegionExit, deadline)

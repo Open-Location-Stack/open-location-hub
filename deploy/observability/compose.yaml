@@ -1,0 +1,46 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.165.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    networks: [telemetry, monitoring]
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./rules.yaml:/etc/prometheus/hub-rules.yaml:ro
+      - prometheus-data:/prometheus
+    networks: [monitoring]
+
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.35.0
+    command: ["--config.file=/etc/alertmanager/alertmanager.yaml", "--storage.path=/alertmanager", "--cluster.listen-address="]
+    volumes:
+      - ./alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro
+      - alertmanager-data:/alertmanager
+    networks: [monitoring]
+
+  perses:
+    image: persesdev/perses:v0.55.1
+    command: ["--config=/etc/perses/config.yaml"]
+    volumes:
+      - ./perses.yaml:/etc/perses/config.yaml:ro
+      - ./resources:/etc/perses/resources:ro
+    ports:
+      - "127.0.0.1:${DEMO_PERSES_PORT:-8090}:8080"
+    networks: [monitoring]
+
+networks:
+  telemetry:
+    internal: true
+  monitoring:
+
+volumes:
+  prometheus-data:
+  alertmanager-data:

@@ -228,12 +228,12 @@ See [docs/auth.md](auth.md) for the full auth model, Dex setup, and permission f
 
 Telemetry behavior:
 - the hub exports OTLP metrics, traces, and logs directly to a collector and does not expose a separate Prometheus scrape endpoint in this slice
-- `service.name`, `service.version`, `deployment.environment`, and the persisted `hub.id` are attached to the OTel resource when available
+- `service.name`, `service.version`, `deployment.environment.name`, and the persisted `hub.id` are attached to the OTel resource when available. Each process has a unique `service.instance.id` unless explicitly supplied as an OpenTelemetry resource attribute.
 - invalid telemetry configuration fails startup only when telemetry is enabled
 - metrics are intentionally low-cardinality and are labeled only with bounded dimensions such as transport, signal type, stage, feature, and outcome
 - entity identifiers such as `trackable_id`, `provider_id`, `zone_id`, `fence_id`, and collision pair identifiers are emitted on spans and structured logs for drill-down, not on normal metric series
 - runtime metrics cover ingest acceptance and deduplication, end-to-end processing latency, queue occupancy and wait time, queue and outbound drop counters, fence evaluation, collision evaluation, MQTT/WebSocket publication, metadata reconcile, auth, and RPC outcomes
-- the local demo stack under [`local-hub/`](local-hub) enables all three OTLP signals by default and routes them to SigNoz
+- the [local demo stack](../local-hub/README.md) sends OTLP metrics to Prometheus via a private Collector and provisions Perses dashboards from Git. The demo writes application logs to stdout. Other deployments can configure trace and log exporters as well.
 
 ## RPC Security Defaults
 

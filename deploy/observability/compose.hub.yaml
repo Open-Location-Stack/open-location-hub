@@ -1,0 +1,17 @@
+include:
+  - ./deploy/observability/compose.yaml
+
+services:
+  app:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_METRICS_ENABLED: "true"
+      OTEL_TRACES_ENABLED: "false"
+      OTEL_LOGS_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_DEPLOYMENT_ENVIRONMENT: "${OTEL_DEPLOYMENT_ENVIRONMENT:-local}"
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks: [default, telemetry]

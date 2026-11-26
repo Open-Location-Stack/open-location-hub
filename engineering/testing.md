@@ -63,8 +63,8 @@ The lint stack now verifies:
 CI reads Go 1.27.1 from `go.mod`. Its tool cache includes the runner architecture,
 `go.mod`, and the lowercase `justfile`, so changes to the toolchain or pinned
 bootstrap tools invalidate cached binaries. Both Go jobs use the same pins.
-The verification job also runs `just build` explicitly. SigNoz is a local demo
-service and is not part of the integration suite or its CI caches.
+The verification job also runs `just build` explicitly. The Perses dashboards,
+monitoring stack and their replay checks run separately from the Go integration suite.
 
 Run Python dependency checks with:
 
@@ -86,9 +86,9 @@ Integration fixtures use PostgreSQL 17.11, Valkey 9.1.2, Mosquitto 2.1.2, Dex
 2.45.1, and Python 3.14.7. PostgreSQL stays on major 17 to preserve compatibility
 with existing local and deployed data directories; a major upgrade needs a
 separate data migration. The deployment collector is pinned to 0.161.0.
-SigNoz stays at 0.117.1: its 0.143.0 source tree no longer includes the
-`deploy/docker/docker-compose.yaml` consumed by the launcher. Updating it needs
-a deployment-source migration and validation of the admin/dashboard bootstrap.
+The demo monitoring images are declared in
+[`deploy/observability/compose.yaml`](../deploy/observability/compose.yaml).
+Review the dashboard and datasource schema together with Perses upgrades.
 
 The September 2026 scan reports no reachable vulnerable symbols. It also reports
 [GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443) in the imported gRPC 1.84.0

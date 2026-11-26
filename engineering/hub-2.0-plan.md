@@ -383,6 +383,25 @@ checkpoint topic. A separate provisioning run verified an overridden one-hour
 default and a two-minute configuration log. The database cleanup removed an
 expired published revision and preserved equally old unpublished work.
 
+The local Perses profile provisioned all five dashboards from Git. With
+telemetry enabled, the un-interpolated airport run passed at about 178
+observations/s with zero queue or delivery drops. Prometheus saw 8,368
+shadow appends, 8,368 asset inputs and 8,248 motion estimates. The HTTP
+metrics grouped requests for 687 trackables under the same normalized
+route. A second run paused the asset router for seven seconds. All inputs
+were processed, with 3,439 router queue waits over one second. Router
+handler p99 stayed below 0.1 ms and the estimator's queue waits stayed below
+one second. The dashboard distinguished the blocked stage from the fast
+handler on the same workload.
+
+A seven-second broker pause during another run put 3,370 producer appends
+above one second. The producer eventually acknowledged all 8,368 observations,
+the router and estimator caught up, and the functional gate passed. The router
+and estimator Kafka commit p99 stayed below 50 ms. The monitored local stack
+supports the existing shadow pipeline and compatibility state machines.
+Kubernetes monitoring and the new pipeline's decision and recovery metrics
+still need implementation and validation.
+
 ### Delivery sequence
 
 | Stage | Work and exit condition |

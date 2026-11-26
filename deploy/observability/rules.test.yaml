@@ -1,0 +1,46 @@
+rule_files:
+  - rules.yaml
+evaluation_interval: 15s
+tests:
+  - name: stage drops require a sustained increase and carry stage labels
+    interval: 15s
+    input_series:
+      - series: 'hub_runtime_alive{job="open-location-hub"}'
+        values: '1+0x16'
+      - series: 'hub_runtime_drop_events_total{hub_id="fixture",deployment_environment_name="test",stage="decision",reason="queue_full"}'
+        values: '0 0 1 1 1 1 1 1 2 3 4 5 6 7 8 9 10'
+    alert_rule_test:
+      - eval_time: 1m45s
+        alertname: HubWorkDropping
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HubWorkDropping
+        exp_alerts:
+          - exp_labels:
+              hub_id: fixture
+              deployment_environment_name: test
+              stage: decision
+              reason: queue_full
+              severity: warning
+            exp_annotations:
+              summary: Hub stage decision is dropping work
+      - eval_time: 4m
+        alertname: HubTelemetryMissing
+        exp_alerts: []
+  - name: missing API telemetry is visible without any request traffic
+    interval: 15s
+    input_series:
+      - series: 'hub_runtime_alive{job="open-location-hub",instance="fixture"}'
+        values: '1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HubTelemetryMissing
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: HubTelemetryMissing
+        exp_alerts:
+          - exp_labels:
+              job: open-location-hub
+              severity: warning
+            exp_annotations:
+              summary: No API process telemetry received
